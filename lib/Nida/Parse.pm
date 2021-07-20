@@ -40,13 +40,14 @@ my $Lexical_Tables = sub                                                        
 
 
 my $ses      = RegisterSize rax;                                                # Size of an element on the stack
-my ($w1, $w2, $w3, $w4) = (r8, r9, r10, r11);                                             # Work registers
+my ($w1, $w2, $w3, $w4) = (r8, r9, r10, r11);                                   # Work registers
 my $prevChar = r11;                                                             # The previous character parsed
 my $index    = r12;                                                             # Index of current element
 my $element  = r13;                                                             # Contains the item being parsed
 my $start    = r14;                                                             # Start of the parse string
 my $size     = r15;                                                             # Length of the input string
-my $empty    = $Lexical_Tables->{lexicals}{empty}{number};                      # Empty element
+my $empty            = $Lexical_Tables->{lexicals}{empty}{number};              # Empty element
+my $term             = $Lexical_Tables->{lexicals}{term}{number};               # Term
 my $Ascii            = $Lexical_Tables->{lexicals}{Ascii}           {number};   # Ascii
 my $variable         = $Lexical_Tables->{lexicals}{variable}        {number};   # Variable
 my $NewLineSemiColon = $Lexical_Tables->{lexicals}{NewLineSemiColon}{number};   # New line semicolon
@@ -152,18 +153,13 @@ sub lexicalNumberFromLetter($)                                                  
 
 sub new($)                                                                      # Create a new term
  {my ($depth) = @_;                                                             # Stack depth to be converted
-  PrintErrString "new start $depth: ";
   for my $i(1..$depth)
    {Pop rax;
-    PrintErrRaxInHex;
-    PrintErrString "  ";
+     PrintOutRaxInHex;
+     PrintOutStringNL " ";
    }
-  PrintErrNL;
-  Mov rax, $Lexical_Tables->{lexicals}{term}{number};                           # Term
+  Mov rax, $term;                                                               # Term
   Push rax;                                                                     # Place simulated term on stack
-PrintErrStringNL "New end $depth";
-  Mov rax, rbp;
-  Sub rax, rsp;
  }
 
 sub error                                                                       # Die
@@ -657,6 +653,20 @@ END
 if (1) {                                                                        #TlexicalNameFromLetter
   is_deeply lexicalNameFromLetter('a'), q(assign);
   is_deeply lexicalNumberFromLetter('a'), 6;
+ }
+
+latest:;
+if (1) {                                                                        #Tnew
+  Mov $index,  1;
+  Mov rax, 3; Push rax;
+  Mov rax, 2; Push rax;
+  Mov rax, 1; Push rax;
+  new 3;
+  Mov rax, "[rsp]";
+  PrintOutRegisterInHex rax;
+  ok Assemble(debug => 0, eq => <<END);
+   rax: 0000 0001 0000 000C
+END
  }
 
 #latest:
