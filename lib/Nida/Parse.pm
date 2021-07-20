@@ -293,7 +293,7 @@ sub accept_b                                                                    
   pushElement;
  }
 
-sub accept_reduce                                                               #P Accept by reducing
+sub reduceMultiple                                                               #P Accept by reducing
  {Vq('count',99)->for(sub
    {my ($index, $start, $next, $end) = @_;                                      # Execute body
     reduce;
@@ -301,11 +301,11 @@ sub accept_reduce                                                               
    });
  }
 
-sub accept_B                                                                   #P Closing parenthesis
+sub accept_B                                                                    #P Closing parenthesis
  {checkSet("bst");
-  accept_reduce;
+  reduceMultiple;
   pushElement;
-  accept_reduce;
+  reduceMultiple;
   checkSet("bst");
  }
 
@@ -336,7 +336,7 @@ sub accept_s                                                                    
   IfEq                                                                          # Insert an empty element between two consecutive semicolons
    {pushEmpty;
    };
-  accept_reduce;
+  reduceMultiple;
   pushElement;
  }
 
@@ -441,7 +441,7 @@ PrintErrRegisterInHex rax, $element;
      };
    });
 
-  accept_reduce;                                                                # Final reductions
+  reduceMultiple;                                                                # Final reductions
 
   checkStackHas 1;
   IfNe                                                                          # Incomplete expression
@@ -771,7 +771,7 @@ Assign
 Open
 
 
-=head2 accept_reduce()
+=head2 reduceMultiple()
 
 Accept by reducing
 
@@ -829,7 +829,7 @@ Parse an expression.
 
 6 L<accept_q|/accept_q> - Post fix
 
-7 L<accept_reduce|/accept_reduce> - Accept by reducing
+7 L<reduceMultiple|/reduceMultiple> - Accept by reducing
 
 8 L<accept_s|/accept_s> - Semi colon
 
@@ -1084,10 +1084,10 @@ END
  }
 
 #latest:;
-if (1) {
+if (1) {                                                                        #TreduceMultiple
   Mov r15,           -1;  Push r15;
   Mov r15, $OpenBracket;  Push r15;
-  reduce;
+  reduceMultiple;
   Pop r15; PrintOutRegisterInHex r15;
   Pop r14; PrintOutRegisterInHex r14;
   ok Assemble(debug => 0, eq => <<END);
@@ -1102,7 +1102,7 @@ if (1) {
   Mov r15, $OpenBracket;  Push r15;
   Mov r15, $term;         Push r15;
   Mov r15, $CloseBracket; Push r15;
-  reduce;
+  reduceMultiple;
   Pop r15; PrintOutRegisterInHex r15;
   Pop r14; PrintOutRegisterInHex r14;
   ok Assemble(debug => 0, eq => <<END);
