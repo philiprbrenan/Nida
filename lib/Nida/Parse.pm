@@ -46,12 +46,15 @@ my $index    = r12;                                                             
 my $element  = r13;                                                             # Contains the item being parsed
 my $start    = r14;                                                             # Start of the parse string
 my $size     = r15;                                                             # Length of the input string
-my $empty            = $Lexical_Tables->{lexicals}{empty}{number};              # Empty element
-my $term             = $Lexical_Tables->{lexicals}{term}{number};               # Term
-my $Ascii            = $Lexical_Tables->{lexicals}{Ascii}           {number};   # Ascii
-my $variable         = $Lexical_Tables->{lexicals}{variable}        {number};   # Variable
-my $NewLineSemiColon = $Lexical_Tables->{lexicals}{NewLineSemiColon}{number};   # New line semicolon
-my $semiColon        = $Lexical_Tables->{lexicals}{semiColon}       {number};   # Semicolon
+my $assign           = $$Lexical_Tables{lexicals}{assign}{number};              # Empty element
+my $empty            = $$Lexical_Tables{lexicals}{empty}{number};               # Empty element
+my $term             = $$Lexical_Tables{lexicals}{term}{number};                # Term
+my $Ascii            = $$Lexical_Tables{lexicals}{Ascii}           {number};    # Ascii
+my $variable         = $$Lexical_Tables{lexicals}{variable}        {number};    # Variable
+my $NewLineSemiColon = $$Lexical_Tables{lexicals}{NewLineSemiColon}{number};    # New line semicolon
+my $semiColon        = $$Lexical_Tables{lexicals}{semiColon}       {number};    # Semicolon
+my $firstSet = $$Lexical_Tables{structure}{first};                              # First symbols allowed
+my $lastSet  = $$Lexical_Tables{structure}{last};                               # Last symbols allowed
 
 sub loadCurrentChar()                                                           #P Load the details of the character currently being processed
  {my $r = $element."b";                                                         # Classification byte
@@ -164,67 +167,34 @@ sub new($)                                                                      
 
 sub error                                                                       # Die
  {my ($number) = @_;                                                            # Error number
-  PrintErrStringNL "die $number:";
-  PrintErrRegisterInHex r12;
+  PrintOutStringNL "die $number:";
  }
 
-sub testSet($$)                                                                 # Test a set of items
- {my ($set, $name) = @_;                                                        # String of letters showing lexical items to test, name of test if any
+sub testSet($$)                                                                 # Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
+ {my ($set, $register) = @_;                                                    # Set of lexical letters, Register to test
   my @n = map {sprintf("0x%x", lexicalNumberFromLetter $_)} split //, $set;     # Each lexical item by number from letter
-
-  push my @t, <<END;
-sub test_$name(\$)                                                              #P Set ZF if have one of $set in the specified register.
- {my (\$register) = \@_;                                                        # Sub defining action to be taken on a match, register to check,
-  my \$end = Label;
-  Comment("Test: $name");
-END
+  my $end = Label;
   for my $n(@n)
-   {push @t, <<END;
-  Cmp \$register."b", $n;
-  IfEq {SetZF; Jmp \$end};
-END
+   {Cmp $register."b", $n;
+    IfEq {SetZF; Jmp $end};
    }
-  push @t, <<END;
   ClearZF;
-  SetLabel \$end;
- }
-END
-  join "\n", @t
+  SetLabel $end;
  }
 
-sub recognizers()                                                               # Write lexical check routines
- {my @t;
+sub checkSet($)                                                                 # Check that one of a set of items is on the top of the stack or complain if it is not
+ {my ($set) = @_;                                                               # Set of lexical letters
+  my @n =  map {lexicalNumberFromLetter $_} split //, $set;
+  my $end = Label;
 
-  testSet($$Lexical_Tables{structure}{first}, q(first));                        # First symbols allowed
-  testSet($$Lexical_Tables{structure}{last},   q(last));                        # Last symbols allowed
-
-  for my $c(qw(abdps ads b B bdp bdps bpsv bst p pbsv s sb sbt t v))            # Test various sets of items
-   {testSet($c, $c);
+  for my $n(@n)
+   {Cmp "byte[rsp]", $n;
+    IfEq {SetZF; Jmp \$end};
    }
-
-  for my $c(qw(t bdp bdps bst abdps))                                           # Check the top of the stack and complain if there is something unexpected there
-   {my @n = map {sprintf("0x%x", lexicalNumberFromLetter $_)} split //, $c;
-    my $n = join ', ', map {lexicalNameFromLetter $_}         split //, $c;
-
-    push @t, <<END;
-sub check_$c()                                                                  #P Set ZF if we have one of $c on top of the stack
- {my \$end = Label;
-END
-    for my $n(@n)
-     {push @t, <<END;
-  Cmp "byte[rsp]", $n;
-  IfEq {SetZF; Jmp \$end};
-END
-     }
-    push @t, <<END;
-  PrintErrStringNL "Expected $c on the stack not found";
+  error("Expected $set on the stack");
   ClearZF;
-  SetLabel \$end;
+  SetLabel $end;
  }
-END
-   }
-  join "\n", @t                                                                 # Lexical recognizers code
- } # recognizers
 
 sub reduce()                                                                    #P Convert the longest possible expression on top of the stack into a term
  {#lll "TTTT ", scalar(@s), "\n", dump([@s]);
@@ -237,11 +207,11 @@ sub reduce()                                                                    
     Mov $d, "[rsp+".(1*$ses)."]";
     Mov $r, "[rsp+".(0*$ses)."]";
 
-    test_t($l);                                                                 # Parse out infix operator expression
+    testSet("t",  $l);                                                                 # Parse out infix operator expression
     IfEq
-     {test_t($r);
+     {testSet("t",  $r);
       IfEq
-       {test_ads($d);
+       {testSet("ads", $d);
         IfEq
          {Add rsp, 3 * $ses;                                                    # Reorder into polish notation
           Push $_ for $d, $l, $r;
@@ -251,11 +221,11 @@ sub reduce()                                                                    
        };
      };
 
-    test_b($l);                                                                 # Parse parenthesized term
+    testSet("b",  $l);                                                                 # Parse parenthesized term
     IfEq
-     {test_B($r);
+     {testSet("b",  $r);
       IfEq
-       {test_t($d);
+       {testSet("t",  $d);
         IfEq
          {Add rsp, 3 * $ses;                                                    # Pop expression
           Push $d;
@@ -273,9 +243,9 @@ sub reduce()                                                                    
     KeepFree $l, $r;                                                            # Why ?
     Mov $l, "[rsp+".(1*$ses)."]";                                               # Top 3 elements on the stack
     Mov $r, "[rsp+".(0*$ses)."]";
-    test_b($l);                                                                 # Empty pair of parentheses
+    testSet("b",  $l);                                                                 # Empty pair of parentheses
     IfEq
-     {test_B($r);
+     {testSet("b",  $r);
       IfEq
        {Add rsp, 2 * $ses;                                                      # Pop expression
         pushEmpty;
@@ -283,18 +253,18 @@ sub reduce()                                                                    
         Jmp $success;
        };
      };
-    test_s($l);                                                                 # Semi-colon, close implies remove unneeded semi
+    testSet("s",  $l);                                                                 # Semi-colon, close implies remove unneeded semi
     IfEq
-     {test_B($r);
+     {testSet("b",  $r);
       IfEq
        {Add rsp, 2 * $ses;                                                      # Pop expression
         Push $r;
         Jmp $success;
        };
      };
-    test_p($l);                                                                 # Prefix, term
+    testSet("p", $l);                                                              # Prefix, term
     IfEq
-     {test_t($r);
+     {testSet("t",  $r);
       IfEq
        {new(2);
         Jmp $success;
@@ -313,12 +283,12 @@ sub reduce()                                                                    
  } # reduce
 
 sub accept_a()                                                               #P Assign
- {&check_t;
+ {checkSet("t");
   pushElement;
  }
 
 sub accept_b                                                                 #P Open
- {&check_bdps;
+ {checkSet("bdps");
   pushElement;
  }
 
@@ -331,25 +301,25 @@ sub accept_reduce                                                            #P 
  }
 
 sub accept_B                                                                 #P Closing parenthesis
- {&check_bst;
+ {checkSet("bst");
   accept_reduce;
   pushElement;
   accept_reduce;
-  &check_bst;
+  checkSet("bst");
  }
 
 sub accept_d                                                                 #P Infix but not assign or semi-colon
- {&check_t;
+ {checkSet("t");
   pushElement;
  }
 
 sub accept_p                                                                 #P Prefix
- {&check_bdp;
+ {checkSet("bdp");
   pushElement;
  }
 
 sub accept_q                                                                 #P Post fix
- {&check_t;
+ {checkSet("t");
   IfEq                                                                          # Post fix operator applied to a term
    {Pop $w1;
     pushElement;
@@ -359,10 +329,9 @@ sub accept_q                                                                 #P 
  }
 
 sub accept_s                                                                 #P Semi colon
- {&check_bst;
+ {checkSet("bst");
   Mov $w1, "[rsp]";
-  test_sb($w1);
-  KeepFree $w1;
+  testSet("s",  $w1);
   IfEq                                                                          # Insert an empty element between two consecutive semicolons
    {pushEmpty;
    };
@@ -371,7 +340,7 @@ sub accept_s                                                                 #P 
  }
 
 sub accept_v                                                                    #P Variable
-  {&check_abdps;
+  {checkSet("abdps");
    pushElement;
    new(1);
    Vq(count,99)->For(sub                                                        # Reduce prefix operators
@@ -408,13 +377,13 @@ operator', 'semi-colon' or 'variable'.
 END
    };
 
-  &test_v($element);                                                            # Single variable
+  testSet("v", $element);                                                          # Single variable
   IfEq
    {Push $element;
     new(1);
    }
   sub
-   {test_s($element);                                                           # Semi
+   {testSet("s", $element);                                                        # Semi
     IfEq
      {pushEmpty;
       new(1);
@@ -449,7 +418,7 @@ PrintErrRegisterInHex rax, $element;
      }
    } $index, $size;
 
-  test_last($element);                                                          # Last element
+  testSet($lastSet, $element);                                                     # Last element
   IfNe                                                                          # Incomplete expression
    {error(2, "Incomplete expression");
    };
@@ -464,7 +433,7 @@ PrintErrRegisterInHex rax, $element;
       Jmp $end
      };
     Pop $w1;
-    test_s($w1);                                                                # Check that the top most element is a semi colon
+    testSet("s", $w1);                                                             # Check that the top most element is a semi colon
     IfNe                                                                        # Not a semi colon so put it back and finish the loop
      {Push $w1;
       Jmp $end;
@@ -523,8 +492,368 @@ Parse the Nida programming language
 
 =head1 Description
 
+Generate X86 assembler code using Perl as a macro pre-processor.
+
+
+Version "20210720".
+
+
+The following sections describe the methods in each functional area of this
+module.  For an alphabetic listing of all methods by name see L<Index|/Index>.
+
+
+
+=head1 Nida Parsing
+
+Parse Nida language statements
+
+=head2 ClassifyNewLines(@parameters)
+
+A new line acts a semi colon if it appears immediately after a variable.
+
+     Parameter    Description
+  1  @parameters  Parameters
+
+=head2 lexicalNameFromLetter($l)
+
+Lexical name for a lexical item described by its letter
+
+     Parameter  Description
+  1  $l         Letter of the lexical item
+
+B<Example:>
+
+
+
+    is_deeply lexicalNameFromLetter('a'), q(assign);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    is_deeply lexicalNumberFromLetter('a'), 6;
+
+
+=head2 lexicalNumberFromLetter($l)
+
+Lexical number for a lexical item described by its letter
+
+     Parameter  Description
+  1  $l         Letter of the lexical item
+
+B<Example:>
+
+
+    is_deeply lexicalNameFromLetter('a'), q(assign);
+
+    is_deeply lexicalNumberFromLetter('a'), 6;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+
+
+=head2 new($depth)
+
+Create a new term
+
+     Parameter  Description
+  1  $depth     Stack depth to be converted
+
+B<Example:>
+
+
+    Mov $index,  1;
+    Mov rax, 3; Push rax;
+    Mov rax, 2; Push rax;
+    Mov rax, 1; Push rax;
+
+    new 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    Mov rax, "[rsp]";
+    PrintOutRegisterInHex rax;
+    ok Assemble(debug => 0, eq => <<END);
+  0000 0000 0000 0001
+  0000 0000 0000 0002
+  0000 0000 0000 0003
+     rax: 0000 0000 0000 000C
+  END
+
+
+=head2 error()
+
+Die
+
+
+B<Example:>
+
+
+
+    error "aaa bbbb";  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    ok Assemble(debug => 0, eq => <<END);
+  die aaa bbbb:
+  END
+
+
+=head2 testSet($set, $register)
+
+Test a set of items
+
+     Parameter  Description
+  1  $set       Set of lexical letters
+  2  $register  Register to test
+
+=head2 checkSet($set)
+
+Check that one of a set of items is on the top of the stack or complain if it is not
+
+     Parameter  Description
+  1  $set       Set of lexical letters
+
+B<Example:>
+
+
+    Mov rax, error "aaa bbbb";
+    ok Assemble(debug => 0, eq => <<END);
+  die aaa bbbb:
+  END
+
+
+=head2 parse(@parameters)
+
+Create a parser for an expression described by variables
+
+     Parameter    Description
+  1  @parameters  Parameters describing expression
+
+
+=head1 Private Methods
+
+=head2 loadCurrentChar()
+
+Load the details of the character currently being processed
+
+
+=head2 checkStackHas($depth)
+
+Check that we have at least the specified number of elements on the stack
+
+     Parameter  Description
+  1  $depth     Number of elements required on the stack
+
+B<Example:>
+
+
+    my @o = (Rb(reverse 0x10,              0, 0, 1),                              # Open bracket
+             Rb(reverse 0x11,              0, 0, 2),                              # Close bracket
+             Rb(reverse $Ascii,            0, 0, 27),                             # Ascii 'a'
+             Rb(reverse $variable,         0, 0, 27),                             # Variable 'a'
+             Rb(reverse $NewLineSemiColon, 0, 0, 0),                              # New line semicolon
+             Rb(reverse $semiColon,        0, 0, 0));                             # Semi colon
+
+    for my $o(@o)                                                                 # Try converting each input element
+     {Mov $start, $o;
+      Mov $index, 0;
+      loadCurrentChar;
+      PrintOutRegisterInHex $element;
+     }
+
+    ok Assemble(debug => 0, eq => <<END);
+     r13: 0000 0000 0000 0000
+     r13: 0000 0000 0000 0001
+     r13: 0000 0000 0000 0007
+     r13: 0000 0000 0000 0007
+     r13: 0000 0000 0000 0009
+     r13: 0000 0000 0000 0009
+  END
+
+    Push rbp;
+    Mov rbp, rsp;
+    Push rax;
+    Push rax;
+
+    checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    IfEq {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
+
+    checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    IfGe {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
+
+    checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    IfGt {PrintOutStringNL "fail"} sub {PrintOutStringNL "ok"};
+    Push rax;
+
+    checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    IfEq {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
+
+    checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    IfGe {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
+
+    checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    IfGt {PrintOutStringNL "fail"} sub {PrintOutStringNL "ok"};
+
+    ok Assemble(debug => 0, eq => <<END);
+  ok
+  ok
+  ok
+  ok
+  ok
+  ok
+  END
+
+
+=head2 pushElement()
+
+Push the current element on to the stack
+
+
+=head2 pushEmpty()
+
+Push the empty element on to the stack
+
+
+B<Example:>
+
+
+    Mov $index, 1;
+
+    pushEmpty;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    Mov rax, "[rsp]";
+    PrintOutRegisterInHex rax;
+    ok Assemble(debug => 0, eq => <<END);
+     rax: 0000 0001 0000 000D
+  END
+
+
+=head2 reduce()
+
+Convert the longest possible expression on top of the stack into a term
+
+
+=head2 accept_a()
+
+Assign
+
+
+=head2 accept_b()
+
+Open
+
+
+=head2 accept_reduce()
+
+Accept by reducing
+
+
+=head2 accept_B()
+
+Closing parenthesis
+
+
+=head2 accept_d()
+
+Infix but not assign or semi-colon
+
+
+=head2 accept_p()
+
+Prefix
+
+
+=head2 accept_q()
+
+Post fix
+
+
+=head2 accept_s()
+
+Semi colon
+
+
+=head2 accept_v()
+
+Variable
+
+
+=head2 parseExpression($parameters)
+
+Parse an expression.
+
+     Parameter    Description
+  1  $parameters  Parameters
+
+
+=head1 Index
+
+
+1 L<accept_a|/accept_a> - Assign
+
+2 L<accept_b|/accept_b> - Open
+
+3 L<accept_B|/accept_B> - Closing parenthesis
+
+4 L<accept_d|/accept_d> - Infix but not assign or semi-colon
+
+5 L<accept_p|/accept_p> - Prefix
+
+6 L<accept_q|/accept_q> - Post fix
+
+7 L<accept_reduce|/accept_reduce> - Accept by reducing
+
+8 L<accept_s|/accept_s> - Semi colon
+
+9 L<accept_v|/accept_v> - Variable
+
+10 L<checkSet|/checkSet> - Check that one of a set of items is on the top of the stack or complain if it is not
+
+11 L<checkStackHas|/checkStackHas> - Check that we have at least the specified number of elements on the stack
+
+12 L<ClassifyNewLines|/ClassifyNewLines> - A new line acts a semi colon if it appears immediately after a variable.
+
+13 L<error|/error> - Die
+
+14 L<lexicalNameFromLetter|/lexicalNameFromLetter> - Lexical name for a lexical item described by its letter
+
+15 L<lexicalNumberFromLetter|/lexicalNumberFromLetter> - Lexical number for a lexical item described by its letter
+
+16 L<loadCurrentChar|/loadCurrentChar> - Load the details of the character currently being processed
+
+17 L<new|/new> - Create a new term
+
+18 L<parse|/parse> - Create a parser for an expression described by variables
+
+19 L<parseExpression|/parseExpression> - Parse an expression.
+
+20 L<pushElement|/pushElement> - Push the current element on to the stack
+
+21 L<pushEmpty|/pushEmpty> - Push the empty element on to the stack
+
+22 L<reduce|/reduce> - Convert the longest possible expression on top of the stack into a term
+
+23 L<testSet|/testSet> - Test a set of items
+
+=head1 Installation
+
+This module is written in 100% Pure Perl and, thus, it is easy to read,
+comprehend, use, modify and install via B<cpan>:
+
+  sudo cpan install Nida::Parse
+
+=head1 Author
+
+L<philiprbrenan@gmail.com|mailto:philiprbrenan@gmail.com>
+
+L<http://www.appaapps.com|http://www.appaapps.com>
+
+=head1 Copyright
+
+Copyright (c) 2016-2021 Philip R Brenan.
+
+This module is free software. It may be used, redistributed and/or modified
+under the same terms as Perl itself.
 
 =cut
+
 
 
 # Tests and documentation
@@ -556,7 +885,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 7;
+   {plan tests => 10;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -650,7 +979,7 @@ END
  }
 
 #latest:;
-if (1) {                                                                        #TlexicalNameFromLetter
+if (1) {                                                                        #TlexicalNameFromLetter #TlexicalNumberFromLetter
   is_deeply lexicalNameFromLetter('a'), q(assign);
   is_deeply lexicalNumberFromLetter('a'), 6;
  }
@@ -669,6 +998,35 @@ if (1) {                                                                        
 0000 0000 0000 0002
 0000 0000 0000 0003
    rax: 0000 0000 0000 000C
+END
+ }
+
+#latest:;
+if (1) {                                                                        #Terror
+  error "aaa bbbb";
+  ok Assemble(debug => 0, eq => <<END);
+die aaa bbbb:
+END
+ }
+
+#latest:;
+if (1) {                                                                        #TcheckSet
+  Mov r15,  -1;
+  Mov r15b, $term;
+  testSet("ast", r15);
+  PrintOutZF;
+  Mov r15b, $term;
+  testSet("as",  r15);
+  PrintOutZF;
+  ok Assemble(debug => 0, eq => <<END);
+ZF=1
+ZF=0
+END
+ }
+
+#latest:;
+if (1) {                                                                        #TcheckSet
+  ok Assemble(debug => 0, eq => <<END);
 END
  }
 
