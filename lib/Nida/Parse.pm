@@ -40,11 +40,10 @@ my $Lexical_Tables = sub                                                        
 
 
 my $ses      = RegisterSize rax;                                                # Size of an element on the stack
-my ($w1, $w2, $w3) = (r8, r9, r10);                                             # Work registers
-my $prevChar = r10;                                                             # The previous character parsed
-my $index    = r11;                                                             # Index of current element
-my $element  = r12;                                                             # Contains the item being parsed
-my $lex      = r13;                                                             # The lexical number associated with the current lexical element is placed in the lowest byte, the index at which this item was found inthe utf32 source is placed in the upper dword
+my ($w1, $w2, $w3, $w4) = (r8, r9, r10, r11);                                             # Work registers
+my $prevChar = r11;                                                             # The previous character parsed
+my $index    = r12;                                                             # Index of current element
+my $element  = r13;                                                             # Contains the item being parsed
 my $start    = r14;                                                             # Start of the parse string
 my $size     = r15;                                                             # Length of the input string
 my $empty    = $Lexical_Tables->{lexicals}{empty}{number};                      # Empty element
@@ -85,7 +84,7 @@ sub checkStackHas($)                                                            
  }
 
 sub pushElement()                                                            #P Push the current element on to the stack
- {Push $lex;
+ {Push $element;
  }
 
 sub pushEmpty()                                                              #P Push the empty element on to the stack
@@ -605,12 +604,12 @@ if (1) {                                                                        
    }
 
   ok Assemble(debug => 0, eq => <<END);
-   r12: 0000 0000 0000 0000
-   r12: 0000 0000 0000 0001
-   r12: 0000 0000 0000 0007
-   r12: 0000 0000 0000 0007
-   r12: 0000 0000 0000 0009
-   r12: 0000 0000 0000 0009
+   r13: 0000 0000 0000 0000
+   r13: 0000 0000 0000 0001
+   r13: 0000 0000 0000 0007
+   r13: 0000 0000 0000 0007
+   r13: 0000 0000 0000 0009
+   r13: 0000 0000 0000 0009
 END
  }
 
