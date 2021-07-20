@@ -168,6 +168,7 @@ sub new($)                                                                      
 sub error                                                                       # Die
  {my ($number) = @_;                                                            # Error number
   PrintOutStringNL "die $number:";
+  Exit(0);
  }
 
 sub testSet($$)                                                                 # Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
@@ -189,7 +190,7 @@ sub checkSet($)                                                                 
 
   for my $n(@n)
    {Cmp "byte[rsp]", $n;
-    IfEq {SetZF; Jmp \$end};
+    IfEq {SetZF; Jmp $end};
    }
   error("Expected $set on the stack");
   ClearZF;
@@ -1010,12 +1011,11 @@ END
  }
 
 #latest:;
-if (1) {                                                                        #TcheckSet
+if (1) {                                                                        #TtestSet
   Mov r15,  -1;
   Mov r15b, $term;
   testSet("ast", r15);
   PrintOutZF;
-  Mov r15b, $term;
   testSet("as",  r15);
   PrintOutZF;
   ok Assemble(debug => 0, eq => <<END);
@@ -1026,7 +1026,16 @@ END
 
 #latest:;
 if (1) {                                                                        #TcheckSet
-  ok Assemble(debug => 0, eq => <<END);
+  Mov r15,  -1;
+  Mov r15b, $term;
+  Push r15;
+  checkSet("ast");
+  PrintOutZF;
+  checkSet("as");
+  PrintOutZF;
+  ok Assemble(debug => 1, eq => <<END);
+ZF=1
+die Expected as on the stack:
 END
  }
 
