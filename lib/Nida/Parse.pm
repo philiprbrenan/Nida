@@ -46,15 +46,16 @@ my $index    = r12;                                                             
 my $element  = r13;                                                             # Contains the item being parsed
 my $start    = r14;                                                             # Start of the parse string
 my $size     = r15;                                                             # Length of the input string
-my $OpenBracket      = $$Lexical_Tables{lexicals}{OpenBracket}     {number};    # Open  bracket
-my $CloseBracket     = $$Lexical_Tables{lexicals}{CloseBracket}    {number};    # Close bracket
-my $assign           = $$Lexical_Tables{lexicals}{assign}          {number};    # Assign
-my $empty            = $$Lexical_Tables{lexicals}{empty}           {number};    # Empty element
-my $term             = $$Lexical_Tables{lexicals}{term}            {number};    # Term
 my $Ascii            = $$Lexical_Tables{lexicals}{Ascii}           {number};    # Ascii
-my $variable         = $$Lexical_Tables{lexicals}{variable}        {number};    # Variable
+my $assign           = $$Lexical_Tables{lexicals}{assign}          {number};    # Assign
+my $CloseBracket     = $$Lexical_Tables{lexicals}{CloseBracket}    {number};    # Close bracket
+my $empty            = $$Lexical_Tables{lexicals}{empty}           {number};    # Empty element
 my $NewLineSemiColon = $$Lexical_Tables{lexicals}{NewLineSemiColon}{number};    # New line semicolon
+my $OpenBracket      = $$Lexical_Tables{lexicals}{OpenBracket}     {number};    # Open  bracket
+my $prefix           = $$Lexical_Tables{lexicals}{prefix}          {number};    # Prefix operator
 my $semiColon        = $$Lexical_Tables{lexicals}{semiColon}       {number};    # Semicolon
+my $term             = $$Lexical_Tables{lexicals}{term}            {number};    # Term
+my $variable         = $$Lexical_Tables{lexicals}{variable}        {number};    # Variable
 my $firstSet = $$Lexical_Tables{structure}{first};                              # First symbols allowed
 my $lastSet  = $$Lexical_Tables{structure}{last};                               # Last symbols allowed
 
@@ -342,17 +343,17 @@ sub accept_s                                                                    
 sub accept_v                                                                    #P Variable
   {checkSet("abdps");
    pushElement;
-   new(1);
-   Vq(count,99)->For(sub                                                        # Reduce prefix operators
+   new 1;
+   Vq(count,99)->for(sub                                                        # Reduce prefix operators
     {my ($index, $start, $next, $end) = @_;
      checkStackHas 2;
      IfLt {Jmp $end};
-     my ($l, $r) = (rax, rdx);
+     my ($l, $r) = ($w1, $w2);
      Mov $l, "[rsp+".(1*$ses)."]";
      Mov $r, "[rsp+".(0*$ses)."]";
-     test_p($l);
+     testSet("p", $l);
      IfNe {Jmp $end};
-     new(2);
+     new 2;
     });
   }
 
@@ -915,7 +916,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 12;
+   {plan tests => 14;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -1086,9 +1087,38 @@ END
 if (1) {
   Mov r15,           -1;  Push r15;
   Mov r15, $OpenBracket;  Push r15;
+  reduce;
+  Pop r15; PrintOutRegisterInHex r15;
+  Pop r14; PrintOutRegisterInHex r14;
+  ok Assemble(debug => 0, eq => <<END);
+   r15: 0000 0000 0000 0000
+   r14: FFFF FFFF FFFF FFFF
+END
+ }
+
+#latest:;
+if (1) {
+  Mov r15,           -1;  Push r15;
+  Mov r15, $OpenBracket;  Push r15;
   Mov r15, $term;         Push r15;
   Mov r15, $CloseBracket; Push r15;
   reduce;
+  Pop r15; PrintOutRegisterInHex r15;
+  Pop r14; PrintOutRegisterInHex r14;
+  ok Assemble(debug => 0, eq => <<END);
+   r15: 0000 0000 0000 000C
+   r14: FFFF FFFF FFFF FFFF
+END
+ }
+
+#latest:;
+if (1) {
+  Mov r15,      -1;  Push r15;
+  Mov r15, $prefix;  Push r15;
+  Mov r15, $prefix;  Push r15;
+  Mov r15, $prefix;  Push r15;
+  Mov $element, $variable;
+  accept_v;
   Pop r15; PrintOutRegisterInHex r15;
   Pop r14; PrintOutRegisterInHex r14;
   ok Assemble(debug => 0, eq => <<END);
