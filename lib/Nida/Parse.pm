@@ -156,7 +156,7 @@ sub new($)                                                                      
   for my $i(1..$depth)
    {Pop rax;
      PrintOutRaxInHex;
-     PrintOutStringNL " ";
+     PrintOutNL;
    }
   Mov rax, $term;                                                               # Term
   Push rax;                                                                     # Place simulated term on stack
@@ -655,7 +655,7 @@ if (1) {                                                                        
   is_deeply lexicalNumberFromLetter('a'), 6;
  }
 
-latest:;
+#latest:;
 if (1) {                                                                        #Tnew
   Mov $index,  1;
   Mov rax, 3; Push rax;
@@ -665,7 +665,10 @@ if (1) {                                                                        
   Mov rax, "[rsp]";
   PrintOutRegisterInHex rax;
   ok Assemble(debug => 0, eq => <<END);
-   rax: 0000 0001 0000 000C
+0000 0000 0000 0001
+0000 0000 0000 0002
+0000 0000 0000 0003
+   rax: 0000 0000 0000 000C
 END
  }
 
