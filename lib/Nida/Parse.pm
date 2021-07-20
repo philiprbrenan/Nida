@@ -560,7 +560,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 4;
+   {plan tests => 6;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -651,6 +651,12 @@ if (1) {                                                                        
   ok Assemble(debug => 0, eq => <<END);
    rax: 0000 0001 0000 000D
 END
+ }
+
+#latest:;
+if (1) {                                                                        #TlexicalNameFromLetter
+  is_deeply lexicalNameFromLetter('a'), q(assign);
+  is_deeply lexicalNumberFromLetter('a'), 6;
  }
 
 #latest:
