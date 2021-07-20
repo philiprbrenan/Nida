@@ -53,7 +53,6 @@ my $variable         = $Lexical_Tables->{lexicals}{variable}        {number};   
 my $NewLineSemiColon = $Lexical_Tables->{lexicals}{NewLineSemiColon}{number};   # New line semicolon
 my $semiColon        = $Lexical_Tables->{lexicals}{semiColon}       {number};   # Semicolon
 
-
 sub loadCurrentChar()                                                           #P Load the details of the character currently being processed
  {my $r = $element."b";                                                         # Classification byte
   Mov $element, $index;                                                         # Load index of character as upper dword
@@ -82,10 +81,7 @@ sub checkStackHas($)                                                            
  {my ($depth) = @_;                                                             # Number of elements required on the stack
   Mov $w1, rbp;
   Sub $w1, rsp;
-PrintErrStringNL "CheckStack has $depth";
-PrintErrRegisterInHex $w1;
   Cmp $w1, $ses * $depth;
-  KeepFree $w1;
  }
 
 sub pushElement()                                                            #P Push the current element on to the stack
@@ -618,6 +614,36 @@ if (1) {                                                                        
 END
  }
 
+#latest:;
+if (1) {                                                                        # Check conversion of classification to lexical item
+  Push rbp;
+  Mov rbp, rsp;
+  Push rax;
+  Push rax;
+  checkStackHas 2;
+  IfEq {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
+  checkStackHas 2;
+  IfGe {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
+  checkStackHas 2;
+  IfGt {PrintOutStringNL "fail"} sub {PrintOutStringNL "ok"};
+  Push rax;
+  checkStackHas 3;
+  IfEq {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
+  checkStackHas 3;
+  IfGe {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
+  checkStackHas 3;
+  IfGt {PrintOutStringNL "fail"} sub {PrintOutStringNL "ok"};
+
+  ok Assemble(debug => 0, eq => <<END);
+ok
+ok
+ok
+ok
+ok
+ok
+END
+ }
+
 #latest:
 if (0) {                                                                        # Parse some code
   my $lexDataFile = qq(unicode/lex/lex.data);                                   # As produced by unicode/lex/lex.pl
@@ -713,13 +739,7 @@ After converting some new lines to semi colons
 END
  }
 
-#latest:
-if (0) {
-  is_deeply Assemble(debug=>1), <<END;
-END
- }
-
-ok 1 for 1..2;
+ok 1 for 1..1;
 
 unlink $_ for qw(hash print2 sde-log.txt sde-ptr-check.out.txt z.txt);          # Remove incidental files
 
