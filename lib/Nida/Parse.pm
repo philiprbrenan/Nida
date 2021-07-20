@@ -48,32 +48,56 @@ my $lex      = r13;                                                             
 my $start    = r14;                                                             # Start of the parse string
 my $size     = r15;                                                             # Length of the input string
 my $empty    = $Lexical_Tables->{lexicals}{empty}{number};                      # Empty element
+my $Ascii            = $Lexical_Tables->{lexicals}{Ascii}           {number};   # Ascii
+my $variable         = $Lexical_Tables->{lexicals}{variable}        {number};   # Variable
+my $NewLineSemiColon = $Lexical_Tables->{lexicals}{NewLineSemiColon}{number};   # New line semicolon
+my $semiColon        = $Lexical_Tables->{lexicals}{semiColon}       {number};   # Semicolon
 
-sub lexType($)                                                                  # Convert a classified utf32 character in the specified register into a lexical item in 3:0 bits representing the lexical item as Tree::Term.  This allows us to parse the expression using the techniques tested in Tree::Term.
- {my ($R) = @_;                                                                 # Register to convert
-  my $r = $R."b";                                                               # Classification byte
-  Shr $R."d", 24;                                                               # Move classification byte into position
-  And $r, 0xff;                                                                 # Classification byte
-  Cmp $r, 0x10;
+
+sub loadCurrentChar()                                                           #P Load the details of the character currently being processed
+ {my $r = $element."b";                                                         # Classification byte
+  Mov $element, $index;                                                         # Load index of character as upper dword
+  Shl $element, 32;
+  Mov $element."b", "[$start+4*$index+3]";                                      # Load lexical classification as lowest byte
+
+  Cmp $r, 0x10;                                                                 # Brackets , doe to their numerosioty, start after 0x10 with open even and close odd
   IfGe                                                                          # Brackets
    {And $r, 1                                                                   # 0 - open, 1 - close
    }
   sub
-   {my %l = $Lexical_Tables->{lexicals}->%*;
-
-    Cmp        $r, $l{Ascii}{number};                                           # Ascii is a type of variable
+   {Cmp     $r, $Ascii;                                                         # Ascii is a type of variable
     IfEq
-     {KeepFree $r;
-      Mov      $r, $l{variable}{number};
+     {Mov   $r, $variable;
      }
     sub
-     {Cmp      $r, $l{NewLineSemiColon}{number};                                # New line semicolon is a type of semi colon
+     {Cmp   $r, $NewLineSemiColon;                                              # New line semicolon is a type of semi colon
       IfEq
-       {KeepFree $r;
-        Mov $r, $l{semiColon}{number};
+       {Mov $r, $semiColon;
        };
      };
    };
+ }
+
+sub checkStackHas($)                                                            #P Check that we have at least the specified number of elements on the stack
+ {my ($depth) = @_;                                                             # Number of elements required on the stack
+  Mov $w1, rbp;
+  Sub $w1, rsp;
+PrintErrStringNL "CheckStack has $depth";
+PrintErrRegisterInHex $w1;
+  Cmp $w1, $ses * $depth;
+  KeepFree $w1;
+ }
+
+sub pushElement()                                                            #P Push the current element on to the stack
+ {Push $lex;
+ }
+
+sub pushEmpty()                                                              #P Push the empty element on to the stack
+ {Mov $w1, $index;
+  Shl $w1, 32;
+  Or  $w1, $empty;
+  Push $w1;
+  KeepFree $w1;
  }
 
 sub ClassifyNewLines(@)                                                         # A new line acts a semi colon if it appears immediately after a variable.
@@ -95,7 +119,7 @@ sub ClassifyNewLines(@)                                                         
       $a->setReg(r15);
       Mov r14d, "[r15]";                                                        # Current character
       Mov r13, r14;                                                             # Current character
-      lexType r13;                                                              # Classify lexical type of current character
+#      lexType r13;                                                              # Classify lexical type of current character
                                                                                 # Convert variable followed by new line to variable white space semi-colon
       Cmp r10,     $n->variable;                                                # Is lexical type of last character a variable ?
       IfEq                                                                      # Lexical character of last character was a variable
@@ -211,33 +235,6 @@ END
    }
   join "\n", @t                                                                 # Lexical recognizers code
  } # recognizers
-
-sub checkStackHas($)                                                            #P Check that we have at least the specified number of elements on the stack
- {my ($depth) = @_;                                                             # Number of elements required on the stack
-  Mov $w1, rbp;
-  Sub $w1, rsp;
-PrintErrStringNL "CheckStack has $depth";
-PrintErrRegisterInHex $w1;
-  Cmp $w1, $ses * $depth;
-  KeepFree $w1;
- }
-
-sub pushElement()                                                            #P Push the current element on to the stack
- {Push $lex;
- }
-
-sub pushEmpty()                                                              #P Push the empty element on to the stack
- {Mov $w1, $index;
-  Shl $w1, 32;
-  Or  $w1, $empty;
-  Push $w1;
-  KeepFree $w1;
- }
-
-sub loadCurrentChar()                                                           #P Push the empty element on to the stack
- {Mov $element."d", "[$start+4*$index]";
-  lexType $element;
- }
 
 sub reduce()                                                                    #P Convert the longest possible expression on top of the stack into a term
  {#lll "TTTT ", scalar(@s), "\n", dump([@s]);
@@ -597,16 +594,27 @@ END
  }
 
 if (1) {                                                                        # Check conversion of classification to lexical item
-  Mov r10, 0x12FFFFFF; lexType r10                                              # Open bracket
-  Mov r11, 0x13FFFFFF; lexType r11                                              # Close bracket
-  Mov r12, 0x02FFFFFF; lexType r12;                                             # Ascii is a sub class of variable because we could assign it to a variable and then put the variable in place of the ascii to get the same effect.
-  Mov r13, 0x0AFFFFFF; lexType r13;                                             # New line semi colon is a type of semi colon
-  PrintOutRegisterInHex r10, r11, r12, r13;
+  my @o = (Rb(reverse 0x10,              0, 0, 1),                              # Open bracket
+           Rb(reverse 0x11,              0, 0, 2),                              # Close bracket
+           Rb(reverse $Ascii,            0, 0, 27),                             # Ascii 'a'
+           Rb(reverse $variable,         0, 0, 27),                             # Variable 'a'
+           Rb(reverse $NewLineSemiColon, 0, 0, 0),                              # New line semicolon
+           Rb(reverse $semiColon,        0, 0, 0));                             # Semi colon
+
+  for my $o(@o)                                                                 # Try converting each input element
+   {Mov $start, $o;
+    Mov $index, 0;
+    loadCurrentChar;
+    PrintOutRegisterInHex $element;
+   }
+
   ok Assemble(debug => 0, eq => <<END);
-   r10: 0000 0000 0000 0000
-   r11: 0000 0000 0000 0001
+   r12: 0000 0000 0000 0000
+   r12: 0000 0000 0000 0001
    r12: 0000 0000 0000 0007
-   r13: 0000 0000 0000 0009
+   r12: 0000 0000 0000 0007
+   r12: 0000 0000 0000 0009
+   r12: 0000 0000 0000 0009
 END
  }
 
