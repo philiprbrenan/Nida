@@ -32,7 +32,7 @@ are used to store information describing the parse tree.
 
 my $Lexical_Tables = sub                                                        # Lexical table definitions
  {my $f = qq(/home/phil/perl/cpan/NasmX86/lib/Nasm/unicode/lex/lex.data);       # As produced by unicode/lex/lex.pl
-     $f = qq(lib/Nasm/unicode/lex/lex.data) unless $develop;
+     $f = qq(lib/Nida/unicode/lex/lex.data) unless $develop;
   my $l = eval readFile $f;                                                     # Load lexical definitions
   confess "$@\n" if $@;
   $l
