@@ -83,16 +83,15 @@ sub checkStackHas($)                                                            
   Cmp $w1, $ses * $depth;
  }
 
-sub pushElement()                                                            #P Push the current element on to the stack
+sub pushElement()                                                               #P Push the current element on to the stack
  {Push $element;
  }
 
-sub pushEmpty()                                                              #P Push the empty element on to the stack
+sub pushEmpty()                                                                 #P Push the empty element on to the stack
  {Mov $w1, $index;
   Shl $w1, 32;
   Or  $w1, $empty;
   Push $w1;
-  KeepFree $w1;
  }
 
 sub ClassifyNewLines(@)                                                         # A new line acts a semi colon if it appears immediately after a variable.
@@ -461,7 +460,7 @@ PrintErrRegisterInHex rax, $element;
 
   Vq('count', 99)->for(sub                                                      # Remove trailing semicolons if present
    {my ($index, $start, $next, $end) = @_;                                      # Execute body
-    checkStackHas(2);
+    checkStackHas 2;
     IfLt                                                                        # Does not have two or more elements
      {Mov $w1, 0;
       $$parameters{parse}->getReg($w1);
@@ -478,7 +477,7 @@ PrintErrRegisterInHex rax, $element;
 
   accept_reduce;                                                                # Final reductions
 
-  checkStackHas(1);
+  checkStackHas 1;
   IfNe                                                                          # Incomplete expression
    {error(3, "Incomplete expression");
    };
@@ -575,7 +574,7 @@ my $startTime = time;                                                           
 
 eval {goto latest} if !caller(0) and -e "/home/phil";                           # Go to latest test if specified
 
-if (1) {                                                                        #TPrintOutRegistersInHex #TRs
+if (1) {                                                                        # Double words get expanded to quads
   my $q = Rb(1..8);
   Mov rax, "[$q];";
   Mov r8, rax;
@@ -588,7 +587,7 @@ if (1) {                                                                        
 END
  }
 
-if (1) {                                                                        # Check conversion of classification to lexical item
+if (1) {                                                                        #TcheckStackHas
   my @o = (Rb(reverse 0x10,              0, 0, 1),                              # Open bracket
            Rb(reverse 0x11,              0, 0, 2),                              # Close bracket
            Rb(reverse $Ascii,            0, 0, 27),                             # Ascii 'a'
@@ -614,7 +613,7 @@ END
  }
 
 #latest:;
-if (1) {                                                                        # Check conversion of classification to lexical item
+if (1) {                                                                        #TcheckStackHas
   Push rbp;
   Mov rbp, rsp;
   Push rax;
@@ -640,6 +639,17 @@ ok
 ok
 ok
 ok
+END
+ }
+
+#latest:;
+if (1) {                                                                        #TpushEmpty
+  Mov $index, 1;
+  pushEmpty;
+  Mov rax, "[rsp]";
+  PrintOutRegisterInHex rax;
+  ok Assemble(debug => 0, eq => <<END);
+   rax: 0000 0001 0000 000D
 END
  }
 
@@ -737,8 +747,6 @@ After converting some new lines to semi colons
 
 END
  }
-
-ok 1 for 1..1;
 
 unlink $_ for qw(hash print2 sde-log.txt sde-ptr-check.out.txt z.txt);          # Remove incidental files
 
