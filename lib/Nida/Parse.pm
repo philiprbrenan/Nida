@@ -46,9 +46,11 @@ my $index    = r12;                                                             
 my $element  = r13;                                                             # Contains the item being parsed
 my $start    = r14;                                                             # Start of the parse string
 my $size     = r15;                                                             # Length of the input string
-my $assign           = $$Lexical_Tables{lexicals}{assign}{number};              # Empty element
-my $empty            = $$Lexical_Tables{lexicals}{empty}{number};               # Empty element
-my $term             = $$Lexical_Tables{lexicals}{term}{number};                # Term
+my $OpenBracket      = $$Lexical_Tables{lexicals}{OpenBracket}     {number};    # Open  bracket
+my $CloseBracket     = $$Lexical_Tables{lexicals}{CloseBracket}    {number};    # Close bracket
+my $assign           = $$Lexical_Tables{lexicals}{assign}          {number};    # Assign
+my $empty            = $$Lexical_Tables{lexicals}{empty}           {number};    # Empty element
+my $term             = $$Lexical_Tables{lexicals}{term}            {number};    # Term
 my $Ascii            = $$Lexical_Tables{lexicals}{Ascii}           {number};    # Ascii
 my $variable         = $$Lexical_Tables{lexicals}{variable}        {number};    # Variable
 my $NewLineSemiColon = $$Lexical_Tables{lexicals}{NewLineSemiColon}{number};    # New line semicolon
@@ -158,8 +160,6 @@ sub new($)                                                                      
  {my ($depth) = @_;                                                             # Stack depth to be converted
   for my $i(1..$depth)
    {Pop rax;
-     PrintOutRaxInHex;
-     PrintOutNL;
    }
   Mov rax, $term;                                                               # Term
   Push rax;                                                                     # Place simulated term on stack
@@ -198,8 +198,7 @@ sub checkSet($)                                                                 
  }
 
 sub reduce()                                                                    # Convert the longest possible expression on top of the stack into a term
- {#lll "TTTT ", scalar(@s), "\n", dump([@s]);
-  my ($success, $end) = map {Label} 1..2;                                       # Exit points
+ {my ($success, $end) = map {Label} 1..2;                                       # Exit points
 
   checkStackHas 3;                                                              # At least three elements on the stack
   IfGe
@@ -224,7 +223,7 @@ sub reduce()                                                                    
 
     testSet("b",  $l);                                                          # Parse parenthesized term
     IfEq
-     {testSet("b",  $r);
+     {testSet("B",  $r);
       IfEq
        {testSet("t",  $d);
         IfEq
@@ -246,7 +245,7 @@ sub reduce()                                                                    
     Mov $r, "[rsp+".(0*$ses)."]";
     testSet("b",  $l);                                                          # Empty pair of parentheses
     IfEq
-     {testSet("b",  $r);
+     {testSet("B",  $r);
       IfEq
        {Add rsp, 2 * $ses;                                                      # Pop expression
         pushEmpty;
@@ -256,7 +255,7 @@ sub reduce()                                                                    
      };
     testSet("s",  $l);                                                          # Semi-colon, close implies remove unneeded semi
     IfEq
-     {testSet("b",  $r);
+     {testSet("B",  $r);
       IfEq
        {Add rsp, 2 * $ses;                                                      # Pop expression
         Push $r;
@@ -525,11 +524,11 @@ Lexical name for a lexical item described by its letter
 B<Example:>
 
 
-  
+
     is_deeply lexicalNameFromLetter('a'), q(assign);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     is_deeply lexicalNumberFromLetter('a'), 6;
-  
+
 
 =head2 lexicalNumberFromLetter($l)
 
@@ -542,10 +541,10 @@ B<Example:>
 
 
     is_deeply lexicalNameFromLetter('a'), q(assign);
-  
+
     is_deeply lexicalNumberFromLetter('a'), 6;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-  
+
 
 =head2 new($depth)
 
@@ -561,7 +560,7 @@ B<Example:>
     Mov rax, 3; Push rax;
     Mov rax, 2; Push rax;
     Mov rax, 1; Push rax;
-  
+
     new 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     Mov rax, "[rsp]";
@@ -572,7 +571,7 @@ B<Example:>
   0000 0000 0000 0003
      rax: 0000 0000 0000 000C
   END
-  
+
 
 =head2 error()
 
@@ -582,13 +581,13 @@ Die
 B<Example:>
 
 
-  
+
     error "aaa bbbb";  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     ok Assemble(debug => 0, eq => <<END);
   die aaa bbbb:
   END
-  
+
 
 =head2 testSet($set, $register)
 
@@ -603,11 +602,11 @@ B<Example:>
 
     Mov r15,  -1;
     Mov r15b, $term;
-  
+
     testSet("ast", r15);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     PrintOutZF;
-  
+
     testSet("as",  r15);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     PrintOutZF;
@@ -615,7 +614,7 @@ B<Example:>
   ZF=1
   ZF=0
   END
-  
+
 
 =head2 checkSet($set)
 
@@ -630,11 +629,11 @@ B<Example:>
     Mov r15,  -1;
     Mov r15b, $term;
     Push r15;
-  
+
     checkSet("ast");  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     PrintOutZF;
-  
+
     checkSet("as");  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     PrintOutZF;
@@ -642,7 +641,7 @@ B<Example:>
   ZF=1
   die Expected as on the stack:
   END
-  
+
 
 =head2 reduce()
 
@@ -680,14 +679,14 @@ B<Example:>
              Rb(reverse $variable,         0, 0, 27),                             # Variable 'a'
              Rb(reverse $NewLineSemiColon, 0, 0, 0),                              # New line semicolon
              Rb(reverse $semiColon,        0, 0, 0));                             # Semi colon
-  
+
     for my $o(@o)                                                                 # Try converting each input element
      {Mov $start, $o;
       Mov $index, 0;
       loadCurrentChar;
       PrintOutRegisterInHex $element;
      }
-  
+
     ok Assemble(debug => 0, eq => <<END);
      r13: 0000 0000 0000 0000
      r13: 0000 0000 0000 0001
@@ -696,37 +695,37 @@ B<Example:>
      r13: 0000 0000 0000 0009
      r13: 0000 0000 0000 0009
   END
-  
+
     Push rbp;
     Mov rbp, rsp;
     Push rax;
     Push rax;
-  
+
     checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfEq {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
-  
+
     checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfGe {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
-  
+
     checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfGt {PrintOutStringNL "fail"} sub {PrintOutStringNL "ok"};
     Push rax;
-  
+
     checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfEq {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
-  
+
     checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfGe {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
-  
+
     checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfGt {PrintOutStringNL "fail"} sub {PrintOutStringNL "ok"};
-  
+
     ok Assemble(debug => 0, eq => <<END);
   ok
   ok
@@ -735,7 +734,7 @@ B<Example:>
   ok
   ok
   END
-  
+
 
 =head2 pushElement()
 
@@ -751,7 +750,7 @@ B<Example:>
 
 
     Mov $index, 1;
-  
+
     pushEmpty;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     Mov rax, "[rsp]";
@@ -759,7 +758,7 @@ B<Example:>
     ok Assemble(debug => 0, eq => <<END);
      rax: 0000 0001 0000 000D
   END
-  
+
 
 =head2 accept_a()
 
@@ -916,7 +915,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 10;
+   {plan tests => 12;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -1018,17 +1017,16 @@ if (1) {                                                                        
 #latest:;
 if (1) {                                                                        #Tnew
   Mov $index,  1;
+  Mov rax,-1; Push rax;
   Mov rax, 3; Push rax;
   Mov rax, 2; Push rax;
   Mov rax, 1; Push rax;
   new 3;
-  Mov rax, "[rsp]";
-  PrintOutRegisterInHex rax;
+  Pop rax;  PrintOutRegisterInHex rax;
+  Pop rax;  PrintOutRegisterInHex rax;
   ok Assemble(debug => 0, eq => <<END);
-0000 0000 0000 0001
-0000 0000 0000 0002
-0000 0000 0000 0003
    rax: 0000 0000 0000 000C
+   rax: FFFF FFFF FFFF FFFF
 END
  }
 
@@ -1066,6 +1064,36 @@ if (1) {                                                                        
   ok Assemble(debug => 0, eq => <<END);
 ZF=1
 die Expected as on the stack:
+END
+ }
+
+#latest:;
+if (1) {                                                                        #Treduce
+  Mov r15,    -1;   Push r15;
+  Mov r15, $term;   Push r15;
+  Mov r15, $assign; Push r15;
+  Mov r15, $term;   Push r15;
+  reduce;
+  Pop r15; PrintOutRegisterInHex r15;
+  Pop r14; PrintOutRegisterInHex r14;
+  ok Assemble(debug => 0, eq => <<END);
+   r15: 0000 0000 0000 000C
+   r14: FFFF FFFF FFFF FFFF
+END
+ }
+
+#latest:;
+if (1) {
+  Mov r15,           -1;  Push r15;
+  Mov r15, $OpenBracket;  Push r15;
+  Mov r15, $term;         Push r15;
+  Mov r15, $CloseBracket; Push r15;
+  reduce;
+  Pop r15; PrintOutRegisterInHex r15;
+  Pop r14; PrintOutRegisterInHex r14;
+  ok Assemble(debug => 0, eq => <<END);
+   r15: 0000 0000 0000 000C
+   r14: FFFF FFFF FFFF FFFF
 END
  }
 
