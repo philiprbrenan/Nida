@@ -197,7 +197,7 @@ sub checkSet($)                                                                 
   SetLabel $end;
  }
 
-sub reduce()                                                                    #P Convert the longest possible expression on top of the stack into a term
+sub reduce()                                                                    # Convert the longest possible expression on top of the stack into a term
  {#lll "TTTT ", scalar(@s), "\n", dump([@s]);
   my ($success, $end) = map {Label} 1..2;                                       # Exit points
 
@@ -208,7 +208,7 @@ sub reduce()                                                                    
     Mov $d, "[rsp+".(1*$ses)."]";
     Mov $r, "[rsp+".(0*$ses)."]";
 
-    testSet("t",  $l);                                                                 # Parse out infix operator expression
+    testSet("t",  $l);                                                          # Parse out infix operator expression
     IfEq
      {testSet("t",  $r);
       IfEq
@@ -222,7 +222,7 @@ sub reduce()                                                                    
        };
      };
 
-    testSet("b",  $l);                                                                 # Parse parenthesized term
+    testSet("b",  $l);                                                          # Parse parenthesized term
     IfEq
      {testSet("b",  $r);
       IfEq
@@ -244,7 +244,7 @@ sub reduce()                                                                    
     KeepFree $l, $r;                                                            # Why ?
     Mov $l, "[rsp+".(1*$ses)."]";                                               # Top 3 elements on the stack
     Mov $r, "[rsp+".(0*$ses)."]";
-    testSet("b",  $l);                                                                 # Empty pair of parentheses
+    testSet("b",  $l);                                                          # Empty pair of parentheses
     IfEq
      {testSet("b",  $r);
       IfEq
@@ -254,7 +254,7 @@ sub reduce()                                                                    
         Jmp $success;
        };
      };
-    testSet("s",  $l);                                                                 # Semi-colon, close implies remove unneeded semi
+    testSet("s",  $l);                                                          # Semi-colon, close implies remove unneeded semi
     IfEq
      {testSet("b",  $r);
       IfEq
@@ -263,7 +263,7 @@ sub reduce()                                                                    
         Jmp $success;
        };
      };
-    testSet("p", $l);                                                              # Prefix, term
+    testSet("p", $l);                                                           # Prefix, term
     IfEq
      {testSet("t",  $r);
       IfEq
@@ -283,17 +283,17 @@ sub reduce()                                                                    
   SetLabel $end;                                                                # End
  } # reduce
 
-sub accept_a()                                                               #P Assign
+sub accept_a()                                                                  #P Assign
  {checkSet("t");
   pushElement;
  }
 
-sub accept_b                                                                 #P Open
+sub accept_b                                                                    #P Open
  {checkSet("bdps");
   pushElement;
  }
 
-sub accept_reduce                                                            #P Accept by reducing
+sub accept_reduce                                                               #P Accept by reducing
  {Vq('count',99)->for(sub
    {my ($index, $start, $next, $end) = @_;                                      # Execute body
     reduce;
@@ -301,7 +301,7 @@ sub accept_reduce                                                            #P 
    });
  }
 
-sub accept_B                                                                 #P Closing parenthesis
+sub accept_B                                                                   #P Closing parenthesis
  {checkSet("bst");
   accept_reduce;
   pushElement;
@@ -309,17 +309,17 @@ sub accept_B                                                                 #P 
   checkSet("bst");
  }
 
-sub accept_d                                                                 #P Infix but not assign or semi-colon
+sub accept_d                                                                    #P Infix but not assign or semi-colon
  {checkSet("t");
   pushElement;
  }
 
-sub accept_p                                                                 #P Prefix
+sub accept_p                                                                    #P Prefix
  {checkSet("bdp");
   pushElement;
  }
 
-sub accept_q                                                                 #P Post fix
+sub accept_q                                                                    #P Post fix
  {checkSet("t");
   IfEq                                                                          # Post fix operator applied to a term
    {Pop $w1;
@@ -329,7 +329,7 @@ sub accept_q                                                                 #P 
    }
  }
 
-sub accept_s                                                                 #P Semi colon
+sub accept_s                                                                    #P Semi colon
  {checkSet("bst");
   Mov $w1, "[rsp]";
   testSet("s",  $w1);
@@ -378,13 +378,13 @@ operator', 'semi-colon' or 'variable'.
 END
    };
 
-  testSet("v", $element);                                                          # Single variable
+  testSet("v", $element);                                                       # Single variable
   IfEq
    {Push $element;
     new(1);
    }
   sub
-   {testSet("s", $element);                                                        # Semi
+   {testSet("s", $element);                                                     # Semi
     IfEq
      {pushEmpty;
       new(1);
@@ -419,7 +419,7 @@ PrintErrRegisterInHex rax, $element;
      }
    } $index, $size;
 
-  testSet($lastSet, $element);                                                     # Last element
+  testSet($lastSet, $element);                                                  # Last element
   IfNe                                                                          # Incomplete expression
    {error(2, "Incomplete expression");
    };
@@ -434,7 +434,7 @@ PrintErrRegisterInHex rax, $element;
       Jmp $end
      };
     Pop $w1;
-    testSet("s", $w1);                                                             # Check that the top most element is a semi colon
+    testSet("s", $w1);                                                          # Check that the top most element is a semi colon
     IfNe                                                                        # Not a semi colon so put it back and finish the loop
      {Push $w1;
       Jmp $end;
@@ -525,11 +525,11 @@ Lexical name for a lexical item described by its letter
 B<Example:>
 
 
-
+  
     is_deeply lexicalNameFromLetter('a'), q(assign);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     is_deeply lexicalNumberFromLetter('a'), 6;
-
+  
 
 =head2 lexicalNumberFromLetter($l)
 
@@ -542,10 +542,10 @@ B<Example:>
 
 
     is_deeply lexicalNameFromLetter('a'), q(assign);
-
+  
     is_deeply lexicalNumberFromLetter('a'), 6;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-
+  
 
 =head2 new($depth)
 
@@ -561,7 +561,7 @@ B<Example:>
     Mov rax, 3; Push rax;
     Mov rax, 2; Push rax;
     Mov rax, 1; Push rax;
-
+  
     new 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     Mov rax, "[rsp]";
@@ -572,7 +572,7 @@ B<Example:>
   0000 0000 0000 0003
      rax: 0000 0000 0000 000C
   END
-
+  
 
 =head2 error()
 
@@ -582,21 +582,40 @@ Die
 B<Example:>
 
 
-
+  
     error "aaa bbbb";  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     ok Assemble(debug => 0, eq => <<END);
   die aaa bbbb:
   END
-
+  
 
 =head2 testSet($set, $register)
 
-Test a set of items
+Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
 
      Parameter  Description
   1  $set       Set of lexical letters
   2  $register  Register to test
+
+B<Example:>
+
+
+    Mov r15,  -1;
+    Mov r15b, $term;
+  
+    testSet("ast", r15);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    PrintOutZF;
+  
+    testSet("as",  r15);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    PrintOutZF;
+    ok Assemble(debug => 0, eq => <<END);
+  ZF=1
+  ZF=0
+  END
+  
 
 =head2 checkSet($set)
 
@@ -608,10 +627,26 @@ Check that one of a set of items is on the top of the stack or complain if it is
 B<Example:>
 
 
-    Mov rax, error "aaa bbbb";
+    Mov r15,  -1;
+    Mov r15b, $term;
+    Push r15;
+  
+    checkSet("ast");  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    PrintOutZF;
+  
+    checkSet("as");  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    PrintOutZF;
     ok Assemble(debug => 0, eq => <<END);
-  die aaa bbbb:
+  ZF=1
+  die Expected as on the stack:
   END
+  
+
+=head2 reduce()
+
+Convert the longest possible expression on top of the stack into a term
 
 
 =head2 parse(@parameters)
@@ -645,14 +680,14 @@ B<Example:>
              Rb(reverse $variable,         0, 0, 27),                             # Variable 'a'
              Rb(reverse $NewLineSemiColon, 0, 0, 0),                              # New line semicolon
              Rb(reverse $semiColon,        0, 0, 0));                             # Semi colon
-
+  
     for my $o(@o)                                                                 # Try converting each input element
      {Mov $start, $o;
       Mov $index, 0;
       loadCurrentChar;
       PrintOutRegisterInHex $element;
      }
-
+  
     ok Assemble(debug => 0, eq => <<END);
      r13: 0000 0000 0000 0000
      r13: 0000 0000 0000 0001
@@ -661,37 +696,37 @@ B<Example:>
      r13: 0000 0000 0000 0009
      r13: 0000 0000 0000 0009
   END
-
+  
     Push rbp;
     Mov rbp, rsp;
     Push rax;
     Push rax;
-
+  
     checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfEq {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
-
+  
     checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfGe {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
-
+  
     checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfGt {PrintOutStringNL "fail"} sub {PrintOutStringNL "ok"};
     Push rax;
-
+  
     checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfEq {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
-
+  
     checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfGe {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
-
+  
     checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfGt {PrintOutStringNL "fail"} sub {PrintOutStringNL "ok"};
-
+  
     ok Assemble(debug => 0, eq => <<END);
   ok
   ok
@@ -700,7 +735,7 @@ B<Example:>
   ok
   ok
   END
-
+  
 
 =head2 pushElement()
 
@@ -716,7 +751,7 @@ B<Example:>
 
 
     Mov $index, 1;
-
+  
     pushEmpty;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     Mov rax, "[rsp]";
@@ -724,12 +759,7 @@ B<Example:>
     ok Assemble(debug => 0, eq => <<END);
      rax: 0000 0001 0000 000D
   END
-
-
-=head2 reduce()
-
-Convert the longest possible expression on top of the stack into a term
-
+  
 
 =head2 accept_a()
 
@@ -789,9 +819,9 @@ Parse an expression.
 
 1 L<accept_a|/accept_a> - Assign
 
-2 L<accept_b|/accept_b> - Open
+2 L<accept_B|/accept_B> - Closing parenthesis
 
-3 L<accept_B|/accept_B> - Closing parenthesis
+3 L<accept_b|/accept_b> - Open
 
 4 L<accept_d|/accept_d> - Infix but not assign or semi-colon
 
@@ -831,7 +861,7 @@ Parse an expression.
 
 22 L<reduce|/reduce> - Convert the longest possible expression on top of the stack into a term
 
-23 L<testSet|/testSet> - Test a set of items
+23 L<testSet|/testSet> - Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
 
 =head1 Installation
 
@@ -907,7 +937,7 @@ if (1) {                                                                        
   Shl r8d, 16;
   PrintOutRegisterInHex rax, r8;
 
-  ok Assemble(debug => 1, eq => <<END);
+  ok Assemble(debug => 0, eq => <<END);
    rax: 0807 0605 0403 0201
     r8: 0000 0000 0201 0000
 END
@@ -1033,7 +1063,7 @@ if (1) {                                                                        
   PrintOutZF;
   checkSet("as");
   PrintOutZF;
-  ok Assemble(debug => 1, eq => <<END);
+  ok Assemble(debug => 0, eq => <<END);
 ZF=1
 die Expected as on the stack:
 END
