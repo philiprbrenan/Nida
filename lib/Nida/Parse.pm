@@ -160,14 +160,16 @@ sub lexicalNumberFromLetter($)                                                  
 
 sub new($)                                                                      # Create a new term
  {my ($depth) = @_;                                                             # Stack depth to be converted
-PrintErrStringNL "New:";
+  PrintOutStringNL "New:";
   for my $i(1..$depth)
-   {Pop rax;
-PrintErrRegisterInHex rax;
+   {Pop $w1;
+    PrintOutRegisterInHex $w1;
    }
-  Mov rax, $term;                                                               # Term
-  Push rax;                                                                     # Place simulated term on stack
+  Mov $w1, $term;                                                               # Term
+  Push $w1;                                                                     # Place simulated term on stack
  }
+
+my $new = \&new;
 
 sub error                                                                       # Die
  {my ($number) = @_;                                                            # Error number
@@ -219,7 +221,7 @@ sub reduce()                                                                    
         IfEq
          {Add rsp, 3 * $ses;                                                    # Reorder into polish notation
           Push $_ for $d, $l, $r;
-          new(3);
+          &$new(3);
           Jmp $success;
          };
        };
@@ -253,7 +255,7 @@ sub reduce()                                                                    
       IfEq
        {Add rsp, 2 * $ses;                                                      # Pop expression
         pushEmpty;
-        new(1);
+        &$new(1);
         Jmp $success;
        };
      };
@@ -270,7 +272,7 @@ sub reduce()                                                                    
     IfEq
      {testSet("t",  $r);
       IfEq
-       {new(2);
+       {&$new(2);
         Jmp $success;
        };
      };
@@ -328,7 +330,7 @@ sub accept_q                                                                    
    {Pop $w1;
     pushElement;
     Push $w1;
-    new(2);
+    &$new(2);
    }
  }
 
@@ -346,7 +348,7 @@ sub accept_s                                                                    
 sub accept_v                                                                    #P Variable
   {checkSet("abdps");
    pushElement;
-   new 1;
+   &$new(1);
    Vq(count,99)->for(sub                                                        # Reduce prefix operators
     {my ($index, $start, $next, $end) = @_;
      checkStackHas 2;
@@ -356,7 +358,7 @@ sub accept_v                                                                    
      Mov $r, "[rsp+".(0*$ses)."]";
      testSet("p", $l);
      IfNe {Jmp $end};
-     new 2;
+     &$new(2);
     });
   }
 
@@ -379,13 +381,13 @@ END
   testSet("v", $element);                                                       # Single variable
   IfEq
    {pushElement;
-    new(1);
+    &$new(1);
    }
   sub
    {testSet("s", $element);                                                     # Semi
     IfEq
      {pushEmpty;
-      new(1);
+      &$new(1);
      };
     pushElement;
    };
@@ -1128,6 +1130,8 @@ if (1) {                                                                        
   parseExpression;
   PrintOutRegisterInHex r15;
   ok Assemble(debug => 1, eq => <<END);
+New:
+    r8: 0000 0000 0000 0007
    r15: 0000 0000 0000 000C
 END
  }
