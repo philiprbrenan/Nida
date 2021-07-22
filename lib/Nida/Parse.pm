@@ -911,7 +911,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 14;
+   {plan tests => 16;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -1021,6 +1021,10 @@ if (1) {                                                                        
   Pop rax;  PrintOutRegisterInHex rax;
   Pop rax;  PrintOutRegisterInHex rax;
   ok Assemble(debug => 0, eq => <<END);
+New:
+    r8: 0000 0000 0000 0001
+    r8: 0000 0000 0000 0002
+    r8: 0000 0000 0000 0003
    rax: 0000 0000 0000 000C
    rax: FFFF FFFF FFFF FFFF
 END
@@ -1073,6 +1077,10 @@ if (1) {                                                                        
   Pop r15; PrintOutRegisterInHex r15;
   Pop r14; PrintOutRegisterInHex r14;
   ok Assemble(debug => 0, eq => <<END);
+New:
+    r8: 0000 0000 0000 000C
+    r8: 0000 0000 0000 000C
+    r8: 0000 0000 0000 0006
    r15: 0000 0000 0000 000C
    r14: FFFF FFFF FFFF FFFF
 END
@@ -1117,12 +1125,37 @@ if (1) {
   Pop r15; PrintOutRegisterInHex r15;
   Pop r14; PrintOutRegisterInHex r14;
   ok Assemble(debug => 0, eq => <<END);
+New:
+    r8: 0000 0000 0000 0007
+New:
+    r8: 0000 0000 0000 000C
+    r8: 0000 0000 0000 0005
+New:
+    r8: 0000 0000 0000 000C
+    r8: 0000 0000 0000 0005
+New:
+    r8: 0000 0000 0000 000C
+    r8: 0000 0000 0000 0005
    r15: 0000 0000 0000 000C
    r14: FFFF FFFF FFFF FFFF
 END
  }
 
-latest:;
+#latest:;
+if (1) {                                                                        #TparseExpression
+  my $l = [117440512];
+  Mov $start,  Rd(@$l);
+  Mov $size,   scalar(@$l);
+  parseExpression;
+  PrintOutRegisterInHex r15;
+  ok Assemble(debug => 1, eq => <<END);
+New:
+    r8: 0000 0000 0000 0007
+   r15: 0000 0000 0000 000C
+END
+ }
+
+#latest:;
 if (1) {                                                                        #TparseExpression
   my @l      = $Lexical_Tables->{sampleLexicals}->@*;
   Mov $start,  Rd(@l);
