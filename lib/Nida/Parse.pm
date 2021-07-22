@@ -158,9 +158,9 @@ sub lexicalNumberFromLetter($)                                                  
   $N
  }
 
-sub new($)                                                                      # Create a new term
- {my ($depth) = @_;                                                             # Stack depth to be converted
-  PrintOutStringNL "New:";
+sub new($$)                                                                     # Create a new term
+ {my ($depth, $description) = @_;                                               # Stack depth to be converted, text reason why we are creating a new term
+  PrintOutStringNL "New: $description";
   for my $i(1..$depth)
    {Pop $w1;
     PrintOutRegisterInHex $w1;
@@ -225,7 +225,7 @@ sub reduce()                                                                    
         IfEq
          {Add rsp, 3 * $ses;                                                    # Reorder into polish notation
           Push $_ for $d, $l, $r;
-          &$new(3);
+          &$new(3, "Term infix term");
           Jmp $success;
          };
        };
@@ -259,7 +259,7 @@ sub reduce()                                                                    
       IfEq
        {Add rsp, 2 * $ses;                                                      # Pop expression
         pushEmpty;
-        &$new(1);
+        &$new(1, "Empty brackets");
         Jmp $success;
        };
      };
@@ -276,7 +276,7 @@ sub reduce()                                                                    
     IfEq
      {testSet("t",  $r);
       IfEq
-       {&$new(2);
+       {&$new(2, "Prefix term");
         Jmp $success;
        };
      };
@@ -334,7 +334,7 @@ sub accept_q                                                                    
    {Pop $w1;
     pushElement;
     Push $w1;
-    &$new(2);
+    &$new(2, "Postfix");
    }
  }
 
@@ -352,7 +352,7 @@ sub accept_s                                                                    
 sub accept_v                                                                    #P Variable
   {checkSet("abdps");
    pushElement;
-   &$new(1);
+   &$new(1, "Variable");
    Vq(count,99)->for(sub                                                        # Reduce prefix operators
     {my ($index, $start, $next, $end) = @_;
      checkStackHas 2;
@@ -362,7 +362,7 @@ sub accept_v                                                                    
      Mov $r, "[rsp+".(0*$ses)."]";
      testSet("p", $l);
      IfNe {Jmp $end};
-     &$new(2);
+     &$new(2, "Prefixed variable");
     });
   }
 
@@ -385,13 +385,13 @@ END
   testSet("v", $element);                                                       # Single variable
   IfEq
    {pushElement;
-    &$new(1);
+    &$new(1, "Initial variable");
    }
   sub
    {testSet("s", $element);                                                     # Semi
     IfEq
      {pushEmpty;
-      &$new(1);
+      &$new(1, "Initial semicolon");
      };
     pushElement;
    };
@@ -416,12 +416,17 @@ END
     for my $l(sort keys $Lexical_Tables->{lexicals}->%*)                        # Each possible lexical item after classification
      {my $x = $Lexical_Tables->{lexicals}{$l}{letter};
       next unless $x;                                                           # Skip chaarcters that do noit have a letter defined for Tree::Term because the lexical items needed to layout a file of lexic al items are folded down to the actual lexicals required to represent the language independent of the textual layout with whitespace.
+
       my $n = $Lexical_Tables->{lexicals}{$l}{number};
       Comment "Compare to $n for $l";
       Cmp $element."b", $n;
-      IfEq {eval "accept_$l"; Jmp $next};
+
+      IfEq
+       {eval "accept_$x";
+        Jmp $next
+       };
      }
-    error("Unexpected lexical item");
+    error("Unexpected lexical item");                                           # Not selected
    } $index, $size;
 
   testSet($lastSet, $element);                                                  # Last element
@@ -1024,7 +1029,7 @@ if (1) {                                                                        
   Mov rax, 3; Push rax;
   Mov rax, 2; Push rax;
   Mov rax, 1; Push rax;
-  new 3;
+  new 3, '';
   Pop rax;  PrintOutRegisterInHex rax;
   Pop rax;  PrintOutRegisterInHex rax;
   ok Assemble(debug => 0, eq => <<END);
@@ -1178,8 +1183,14 @@ if (1) {
   PrintOutStringNL "Result:";
   PrintOutRegisterInHex r15;
   ok Assemble(debug => 1, eq => <<END);
-New:
+New: Initial variable
     r8: 0000 0000 0000 0007
+New: Variable
+    r8: 0000 0002 0000 0007
+New: Term infix term
+    r8: 0000 0000 0000 000C
+    r8: 0000 0000 0000 000C
+    r8: 0000 0001 0000 0006
 Result:
    r15: 0000 0000 0000 000C
 END
