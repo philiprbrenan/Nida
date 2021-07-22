@@ -56,6 +56,7 @@ my $prefix           = $$Lexical_Tables{lexicals}{prefix}          {number};    
 my $semiColon        = $$Lexical_Tables{lexicals}{semiColon}       {number};    # Semicolon
 my $term             = $$Lexical_Tables{lexicals}{term}            {number};    # Term
 my $variable         = $$Lexical_Tables{lexicals}{variable}        {number};    # Variable
+my $WhiteSpace       = $$Lexical_Tables{lexicals}{WhiteSpace}      {number};    # Variable
 my $firstSet = $$Lexical_Tables{structure}{first};                              # First symbols allowed
 my $lastSet  = $$Lexical_Tables{structure}{last};                               # Last symbols allowed
 
@@ -159,8 +160,10 @@ sub lexicalNumberFromLetter($)                                                  
 
 sub new($)                                                                      # Create a new term
  {my ($depth) = @_;                                                             # Stack depth to be converted
+PrintErrStringNL "New:";
   for my $i(1..$depth)
    {Pop rax;
+PrintErrRegisterInHex rax;
    }
   Mov rax, $term;                                                               # Term
   Push rax;                                                                     # Place simulated term on stack
@@ -357,20 +360,15 @@ sub accept_v                                                                    
     });
   }
 
-sub parseExpression($)                                                          #P Parse an expression.
- {my ($parameters) = @_;                                                        # Parameters
-  my $end          = Label;
-
-  $$parameters{source}->setReg($start);                                         # Start of expression string after it has been classified
-  $$parameters{size}  ->setReg($size);                                          # Number of characters in the expression
-
+sub parseExpression()                                                           #P Parse the string of classified lexicals addressed by register $start of length $length.  The resulting parse tree (if any) is returned in r15.
+ {my $end          = Label;
   Cmp $size, 0;                                                                 # Check for empty expression
   IfEq
    {Jmp $end;
    };
 
   loadCurrentChar;                                                              # Load current character
-  &test_first($element);
+  testSet($firstSet, $element);
   IfNe
    {error(1, <<END =~ s(\n) ( )gsr);
 Expression must start with 'opening parenthesis', 'prefix
@@ -380,7 +378,7 @@ END
 
   testSet("v", $element);                                                       # Single variable
   IfEq
-   {Push $element;
+   {pushElement;
     new(1);
    }
   sub
@@ -398,7 +396,7 @@ END
   For                                                                           # Parse each utf32 character after it has been classified
    {my ($start, $end, $next) = @_;                                              # Start and end of the classification loop
     loadCurrentChar;                                                            # Load current character
-    Cmp $element, $Lexical_Tables->{lexicals}{WhiteSpace}{number};
+    Cmp $element, $WhiteSpace;
     IfEq {Jmp $next};                                                           # Ignore white space
 
     Cmp $element, 1;
@@ -409,11 +407,9 @@ END
        };
      };
     Mov $prevChar, $element;                                                    # Save element to previous element now we know we are on a different element
-Mov rax, "[rsp]";
-PrintErrRegisterInHex rax, $element;
 
     for my $l(sort keys $Lexical_Tables->{lexicals}->%*)                        # Each possible lexical item after classification
-     {my $n = lexicalNumberFromLetter($l);
+     {my $n = $Lexical_Tables->{lexicals}{$l}{number};
       Cmp $element."b", $n;
       IfEq {eval "accept_$l"; Jmp $next};
      }
@@ -427,12 +423,7 @@ PrintErrRegisterInHex rax, $element;
   Vq('count', 99)->for(sub                                                      # Remove trailing semicolons if present
    {my ($index, $start, $next, $end) = @_;                                      # Execute body
     checkStackHas 2;
-    IfLt                                                                        # Does not have two or more elements
-     {Mov $w1, 0;
-      $$parameters{parse}->getReg($w1);
-      KeepFree $w1;
-      Jmp $end
-     };
+    IfLt {Jmp $end};                                                            # Does not have two or more elements
     Pop $w1;
     testSet("s", $w1);                                                          # Check that the top most element is a semi colon
     IfNe                                                                        # Not a semi colon so put it back and finish the loop
@@ -448,8 +439,7 @@ PrintErrRegisterInHex rax, $element;
    {error(3, "Incomplete expression");
    };
 
-  Pop $w1;                                                                      # The resulting parse tree
-  $$parameters{parse}->getReg($w1);
+  Pop r15;                                                                      # The resulting parse tree
   SetLabel $end;
  } # parseExpression
 
@@ -457,8 +447,11 @@ sub parse(@)                                                                    
  {my (@parameters) = @_;                                                        # Parameters describing expression
 
   my $s = Subroutine
-   {my ($p) = @_;                                                               # Parameters
-    parseExpression($p);
+   {my ($parameters) = @_;                                                      # Parameters
+
+    $$parameters{source}->setReg($start);                                       # Start of expression string after it has been classified
+    $$parameters{size}  ->setReg($size);                                        # Number of characters in the expression
+    parseExpression;
    } in => {source => 3, size => 3};
 
   $s->call(@parameters);
@@ -1127,12 +1120,24 @@ if (1) {
 END
  }
 
+latest:;
+if (1) {                                                                        #TparseExpression
+  my @l      = $Lexical_Tables->{sampleLexicals}->@*;
+  Mov $start,  Rd(@l);
+  Mov $size,   scalar(@l);
+  parseExpression;
+  PrintOutRegisterInHex r15;
+  ok Assemble(debug => 1, eq => <<END);
+   r15: 0000 0000 0000 000C
+END
+ }
+
 #latest:
 if (0) {                                                                        # Parse some code
   my $lexDataFile = qq(unicode/lex/lex.data);                                   # As produced by unicode/lex/lex.pl
      $lexDataFile = qq(lib/Nasm/$lexDataFile) unless $develop;
 
-  my $lex = $Lexical_Tables;                                               # Load lexical definitions
+  my $lex = $Lexical_Tables;                                                    # Load lexical definitions
 
   my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
              (Vq(out), Vq(size), Vq(opens), Vq('fail'));
