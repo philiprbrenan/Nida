@@ -1151,6 +1151,7 @@ if (1) {                                                                        
   ok Assemble(debug => 1, eq => <<END);
 New:
     r8: 0000 0000 0000 0007
+Result:
    r15: 0000 0000 0000 000C
 END
  }
@@ -1166,6 +1167,7 @@ if (1) {                                                                        
   ok Assemble(debug => 1, eq => <<END);
 New:
     r8: 0000 0000 0000 0007
+Result:
    r15: 0000 0000 0000 000C
 END
  }
