@@ -171,9 +171,13 @@ sub new($)                                                                      
 
 my $new = \&new;
 
-sub error                                                                       # Die
- {my ($number) = @_;                                                            # Error number
-  PrintOutStringNL "die $number:";
+sub error($)                                                                    # Die
+ {my ($message) = @_;                                                           # Error message
+  PrintOutStringNL "Error: $message";
+  PrintOutString "Element: ";
+  PrintOutRegisterInHex $element;
+  PrintOutString "Index  : ";
+  PrintOutRegisterInHex $index;
   Exit(0);
  }
 
@@ -372,7 +376,7 @@ sub parseExpression()                                                           
   loadCurrentChar;                                                              # Load current character
   testSet($firstSet, $element);
   IfNe
-   {error(1, <<END =~ s(\n) ( )gsr);
+   {error(<<END =~ s(\n) ( )gsr);
 Expression must start with 'opening parenthesis', 'prefix
 operator', 'semi-colon' or 'variable'.
 END
@@ -397,12 +401,12 @@ END
   For                                                                           # Parse each utf32 character after it has been classified
    {my ($start, $end, $next) = @_;                                              # Start and end of the classification loop
     loadCurrentChar;                                                            # Load current character
-    Cmp $element, $WhiteSpace;
+    Cmp $element."b", $WhiteSpace;
     IfEq {Jmp $next};                                                           # Ignore white space
 
-    Cmp $element, 1;
+    Cmp $element."b", 1;
     IfGt                                                                        # Brackets are singular but everything else can potential be a plurality
-     {Cmp $prevChar, $element;                                                  # Compare with previous element known not to be whitespace
+     {Cmp $prevChar."b", $element."b";                                          # Compare with previous element known not to be whitespace
       IfEq                                                                      # Ignore white space
        {Jmp $next
        };
@@ -410,15 +414,19 @@ END
     Mov $prevChar, $element;                                                    # Save element to previous element now we know we are on a different element
 
     for my $l(sort keys $Lexical_Tables->{lexicals}->%*)                        # Each possible lexical item after classification
-     {my $n = $Lexical_Tables->{lexicals}{$l}{number};
+     {my $x = $Lexical_Tables->{lexicals}{$l}{letter};
+      next unless $x;                                                           # Skip chaarcters that do noit have a letter defined for Tree::Term because the lexical items needed to layout a file of lexic al items are folded down to the actual lexicals required to represent the language independent of the textual layout with whitespace.
+      my $n = $Lexical_Tables->{lexicals}{$l}{number};
+      Comment "Compare to $n for $l";
       Cmp $element."b", $n;
       IfEq {eval "accept_$l"; Jmp $next};
      }
+    error("Unexpected lexical item");
    } $index, $size;
 
   testSet($lastSet, $element);                                                  # Last element
   IfNe                                                                          # Incomplete expression
-   {error(2, "Incomplete expression");
+   {error("Incomplete expression");
    };
 
   Vq('count', 99)->for(sub                                                      # Remove trailing semicolons if present
@@ -437,7 +445,7 @@ END
 
   checkStackHas 1;
   IfNe                                                                          # Incomplete expression
-   {error(3, "Incomplete expression");
+   {error("Incomplete expression");
    };
 
   Pop r15;                                                                      # The resulting parse tree
@@ -1157,10 +1165,15 @@ END
  }
 
 latest:;
-if (1) {                                                                        #TparseExpression
+if (1) {
   my @l      = $Lexical_Tables->{sampleLexicals}->@*;
   Mov $start,  Rd(@l);
   Mov $size,   scalar(@l);
+
+#  Mov rax, $start;
+#  Mov rdi, 16;
+#  PrintErrMemoryInHexNL;
+
   parseExpression;
   PrintOutStringNL "Result:";
   PrintOutRegisterInHex r15;
