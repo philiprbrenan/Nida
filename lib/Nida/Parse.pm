@@ -391,7 +391,6 @@ END
      };
     pushElement;
    };
-  KeepFree $element;
 
   Inc $index;                                                                   # We have processed the first character above
 
@@ -1147,6 +1146,7 @@ if (1) {                                                                        
   Mov $start,  Rd(@$l);
   Mov $size,   scalar(@$l);
   parseExpression;
+  PrintOutStringNL "Result:";
   PrintOutRegisterInHex r15;
   ok Assemble(debug => 1, eq => <<END);
 New:
@@ -1155,12 +1155,13 @@ New:
 END
  }
 
-#latest:;
+latest:;
 if (1) {                                                                        #TparseExpression
   my @l      = $Lexical_Tables->{sampleLexicals}->@*;
   Mov $start,  Rd(@l);
   Mov $size,   scalar(@l);
   parseExpression;
+  PrintOutStringNL "Result:";
   PrintOutRegisterInHex r15;
   ok Assemble(debug => 1, eq => <<END);
 New:
