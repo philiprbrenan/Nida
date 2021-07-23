@@ -1093,7 +1093,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 17;
+   {plan tests => 18;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -1332,7 +1332,7 @@ if (1) {                                                                        
   my $l = [117440512];
   Mov $start,  Rd(@$l);
   Mov $size,   scalar(@$l);
-  parseExpression;
+  parseExpressionCode;
   PrintOutStringNL "Result:";
   PrintOutRegisterInHex r15;
   ok Assemble(debug => 0, eq => <<END);
@@ -1349,7 +1349,7 @@ if (1) {
   Mov $start,  Rd(@$l);
   Mov $size,   scalar(@$l);
 
-  parseExpression;
+  parseExpressionCode;
   PrintOutStringNL "Result:";
   PrintOutRegisterInHex r15;
   ok Assemble(debug => 0, eq => <<END);
@@ -1373,10 +1373,10 @@ if (1) {
   Mov $start,  Rd(@$l);
   Mov $size,   scalar(@$l);
 
-  parseExpression;
+  parseExpressionCode;
   PrintOutStringNL "Result:";
   PrintOutRegisterInHex r15;
-  ok Assemble(debug => 1, eq => <<END);
+  ok Assemble(debug => 0, eq => <<END);
 New: Initial variable
     r8: 0000 0000 0000 0007
 New: Variable
@@ -1396,7 +1396,7 @@ Result:
 END
  }
 
-latest:;
+#latest:;
 if (1) {
   my $l = [117440512, 100663296, 0, 0, 0, 117440512, 16777216, 16777216, 67108864, 0, 117440512, 16777216, 16777216, 150994944];
 
@@ -1405,7 +1405,7 @@ if (1) {
 
   parseExpression $source, $size, my $parse = Vq(parse);
   $parse->outNL();
-  ok Assemble(debug => 1, eq => <<END);
+  ok Assemble(debug => 0, eq => <<END);
 New: Initial variable
     r8: 0000 0000 0000 0007
 New: Variable
