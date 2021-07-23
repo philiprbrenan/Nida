@@ -374,7 +374,7 @@ sub accept_s                                                                    
 
 sub accept_v                                                                    #P Variable
   {checkSet("abdps");
-  PrintOutStringNL "accept v" if $debug;
+   PrintOutStringNL "accept v" if $debug;
    pushElement;
    new(1, "Variable");
    Vq(count,99)->for(sub                                                        # Reduce prefix operators
@@ -409,13 +409,13 @@ END
   testSet("v", $element);                                                       # Single variable
   IfEq
    {pushElement;
-    new(1, "Initial variable");
+    new(1, "accept initial variable");
    }
   sub
    {testSet("s", $element);                                                     # Semi
     IfEq
      {pushEmpty;
-      new(1, "Initial semicolon");
+      new(1, "accept initial semicolon");
      };
     pushElement;
    };
@@ -1388,7 +1388,7 @@ if (1) {                                                                        
   ok Assemble(debug => 0, eq => <<END);
 Push Element:
    r13: 0000 0000 0000 0007
-New: Initial variable
+New: accept initial variable
     r8: 0000 0000 0000 0007
 Result:
    r15: 0000 0000 0000 000C
@@ -1407,7 +1407,7 @@ if (1) {
   ok Assemble(debug => 0, eq => <<END);
 Push Element:
    r13: 0000 0000 0000 0007
-New: Initial variable
+New: accept initial variable
     r8: 0000 0000 0000 0007
 Current:
    r13: 0000 0001 0000 0006
@@ -1449,7 +1449,7 @@ if (1) {
   ok Assemble(debug => 0, eq => <<END);
 Push Element:
    r13: 0000 0000 0000 0007
-New: Initial variable
+New: accept initial variable
     r8: 0000 0000 0000 0007
 Current:
    r13: 0000 0001 0000 0006
@@ -1631,7 +1631,7 @@ if (1) {
   ok Assemble(debug => 0, eq => <<END);
 Push Element:
    r13: 0000 0000 0000 0007
-New: Initial variable
+New: accept initial variable
     r8: 0000 0000 0000 0007
 Current:
    r13: 0000 0001 0000 0006
@@ -1878,7 +1878,7 @@ After converting some new lines to semi colons
 1900 001B 0B00 0000  1300 0009 0B00 0000  0900 0000 0300 0000
 Push Element:
    r13: 0000 0000 0000 0007
-New: Initial variable
+New: accept initial variable
     r8: 0000 0000 0000 0007
 Current:
    r13: 0000 0001 0000 000B
