@@ -30,7 +30,7 @@ are used to store information describing the parse tree.
 
 #D1 Nida Parsing                                                                # Parse Nida language statements
 
-my $Lexical_Tables = sub                                                        # Lexical table definitions
+my $Lex = sub                                                                   # Lexical table definitions
  {my $f = qq(/home/phil/perl/cpan/NasmX86/lib/Nasm/unicode/lex/lex.data);       # As produced by unicode/lex/lex.pl
      $f = qq(lib/Nida/unicode/lex/lex.data) unless $develop;
   my $l = eval readFile $f;                                                     # Load lexical definitions
@@ -38,6 +38,7 @@ my $Lexical_Tables = sub                                                        
   $l
  }->();
 
+my $debug    = 0;                                                               # 1 - Trace actions on stack
 
 my $ses      = RegisterSize rax;                                                # Size of an element on the stack
 my ($w1, $w2, $w3, $w4) = (r8, r9, r10, r11);                                   # Work registers
@@ -46,19 +47,19 @@ my $index    = r12;                                                             
 my $element  = r13;                                                             # Contains the item being parsed
 my $start    = r14;                                                             # Start of the parse string
 my $size     = r15;                                                             # Length of the input string
-my $Ascii            = $$Lexical_Tables{lexicals}{Ascii}           {number};    # Ascii
-my $assign           = $$Lexical_Tables{lexicals}{assign}          {number};    # Assign
-my $CloseBracket     = $$Lexical_Tables{lexicals}{CloseBracket}    {number};    # Close bracket
-my $empty            = $$Lexical_Tables{lexicals}{empty}           {number};    # Empty element
-my $NewLineSemiColon = $$Lexical_Tables{lexicals}{NewLineSemiColon}{number};    # New line semicolon
-my $OpenBracket      = $$Lexical_Tables{lexicals}{OpenBracket}     {number};    # Open  bracket
-my $prefix           = $$Lexical_Tables{lexicals}{prefix}          {number};    # Prefix operator
-my $semiColon        = $$Lexical_Tables{lexicals}{semiColon}       {number};    # Semicolon
-my $term             = $$Lexical_Tables{lexicals}{term}            {number};    # Term
-my $variable         = $$Lexical_Tables{lexicals}{variable}        {number};    # Variable
-my $WhiteSpace       = $$Lexical_Tables{lexicals}{WhiteSpace}      {number};    # Variable
-my $firstSet = $$Lexical_Tables{structure}{first};                              # First symbols allowed
-my $lastSet  = $$Lexical_Tables{structure}{last};                               # Last symbols allowed
+my $Ascii            = $$Lex{lexicals}{Ascii}           {number};               # Ascii
+my $assign           = $$Lex{lexicals}{assign}          {number};               # Assign
+my $CloseBracket     = $$Lex{lexicals}{CloseBracket}    {number};               # Close bracket
+my $empty            = $$Lex{lexicals}{empty}           {number};               # Empty element
+my $NewLineSemiColon = $$Lex{lexicals}{NewLineSemiColon}{number};               # New line semicolon
+my $OpenBracket      = $$Lex{lexicals}{OpenBracket}     {number};               # Open  bracket
+my $prefix           = $$Lex{lexicals}{prefix}          {number};               # Prefix operator
+my $semiColon        = $$Lex{lexicals}{semiColon}       {number};               # Semicolon
+my $term             = $$Lex{lexicals}{term}            {number};               # Term
+my $variable         = $$Lex{lexicals}{variable}        {number};               # Variable
+my $WhiteSpace       = $$Lex{lexicals}{WhiteSpace}      {number};               # Variable
+my $firstSet = $$Lex{structure}{first};                                         # First symbols allowed
+my $lastSet  = $$Lex{structure}{last};                                          # Last symbols allowed
 
 sub loadCurrentChar()                                                           #P Load the details of the character currently being processed
  {my $r = $element."b";                                                         # Classification byte
@@ -93,6 +94,10 @@ sub checkStackHas($)                                                            
 
 sub pushElement()                                                               #P Push the current element on to the stack
  {Push $element;
+  if ($debug)
+   {PrintOutStringNL "Push Element:";
+    PrintOutRegisterInHex $element;
+   }
  }
 
 sub pushEmpty()                                                                 #P Push the empty element on to the stack
@@ -100,13 +105,16 @@ sub pushEmpty()                                                                 
   Shl $w1, 32;
   Or  $w1, $empty;
   Push $w1;
+  if ($debug)
+   {PrintOutStringNL "Push Empty";
+   }
  }
 
 sub ClassifyNewLines(@)                                                         # A new line acts a semi colon if it appears immediately after a variable.
  {my (@parameters) = @_;                                                        # Parameters
   @_ >= 1 or confess;
 
-  my %l = $Lexical_Tables->{lexicals}->%*;                                      # Lexical types
+  my %l = $Lex->{lexicals}->%*;                                                 # Lexical types
   my $n = genHash(__PACKAGE__.'::Lexical::Numbers',                             # Lexical numbers
     map {$_ => $l{$_}{number}} keys %l
    );
@@ -121,7 +129,7 @@ sub ClassifyNewLines(@)                                                         
       $a->setReg(r15);
       Mov r14d, "[r15]";                                                        # Current character
       Mov r13, r14;                                                             # Current character
-#      lexType r13;                                                              # Classify lexical type of current character
+#     lexType r13;                                                              # Classify lexical type of current character
                                                                                 # Convert variable followed by new line to variable white space semi-colon
       Cmp r10,     $n->variable;                                                # Is lexical type of last character a variable ?
       IfEq                                                                      # Lexical character of last character was a variable
@@ -144,7 +152,7 @@ sub ClassifyNewLines(@)                                                         
 
 sub lexicalNameFromLetter($)                                                    # Lexical name for a lexical item described by its letter
  {my ($l) = @_;                                                                 # Letter of the lexical item
-  my %l = $Lexical_Tables->{treeTermLexicals}->%*;
+  my %l = $Lex->{treeTermLexicals}->%*;
   my $n = $l{$l};
   confess "No such lexical: $l" unless $n;
   $n
@@ -153,23 +161,21 @@ sub lexicalNameFromLetter($)                                                    
 sub lexicalNumberFromLetter($)                                                  # Lexical number for a lexical item described by its letter
  {my ($l) = @_;                                                                 # Letter of the lexical item
   my $n = lexicalNameFromLetter $l;
-  my $N = $Lexical_Tables->{lexicals}{$n}{number};
+  my $N = $Lex->{lexicals}{$n}{number};
   confess "No such lexical named: $n" unless defined $N;
   $N
  }
 
 sub new($$)                                                                     # Create a new term
  {my ($depth, $description) = @_;                                               # Stack depth to be converted, text reason why we are creating a new term
-  PrintOutStringNL "New: $description";
+  PrintOutStringNL "New: $description" if $debug;
   for my $i(1..$depth)
    {Pop $w1;
-    PrintOutRegisterInHex $w1;
+    PrintOutRegisterInHex $w1 if $debug;
    }
   Mov $w1, $term;                                                               # Term
   Push $w1;                                                                     # Place simulated term on stack
  }
-
-my $new = \&new;
 
 sub error($)                                                                    # Die
  {my ($message) = @_;                                                           # Error message
@@ -217,6 +223,11 @@ sub reduce()                                                                    
     Mov $d, "[rsp+".(1*$ses)."]";
     Mov $r, "[rsp+".(0*$ses)."]";
 
+    if ($debug)
+     {PrintOutStringNL "Reduce 3:";
+      PrintOutRegisterInHex $l, $d, $r;
+     }
+
     testSet("t",  $l);                                                          # Parse out infix operator expression
     IfEq
      {testSet("t",  $r);
@@ -225,7 +236,7 @@ sub reduce()                                                                    
         IfEq
          {Add rsp, 3 * $ses;                                                    # Reorder into polish notation
           Push $_ for $d, $l, $r;
-          &$new(3, "Term infix term");
+          new(3, "Term infix term");
           Jmp $success;
          };
        };
@@ -250,6 +261,11 @@ sub reduce()                                                                    
   IfGe                                                                          # Convert an empty pair of parentheses to an empty term
    {my ($l, $r) = ($w1, $w2);
 
+    if ($debug)
+     {PrintOutStringNL "Reduce 2:";
+      PrintOutRegisterInHex $l, $r;
+     }
+
     KeepFree $l, $r;                                                            # Why ?
     Mov $l, "[rsp+".(1*$ses)."]";                                               # Top 3 elements on the stack
     Mov $r, "[rsp+".(0*$ses)."]";
@@ -259,7 +275,7 @@ sub reduce()                                                                    
       IfEq
        {Add rsp, 2 * $ses;                                                      # Pop expression
         pushEmpty;
-        &$new(1, "Empty brackets");
+        new(1, "Empty brackets");
         Jmp $success;
        };
      };
@@ -276,7 +292,7 @@ sub reduce()                                                                    
     IfEq
      {testSet("t",  $r);
       IfEq
-       {&$new(2, "Prefix term");
+       {new(2, "Prefix term");
         Jmp $success;
        };
      };
@@ -294,11 +310,13 @@ sub reduce()                                                                    
 
 sub accept_a()                                                                  #P Assign
  {checkSet("t");
+  PrintOutStringNL "accept a" if $debug;
   pushElement;
  }
 
 sub accept_b                                                                    #P Open
  {checkSet("abdps");
+  PrintOutStringNL "accept b" if $debug;
   pushElement;
  }
 
@@ -312,6 +330,7 @@ sub reduceMultiple                                                              
 
 sub accept_B                                                                    #P Closing parenthesis
  {checkSet("bst");
+  PrintOutStringNL "accept B" if $debug;
   reduceMultiple;
   pushElement;
   reduceMultiple;
@@ -320,26 +339,30 @@ sub accept_B                                                                    
 
 sub accept_d                                                                    #P Infix but not assign or semi-colon
  {checkSet("t");
+  PrintOutStringNL "accept d" if $debug;
   pushElement;
  }
 
 sub accept_p                                                                    #P Prefix
  {checkSet("bdp");
+  PrintOutStringNL "accept p" if $debug;
   pushElement;
  }
 
 sub accept_q                                                                    #P Post fix
  {checkSet("t");
+  PrintOutStringNL "accept q" if $debug;
   IfEq                                                                          # Post fix operator applied to a term
    {Pop $w1;
     pushElement;
     Push $w1;
-    &$new(2, "Postfix");
+    new(2, "Postfix");
    }
  }
 
 sub accept_s                                                                    #P Semi colon
  {checkSet("bst");
+  PrintOutStringNL "accept s" if $debug;
   Mov $w1, "[rsp]";
   testSet("s",  $w1);
   IfEq                                                                          # Insert an empty element between two consecutive semicolons
@@ -351,8 +374,9 @@ sub accept_s                                                                    
 
 sub accept_v                                                                    #P Variable
   {checkSet("abdps");
+  PrintOutStringNL "accept v" if $debug;
    pushElement;
-   &$new(1, "Variable");
+   new(1, "Variable");
    Vq(count,99)->for(sub                                                        # Reduce prefix operators
     {my ($index, $start, $next, $end) = @_;
      checkStackHas 2;
@@ -362,7 +386,7 @@ sub accept_v                                                                    
      Mov $r, "[rsp+".(0*$ses)."]";
      testSet("p", $l);
      IfNe {Jmp $end};
-     &$new(2, "Prefixed variable");
+     new(2, "Prefixed variable");
     });
   }
 
@@ -385,13 +409,13 @@ END
   testSet("v", $element);                                                       # Single variable
   IfEq
    {pushElement;
-    &$new(1, "Initial variable");
+    new(1, "Initial variable");
    }
   sub
    {testSet("s", $element);                                                     # Semi
     IfEq
      {pushEmpty;
-      &$new(1, "Initial semicolon");
+      new(1, "Initial semicolon");
      };
     pushElement;
    };
@@ -401,6 +425,12 @@ END
   For                                                                           # Parse each utf32 character after it has been classified
    {my ($start, $end, $next) = @_;                                              # Start and end of the classification loop
     loadCurrentChar;                                                            # Load current character
+
+    if ($debug)
+     {PrintOutStringNL "Current:";
+      PrintOutRegisterInHex $element, $index;
+     }
+
     Cmp $element."b", $WhiteSpace;
     IfEq {Jmp $next};                                                           # Ignore white space
 
@@ -413,11 +443,11 @@ END
      };
     Mov $prevChar, $element;                                                    # Save element to previous element now we know we are on a different element
 
-    for my $l(sort keys $Lexical_Tables->{lexicals}->%*)                        # Each possible lexical item after classification
-     {my $x = $Lexical_Tables->{lexicals}{$l}{letter};
+    for my $l(sort keys $Lex->{lexicals}->%*)                                   # Each possible lexical item after classification
+     {my $x = $Lex->{lexicals}{$l}{letter};
       next unless $x;                                                           # Skip chaarcters that do noit have a letter defined for Tree::Term because the lexical items needed to layout a file of lexic al items are folded down to the actual lexicals required to represent the language independent of the textual layout with whitespace.
 
-      my $n = $Lexical_Tables->{lexicals}{$l}{number};
+      my $n = $Lex->{lexicals}{$l}{number};
       Comment "Compare to $n for $l";
       Cmp $element."b", $n;
 
@@ -450,7 +480,7 @@ END
 
   checkStackHas 1;
   IfNe                                                                          # Incomplete expression
-   {error("Incomplete expression");
+   {error("Multiple expressions on stack");
    };
 
   Pop r15;                                                                      # The resulting parse tree
@@ -537,7 +567,7 @@ B<Example:>
     my $lexDataFile = qq(unicode/lex/lex.data);                                   # As produced by unicode/lex/lex.pl
        $lexDataFile = qq(lib/Nasm/$lexDataFile) unless $develop;
 
-    my $lex = $Lexical_Tables;                                                    # Load lexical definitions
+    my $lex = $Lex;                                                    # Load lexical definitions
 
     my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
                (Vq(out), Vq(size), Vq(opens), Vq('fail'));
@@ -1093,7 +1123,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 18;
+   {plan tests => 19;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -1104,6 +1134,8 @@ else
  }
 
 my $startTime = time;                                                           # Tests
+
+   $debug     = 1;                                                              # Debug during testing so we can follow actions on the stack
 
 eval {goto latest} if !caller(0) and -e "/home/phil";                           # Go to latest test if specified
 
@@ -1182,6 +1214,7 @@ if (1) {                                                                        
   Mov rax, "[rsp]";
   PrintOutRegisterInHex rax;
   ok Assemble(debug => 0, eq => <<END);
+Push Empty
    rax: 0000 0001 0000 000D
 END
  }
@@ -1263,6 +1296,10 @@ if (1) {                                                                        
   Pop r15; PrintOutRegisterInHex r15;
   Pop r14; PrintOutRegisterInHex r14;
   ok Assemble(debug => 0, eq => <<END);
+Reduce 3:
+    r8: 0000 0000 0000 000C
+    r9: 0000 0000 0000 0006
+   r10: 0000 0000 0000 000C
 New: Term infix term
     r8: 0000 0000 0000 000C
     r8: 0000 0000 0000 000C
@@ -1280,6 +1317,9 @@ if (1) {                                                                        
   Pop r15; PrintOutRegisterInHex r15;
   Pop r14; PrintOutRegisterInHex r14;
   ok Assemble(debug => 0, eq => <<END);
+Reduce 2:
+    r8: 0000 0000 0000 0010
+    r9: 0000 0000 0000 0000
    r15: 0000 0000 0000 0000
    r14: FFFF FFFF FFFF FFFF
 END
@@ -1295,6 +1335,13 @@ if (1) {
   Pop r15; PrintOutRegisterInHex r15;
   Pop r14; PrintOutRegisterInHex r14;
   ok Assemble(debug => 0, eq => <<END);
+Reduce 3:
+    r8: 0000 0000 0000 0000
+    r9: 0000 0000 0000 000C
+   r10: 0000 0000 0000 0001
+Reduce 2:
+    r8: 0000 0000 0000 0010
+    r9: 0000 0000 0000 000C
    r15: 0000 0000 0000 000C
    r14: FFFF FFFF FFFF FFFF
 END
@@ -1311,6 +1358,9 @@ if (1) {
   Pop r15; PrintOutRegisterInHex r15;
   Pop r14; PrintOutRegisterInHex r14;
   ok Assemble(debug => 0, eq => <<END);
+accept v
+Push Element:
+   r13: 0000 0000 0000 0007
 New: Variable
     r8: 0000 0000 0000 0007
 New: Prefixed variable
@@ -1336,6 +1386,8 @@ if (1) {                                                                        
   PrintOutStringNL "Result:";
   PrintOutRegisterInHex r15;
   ok Assemble(debug => 0, eq => <<END);
+Push Element:
+   r13: 0000 0000 0000 0007
 New: Initial variable
     r8: 0000 0000 0000 0007
 Result:
@@ -1353,10 +1405,28 @@ if (1) {
   PrintOutStringNL "Result:";
   PrintOutRegisterInHex r15;
   ok Assemble(debug => 0, eq => <<END);
+Push Element:
+   r13: 0000 0000 0000 0007
 New: Initial variable
     r8: 0000 0000 0000 0007
+Current:
+   r13: 0000 0001 0000 0006
+   r12: 0000 0000 0000 0001
+accept a
+Push Element:
+   r13: 0000 0001 0000 0006
+Current:
+   r13: 0000 0002 0000 0007
+   r12: 0000 0000 0000 0002
+accept v
+Push Element:
+   r13: 0000 0002 0000 0007
 New: Variable
     r8: 0000 0002 0000 0007
+Reduce 3:
+    r8: 0000 0000 0000 000C
+    r9: 0000 0001 0000 0006
+   r10: 0000 0000 0000 000C
 New: Term infix term
     r8: 0000 0000 0000 000C
     r8: 0000 0000 0000 000C
@@ -1377,20 +1447,173 @@ if (1) {
   PrintOutStringNL "Result:";
   PrintOutRegisterInHex r15;
   ok Assemble(debug => 0, eq => <<END);
+Push Element:
+   r13: 0000 0000 0000 0007
 New: Initial variable
     r8: 0000 0000 0000 0007
+Current:
+   r13: 0000 0001 0000 0006
+   r12: 0000 0000 0000 0001
+accept a
+Push Element:
+   r13: 0000 0001 0000 0006
+Current:
+   r13: 0000 0002 0000 0000
+   r12: 0000 0000 0000 0002
+accept b
+Push Element:
+   r13: 0000 0002 0000 0000
+Current:
+   r13: 0000 0003 0000 0000
+   r12: 0000 0000 0000 0003
+accept b
+Push Element:
+   r13: 0000 0003 0000 0000
+Current:
+   r13: 0000 0004 0000 0000
+   r12: 0000 0000 0000 0004
+accept b
+Push Element:
+   r13: 0000 0004 0000 0000
+Current:
+   r13: 0000 0005 0000 0007
+   r12: 0000 0000 0000 0005
+accept v
+Push Element:
+   r13: 0000 0005 0000 0007
 New: Variable
     r8: 0000 0005 0000 0007
+Current:
+   r13: 0000 0006 0000 0001
+   r12: 0000 0000 0000 0006
+accept B
+Reduce 3:
+    r8: 0000 0003 0000 0000
+    r9: 0000 0004 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0030
+    r9: 0000 0004 0000 0000
+Push Element:
+   r13: 0000 0006 0000 0001
+Reduce 3:
+    r8: 0000 0004 0000 0000
+    r9: 0000 0000 0000 000C
+   r10: 0000 0006 0000 0001
+Reduce 3:
+    r8: 0000 0002 0000 0000
+    r9: 0000 0003 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0028
+    r9: 0000 0003 0000 0000
+Current:
+   r13: 0000 0007 0000 0001
+   r12: 0000 0000 0000 0007
+accept B
+Reduce 3:
+    r8: 0000 0002 0000 0000
+    r9: 0000 0003 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0028
+    r9: 0000 0003 0000 0000
+Push Element:
+   r13: 0000 0007 0000 0001
+Reduce 3:
+    r8: 0000 0003 0000 0000
+    r9: 0000 0000 0000 000C
+   r10: 0000 0007 0000 0001
+Reduce 3:
+    r8: 0000 0001 0000 0006
+    r9: 0000 0002 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0020
+    r9: 0000 0002 0000 0000
+Current:
+   r13: 0000 0008 0000 0004
+   r12: 0000 0000 0000 0008
+accept d
+Push Element:
+   r13: 0000 0008 0000 0004
+Current:
+   r13: 0000 0009 0000 0000
+   r12: 0000 0000 0000 0009
+accept b
+Push Element:
+   r13: 0000 0009 0000 0000
+Current:
+   r13: 0000 000A 0000 0007
+   r12: 0000 0000 0000 000A
+accept v
+Push Element:
+   r13: 0000 000A 0000 0007
 New: Variable
     r8: 0000 000A 0000 0007
+Current:
+   r13: 0000 000B 0000 0001
+   r12: 0000 0000 0000 000B
+accept B
+Reduce 3:
+    r8: 0000 0008 0000 0004
+    r9: 0000 0009 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0038
+    r9: 0000 0009 0000 0000
+Push Element:
+   r13: 0000 000B 0000 0001
+Reduce 3:
+    r8: 0000 0009 0000 0000
+    r9: 0000 0000 0000 000C
+   r10: 0000 000B 0000 0001
+Reduce 3:
+    r8: 0000 0000 0000 000C
+    r9: 0000 0008 0000 0004
+   r10: 0000 0000 0000 000C
 New: Term infix term
     r8: 0000 0000 0000 000C
     r8: 0000 0000 0000 000C
     r8: 0000 0008 0000 0004
+Reduce 3:
+    r8: 0000 0001 0000 0006
+    r9: 0000 0002 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0020
+    r9: 0000 0002 0000 0000
+Current:
+   r13: 0000 000C 0000 0001
+   r12: 0000 0000 0000 000C
+accept B
+Reduce 3:
+    r8: 0000 0001 0000 0006
+    r9: 0000 0002 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0020
+    r9: 0000 0002 0000 0000
+Push Element:
+   r13: 0000 000C 0000 0001
+Reduce 3:
+    r8: 0000 0002 0000 0000
+    r9: 0000 0000 0000 000C
+   r10: 0000 000C 0000 0001
+Reduce 3:
+    r8: 0000 0000 0000 000C
+    r9: 0000 0001 0000 0006
+   r10: 0000 0000 0000 000C
 New: Term infix term
     r8: 0000 0000 0000 000C
     r8: 0000 0000 0000 000C
     r8: 0000 0001 0000 0006
+Current:
+   r13: 0000 000D 0000 0009
+   r12: 0000 0000 0000 000D
+accept s
+Push Element:
+   r13: 0000 000D 0000 0009
 Result:
    r15: 0000 0000 0000 000C
 END
@@ -1406,30 +1629,183 @@ if (1) {
   parseExpression $source, $size, my $parse = Vq(parse);
   $parse->outNL();
   ok Assemble(debug => 0, eq => <<END);
+Push Element:
+   r13: 0000 0000 0000 0007
 New: Initial variable
     r8: 0000 0000 0000 0007
+Current:
+   r13: 0000 0001 0000 0006
+   r12: 0000 0000 0000 0001
+accept a
+Push Element:
+   r13: 0000 0001 0000 0006
+Current:
+   r13: 0000 0002 0000 0000
+   r12: 0000 0000 0000 0002
+accept b
+Push Element:
+   r13: 0000 0002 0000 0000
+Current:
+   r13: 0000 0003 0000 0000
+   r12: 0000 0000 0000 0003
+accept b
+Push Element:
+   r13: 0000 0003 0000 0000
+Current:
+   r13: 0000 0004 0000 0000
+   r12: 0000 0000 0000 0004
+accept b
+Push Element:
+   r13: 0000 0004 0000 0000
+Current:
+   r13: 0000 0005 0000 0007
+   r12: 0000 0000 0000 0005
+accept v
+Push Element:
+   r13: 0000 0005 0000 0007
 New: Variable
     r8: 0000 0005 0000 0007
+Current:
+   r13: 0000 0006 0000 0001
+   r12: 0000 0000 0000 0006
+accept B
+Reduce 3:
+    r8: 0000 0003 0000 0000
+    r9: 0000 0004 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0030
+    r9: 0000 0004 0000 0000
+Push Element:
+   r13: 0000 0006 0000 0001
+Reduce 3:
+    r8: 0000 0004 0000 0000
+    r9: 0000 0000 0000 000C
+   r10: 0000 0006 0000 0001
+Reduce 3:
+    r8: 0000 0002 0000 0000
+    r9: 0000 0003 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0028
+    r9: 0000 0003 0000 0000
+Current:
+   r13: 0000 0007 0000 0001
+   r12: 0000 0000 0000 0007
+accept B
+Reduce 3:
+    r8: 0000 0002 0000 0000
+    r9: 0000 0003 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0028
+    r9: 0000 0003 0000 0000
+Push Element:
+   r13: 0000 0007 0000 0001
+Reduce 3:
+    r8: 0000 0003 0000 0000
+    r9: 0000 0000 0000 000C
+   r10: 0000 0007 0000 0001
+Reduce 3:
+    r8: 0000 0001 0000 0006
+    r9: 0000 0002 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0020
+    r9: 0000 0002 0000 0000
+Current:
+   r13: 0000 0008 0000 0004
+   r12: 0000 0000 0000 0008
+accept d
+Push Element:
+   r13: 0000 0008 0000 0004
+Current:
+   r13: 0000 0009 0000 0000
+   r12: 0000 0000 0000 0009
+accept b
+Push Element:
+   r13: 0000 0009 0000 0000
+Current:
+   r13: 0000 000A 0000 0007
+   r12: 0000 0000 0000 000A
+accept v
+Push Element:
+   r13: 0000 000A 0000 0007
 New: Variable
     r8: 0000 000A 0000 0007
+Current:
+   r13: 0000 000B 0000 0001
+   r12: 0000 0000 0000 000B
+accept B
+Reduce 3:
+    r8: 0000 0008 0000 0004
+    r9: 0000 0009 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0038
+    r9: 0000 0009 0000 0000
+Push Element:
+   r13: 0000 000B 0000 0001
+Reduce 3:
+    r8: 0000 0009 0000 0000
+    r9: 0000 0000 0000 000C
+   r10: 0000 000B 0000 0001
+Reduce 3:
+    r8: 0000 0000 0000 000C
+    r9: 0000 0008 0000 0004
+   r10: 0000 0000 0000 000C
 New: Term infix term
     r8: 0000 0000 0000 000C
     r8: 0000 0000 0000 000C
     r8: 0000 0008 0000 0004
+Reduce 3:
+    r8: 0000 0001 0000 0006
+    r9: 0000 0002 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0020
+    r9: 0000 0002 0000 0000
+Current:
+   r13: 0000 000C 0000 0001
+   r12: 0000 0000 0000 000C
+accept B
+Reduce 3:
+    r8: 0000 0001 0000 0006
+    r9: 0000 0002 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0020
+    r9: 0000 0002 0000 0000
+Push Element:
+   r13: 0000 000C 0000 0001
+Reduce 3:
+    r8: 0000 0002 0000 0000
+    r9: 0000 0000 0000 000C
+   r10: 0000 000C 0000 0001
+Reduce 3:
+    r8: 0000 0000 0000 000C
+    r9: 0000 0001 0000 0006
+   r10: 0000 0000 0000 000C
 New: Term infix term
     r8: 0000 0000 0000 000C
     r8: 0000 0000 0000 000C
     r8: 0000 0001 0000 0006
+Current:
+   r13: 0000 000D 0000 0009
+   r12: 0000 0000 0000 000D
+accept s
+Push Element:
+   r13: 0000 000D 0000 0009
 parse: 0000 0000 0000 000C
 END
  }
 
 #latest:
-if (0) {                                                                        #TClassifyNewLines   Parse some code
+if (1) {                                                                        #TClassifyNewLines   Parse some code
   my $lexDataFile = qq(unicode/lex/lex.data);                                   # As produced by unicode/lex/lex.pl
      $lexDataFile = qq(lib/Nasm/$lexDataFile) unless $develop;
 
-  my $lex = $Lexical_Tables;                                                    # Load lexical definitions
+  my $lex = $Lex;                                                    # Load lexical definitions
 
   my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
              (Vq(out), Vq(size), Vq(opens), Vq('fail'));
@@ -1474,48 +1850,279 @@ if (0) {                                                                        
   PrintOutStringNL "After converting some new lines to semi colons";
   PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
 
-  if (0 and $develop)                                                           #
-   {parseExpression source=>$source32, size=>$sourceLength32, my $parse = Vq(parse);
-   }
+  parseExpression source=>$source32, size=>$sourceLength32, my $parse = Vq(parse);
+  $parse->outNL();
 
   ok Assemble(debug => 1, eq => <<END);
-Input  Length: 0000 0000 0000 00DB
-Output Length: 0000 0000 0000 036C
+Input  Length: 0000 0000 0000 007F
+Output Length: 0000 0000 0000 01FC
 After conversion from utf8 to utf32
 0001 D5EE 0000 205F  0001 D44E 0001 D460  0001 D460 0001 D456  0001 D454 0001 D45B  0000 205F 0000 230A  0000 205F 0000 2329  0000 205F 0000 2768  0000 205F 0001 D5EF
 0001 D5FD 0000 205F  0000 2769 0000 205F  0000 232A 0000 205F  0001 D429 0001 D425  0001 D42E 0001 D42C  0000 205F 0000 276A  0000 205F 0001 D600  0001 D5F0 0000 205F
-0000 276B 0000 205F  0000 230B 0000 205F  0000 27E2 0000 000A  0001 D5EE 0001 D5EE  0000 205F 0001 D44E  0001 D460 0001 D460  0001 D456 0001 D454  0001 D45B 0000 000A
-0000 0020 0000 0020  0000 0073 0000 006F  0000 006D 0000 0065  0000 000A 0000 000A  0000 0061 0000 0073  0000 0063 0000 0069  0000 0069 0000 000A  0000 000A 0000 0074
-0000 0065 0000 0078  0000 0074 0000 205F  0001 D429 0001 D425  0001 D42E 0001 D42C  0000 000A 0000 0020  0000 0020 0001 D5F0  0001 D5F0 0000 205F  0000 27E2 0000 000A
-
+0000 276B 0000 205F  0000 230B 0000 205F  0000 27E2 0000 000A
 After classification into alphabet ranges
 0700 001A 0B00 0000  0600 001A 0600 002C  0600 002C 0600 0022  0600 0020 0600 0027  0B00 0000 0000 230A  0B00 0000 0000 2329  0B00 0000 0000 2768  0B00 0000 0700 001B
 0700 0029 0B00 0000  0000 2769 0B00 0000  0000 232A 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0B00 0000 0000 276A  0B00 0000 0700 002C  0700 001C 0B00 0000
-0000 276B 0B00 0000  0000 230B 0B00 0000  0900 0000 0300 0000  0700 001A 0700 001A  0B00 0000 0600 001A  0600 002C 0600 002C  0600 0022 0600 0020  0600 0027 0300 0000
-0200 0020 0200 0020  0200 0073 0200 006F  0200 006D 0200 0065  0300 0000 0300 0000  0200 0061 0200 0073  0200 0063 0200 0069  0200 0069 0300 0000  0300 0000 0200 0074
-0200 0065 0200 0078  0200 0074 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0300 0000 0200 0020  0200 0020 0700 001C  0700 001C 0B00 0000  0900 0000 0300 0000
-
+0000 276B 0B00 0000  0000 230B 0B00 0000  0900 0000 0300 0000
 After classification into brackets
 0700 001A 0B00 0000  0600 001A 0600 002C  0600 002C 0600 0022  0600 0020 0600 0027  0B00 0000 1200 230A  0B00 0000 1400 2329  0B00 0000 1600 2768  0B00 0000 0700 001B
 0700 0029 0B00 0000  1700 2769 0B00 0000  1500 232A 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0B00 0000 1800 276A  0B00 0000 0700 002C  0700 001C 0B00 0000
-1900 276B 0B00 0000  1300 230B 0B00 0000  0900 0000 0300 0000  0700 001A 0700 001A  0B00 0000 0600 001A  0600 002C 0600 002C  0600 0022 0600 0020  0600 0027 0300 0000
-0200 0020 0200 0020  0200 0073 0200 006F  0200 006D 0200 0065  0300 0000 0300 0000  0200 0061 0200 0073  0200 0063 0200 0069  0200 0069 0300 0000  0300 0000 0200 0074
-0200 0065 0200 0078  0200 0074 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0300 0000 0200 0020  0200 0020 0700 001C  0700 001C 0B00 0000  0900 0000 0300 0000
-
+1900 276B 0B00 0000  1300 230B 0B00 0000  0900 0000 0300 0000
 After bracket matching
 0700 001A 0B00 0000  0600 001A 0600 002C  0600 002C 0600 0022  0600 0020 0600 0027  0B00 0000 1200 0022  0B00 0000 1400 0014  0B00 0000 1600 0012  0B00 0000 0700 001B
 0700 0029 0B00 0000  1700 000D 0B00 0000  1500 000B 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0B00 0000 1800 0020  0B00 0000 0700 002C  0700 001C 0B00 0000
-1900 001B 0B00 0000  1300 0009 0B00 0000  0900 0000 0300 0000  0700 001A 0700 001A  0B00 0000 0600 001A  0600 002C 0600 002C  0600 0022 0600 0020  0600 0027 0300 0000
-0200 0020 0200 0020  0200 0073 0200 006F  0200 006D 0200 0065  0300 0000 0300 0000  0200 0061 0200 0073  0200 0063 0200 0069  0200 0069 0300 0000  0300 0000 0200 0074
-0200 0065 0200 0078  0200 0074 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0300 0000 0200 0020  0200 0020 0700 001C  0700 001C 0B00 0000  0900 0000 0300 0000
-
+1900 001B 0B00 0000  1300 0009 0B00 0000  0900 0000 0300 0000
 After converting some new lines to semi colons
 0700 001A 0B00 0000  0600 001A 0600 002C  0600 002C 0600 0022  0600 0020 0600 0027  0B00 0000 1200 0022  0B00 0000 1400 0014  0B00 0000 1600 0012  0B00 0000 0700 001B
 0700 0029 0B00 0000  1700 000D 0B00 0000  1500 000B 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0B00 0000 1800 0020  0B00 0000 0700 002C  0700 001C 0B00 0000
-1900 001B 0B00 0000  1300 0009 0B00 0000  0900 0000 0300 0000  0700 001A 0700 001A  0B00 0000 0600 001A  0600 002C 0600 002C  0600 0022 0600 0020  0600 0027 0300 0000
-0200 0020 0200 0020  0200 0073 0200 006F  0200 006D 0200 0065  0A00 0000 0300 0000  0200 0061 0200 0073  0200 0063 0200 0069  0200 0069 0A00 0000  0300 0000 0200 0074
-0200 0065 0200 0078  0200 0074 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0300 0000 0200 0020  0200 0020 0700 001C  0700 001C 0B00 0000  0900 0000 0300 0000
-
+1900 001B 0B00 0000  1300 0009 0B00 0000  0900 0000 0300 0000
+Push Element:
+   r13: 0000 0000 0000 0007
+New: Initial variable
+    r8: 0000 0000 0000 0007
+Current:
+   r13: 0000 0001 0000 000B
+   r12: 0000 0000 0000 0001
+Current:
+   r13: 0000 0002 0000 0006
+   r12: 0000 0000 0000 0002
+accept a
+Push Element:
+   r13: 0000 0002 0000 0006
+Current:
+   r13: 0000 0003 0000 0006
+   r12: 0000 0000 0000 0003
+Current:
+   r13: 0000 0004 0000 0006
+   r12: 0000 0000 0000 0004
+Current:
+   r13: 0000 0005 0000 0006
+   r12: 0000 0000 0000 0005
+Current:
+   r13: 0000 0006 0000 0006
+   r12: 0000 0000 0000 0006
+Current:
+   r13: 0000 0007 0000 0006
+   r12: 0000 0000 0000 0007
+Current:
+   r13: 0000 0008 0000 000B
+   r12: 0000 0000 0000 0008
+Current:
+   r13: 0000 0009 0000 0000
+   r12: 0000 0000 0000 0009
+accept b
+Push Element:
+   r13: 0000 0009 0000 0000
+Current:
+   r13: 0000 000A 0000 000B
+   r12: 0000 0000 0000 000A
+Current:
+   r13: 0000 000B 0000 0000
+   r12: 0000 0000 0000 000B
+accept b
+Push Element:
+   r13: 0000 000B 0000 0000
+Current:
+   r13: 0000 000C 0000 000B
+   r12: 0000 0000 0000 000C
+Current:
+   r13: 0000 000D 0000 0000
+   r12: 0000 0000 0000 000D
+accept b
+Push Element:
+   r13: 0000 000D 0000 0000
+Current:
+   r13: 0000 000E 0000 000B
+   r12: 0000 0000 0000 000E
+Current:
+   r13: 0000 000F 0000 0007
+   r12: 0000 0000 0000 000F
+accept v
+Push Element:
+   r13: 0000 000F 0000 0007
+New: Variable
+    r8: 0000 000F 0000 0007
+Current:
+   r13: 0000 0010 0000 0007
+   r12: 0000 0000 0000 0010
+Current:
+   r13: 0000 0011 0000 000B
+   r12: 0000 0000 0000 0011
+Current:
+   r13: 0000 0012 0000 0001
+   r12: 0000 0000 0000 0012
+accept B
+Reduce 3:
+    r8: 0000 000B 0000 0000
+    r9: 0000 000D 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0030
+    r9: 0000 000D 0000 0000
+Push Element:
+   r13: 0000 0012 0000 0001
+Reduce 3:
+    r8: 0000 000D 0000 0000
+    r9: 0000 0000 0000 000C
+   r10: 0000 0012 0000 0001
+Reduce 3:
+    r8: 0000 0009 0000 0000
+    r9: 0000 000B 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0028
+    r9: 0000 000B 0000 0000
+Current:
+   r13: 0000 0013 0000 000B
+   r12: 0000 0000 0000 0013
+Current:
+   r13: 0000 0014 0000 0001
+   r12: 0000 0000 0000 0014
+accept B
+Reduce 3:
+    r8: 0000 0009 0000 0000
+    r9: 0000 000B 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0028
+    r9: 0000 000B 0000 0000
+Push Element:
+   r13: 0000 0014 0000 0001
+Reduce 3:
+    r8: 0000 000B 0000 0000
+    r9: 0000 0000 0000 000C
+   r10: 0000 0014 0000 0001
+Reduce 3:
+    r8: 0000 0002 0000 0006
+    r9: 0000 0009 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0020
+    r9: 0000 0009 0000 0000
+Current:
+   r13: 0000 0015 0000 000B
+   r12: 0000 0000 0000 0015
+Current:
+   r13: 0000 0016 0000 0004
+   r12: 0000 0000 0000 0016
+accept d
+Push Element:
+   r13: 0000 0016 0000 0004
+Current:
+   r13: 0000 0017 0000 0004
+   r12: 0000 0000 0000 0017
+Current:
+   r13: 0000 0018 0000 0004
+   r12: 0000 0000 0000 0018
+Current:
+   r13: 0000 0019 0000 0004
+   r12: 0000 0000 0000 0019
+Current:
+   r13: 0000 001A 0000 000B
+   r12: 0000 0000 0000 001A
+Current:
+   r13: 0000 001B 0000 0000
+   r12: 0000 0000 0000 001B
+accept b
+Push Element:
+   r13: 0000 001B 0000 0000
+Current:
+   r13: 0000 001C 0000 000B
+   r12: 0000 0000 0000 001C
+Current:
+   r13: 0000 001D 0000 0007
+   r12: 0000 0000 0000 001D
+accept v
+Push Element:
+   r13: 0000 001D 0000 0007
+New: Variable
+    r8: 0000 001D 0000 0007
+Current:
+   r13: 0000 001E 0000 0007
+   r12: 0000 0000 0000 001E
+Current:
+   r13: 0000 001F 0000 000B
+   r12: 0000 0000 0000 001F
+Current:
+   r13: 0000 0020 0000 0001
+   r12: 0000 0000 0000 0020
+accept B
+Reduce 3:
+    r8: 0000 0016 0000 0004
+    r9: 0000 001B 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0038
+    r9: 0000 001B 0000 0000
+Push Element:
+   r13: 0000 0020 0000 0001
+Reduce 3:
+    r8: 0000 001B 0000 0000
+    r9: 0000 0000 0000 000C
+   r10: 0000 0020 0000 0001
+Reduce 3:
+    r8: 0000 0000 0000 000C
+    r9: 0000 0016 0000 0004
+   r10: 0000 0000 0000 000C
+New: Term infix term
+    r8: 0000 0000 0000 000C
+    r8: 0000 0000 0000 000C
+    r8: 0000 0016 0000 0004
+Reduce 3:
+    r8: 0000 0002 0000 0006
+    r9: 0000 0009 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0020
+    r9: 0000 0009 0000 0000
+Current:
+   r13: 0000 0021 0000 000B
+   r12: 0000 0000 0000 0021
+Current:
+   r13: 0000 0022 0000 0001
+   r12: 0000 0000 0000 0022
+accept B
+Reduce 3:
+    r8: 0000 0002 0000 0006
+    r9: 0000 0009 0000 0000
+   r10: 0000 0000 0000 000C
+Reduce 2:
+    r8: 0000 0000 0000 0020
+    r9: 0000 0009 0000 0000
+Push Element:
+   r13: 0000 0022 0000 0001
+Reduce 3:
+    r8: 0000 0009 0000 0000
+    r9: 0000 0000 0000 000C
+   r10: 0000 0022 0000 0001
+Reduce 3:
+    r8: 0000 0000 0000 000C
+    r9: 0000 0002 0000 0006
+   r10: 0000 0000 0000 000C
+New: Term infix term
+    r8: 0000 0000 0000 000C
+    r8: 0000 0000 0000 000C
+    r8: 0000 0002 0000 0006
+Current:
+   r13: 0000 0023 0000 000B
+   r12: 0000 0000 0000 0023
+Current:
+   r13: 0000 0024 0000 0009
+   r12: 0000 0000 0000 0024
+accept s
+Push Element:
+   r13: 0000 0024 0000 0009
+Current:
+   r13: 0000 0025 0000 0003
+   r12: 0000 0000 0000 0025
+accept v
+Push Element:
+   r13: 0000 0025 0000 0003
+New: Variable
+    r8: 0000 0025 0000 0003
+Error: Incomplete expression
+Element:    r13: 0000 0025 0000 0003
+Index  :    r12: 0000 0000 0000 0026
 END
  }
 
