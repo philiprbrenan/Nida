@@ -446,7 +446,7 @@ END
      };
    });
 
-  reduceMultiple;                                                                # Final reductions
+  reduceMultiple;                                                               # Final reductions
 
   checkStackHas 1;
   IfNe                                                                          # Incomplete expression
@@ -457,7 +457,7 @@ END
   SetLabel $end;
  } # parseExpression
 
-sub parseExpression(@)                                                                  # Create a parser for an expression described by variables
+sub parseExpression(@)                                                          # Create a parser for an expression described by variables
  {my (@parameters) = @_;                                                        # Parameters describing expression
 
   my $s = Subroutine
