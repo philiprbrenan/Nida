@@ -202,7 +202,7 @@ sub checkSet($)                                                                 
    {Cmp "byte[rsp]", $n;
     IfEq {SetZF; Jmp $end};
    }
-  error("Expected $set on the stack");
+  error("Expected one of: '$set' on the stack");
   ClearZF;
   SetLabel $end;
  }
@@ -298,7 +298,7 @@ sub accept_a()                                                                  
  }
 
 sub accept_b                                                                    #P Open
- {checkSet("bdps");
+ {checkSet("abdps");
   pushElement;
  }
 
@@ -522,6 +522,104 @@ A new line acts a semi colon if it appears immediately after a variable.
      Parameter    Description
   1  @parameters  Parameters
 
+B<Example:>
+
+
+    my $lexDataFile = qq(unicode/lex/lex.data);                                   # As produced by unicode/lex/lex.pl
+       $lexDataFile = qq(lib/Nasm/$lexDataFile) unless $develop;
+
+    my $lex = $Lexical_Tables;                                                    # Load lexical definitions
+
+    my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
+               (Vq(out), Vq(size), Vq(opens), Vq('fail'));
+
+    my $source = Rutf8 $$lex{sampleText};                                         # String to be parsed in utf8
+    my $sourceLength = StringLength Vq(string, $source);
+       $sourceLength->outNL("Input  Length: ");
+
+    ConvertUtf8ToUtf32 Vq(u8,$source), size8 => $sourceLength,                    # Convert to utf32
+      (my $source32       = Vq(u32)),
+      (my $sourceSize32   = Vq(size32)),
+      (my $sourceLength32 = Vq(count));
+
+    $sourceSize32   ->outNL("Output Length: ");                                   # Write output length
+
+    PrintOutStringNL "After conversion from utf8 to utf32";
+    PrintUtf32($sourceLength32, $source32);                                       # Print utf32
+
+    Vmovdqu8 zmm0, "[".Rd(join ', ', $lex->{lexicalLow} ->@*)."]";                # Each double is [31::24] Classification, [21::0] Utf32 start character
+    Vmovdqu8 zmm1, "[".Rd(join ', ', $lex->{lexicalHigh}->@*)."]";                # Each double is [31::24] Range offset,   [21::0] Utf32 end character
+
+    ClassifyWithInRangeAndSaveOffset address=>$source32, size=>$sourceLength32;   # Alphabetic classification
+
+    PrintOutStringNL "After classification into alphabet ranges";
+    PrintUtf32($sourceLength32, $source32);                                       # Print classified utf32
+
+    Vmovdqu8 zmm0, "[".Rd(join ', ', $lex->{bracketsLow} ->@*)."]";               # Each double is [31::24] Classification, [21::0] Utf32 start character
+    Vmovdqu8 zmm1, "[".Rd(join ', ', $lex->{bracketsHigh}->@*)."]";               # Each double is [31::24] Range offset,   [21::0] Utf32 end character
+
+    ClassifyWithInRange address=>$source32, size=>$sourceLength32;                # Bracket matching
+
+    PrintOutStringNL "After classification into brackets";
+    PrintUtf32($sourceLength32, $source32);                                       # Print classified brackets
+
+    MatchBrackets address=>$source32, size=>$sourceLength32, $opens, $fail;       # Match brackets
+
+    PrintOutStringNL "After bracket matching";
+    PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
+
+
+    ClassifyNewLines address=>$source32, size=>$sourceLength32;                   # Classify white space  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+
+    PrintOutStringNL "After converting some new lines to semi colons";
+    PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
+
+    if (0 and $develop)                                                           #
+     {parse source=>$source32, size=>$sourceLength32, my $parse = Vq(parse);
+     }
+
+    ok Assemble(debug => 1, eq => <<END);
+  Input  Length: 0000 0000 0000 00DB
+  Output Length: 0000 0000 0000 036C
+  After conversion from utf8 to utf32
+  0001 D5EE 0000 205F  0001 D44E 0001 D460  0001 D460 0001 D456  0001 D454 0001 D45B  0000 205F 0000 230A  0000 205F 0000 2329  0000 205F 0000 2768  0000 205F 0001 D5EF
+  0001 D5FD 0000 205F  0000 2769 0000 205F  0000 232A 0000 205F  0001 D429 0001 D425  0001 D42E 0001 D42C  0000 205F 0000 276A  0000 205F 0001 D600  0001 D5F0 0000 205F
+  0000 276B 0000 205F  0000 230B 0000 205F  0000 27E2 0000 000A  0001 D5EE 0001 D5EE  0000 205F 0001 D44E  0001 D460 0001 D460  0001 D456 0001 D454  0001 D45B 0000 000A
+  0000 0020 0000 0020  0000 0073 0000 006F  0000 006D 0000 0065  0000 000A 0000 000A  0000 0061 0000 0073  0000 0063 0000 0069  0000 0069 0000 000A  0000 000A 0000 0074
+  0000 0065 0000 0078  0000 0074 0000 205F  0001 D429 0001 D425  0001 D42E 0001 D42C  0000 000A 0000 0020  0000 0020 0001 D5F0  0001 D5F0 0000 205F  0000 27E2 0000 000A
+
+  After classification into alphabet ranges
+  0700 001A 0B00 0000  0600 001A 0600 002C  0600 002C 0600 0022  0600 0020 0600 0027  0B00 0000 0000 230A  0B00 0000 0000 2329  0B00 0000 0000 2768  0B00 0000 0700 001B
+  0700 0029 0B00 0000  0000 2769 0B00 0000  0000 232A 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0B00 0000 0000 276A  0B00 0000 0700 002C  0700 001C 0B00 0000
+  0000 276B 0B00 0000  0000 230B 0B00 0000  0900 0000 0300 0000  0700 001A 0700 001A  0B00 0000 0600 001A  0600 002C 0600 002C  0600 0022 0600 0020  0600 0027 0300 0000
+  0200 0020 0200 0020  0200 0073 0200 006F  0200 006D 0200 0065  0300 0000 0300 0000  0200 0061 0200 0073  0200 0063 0200 0069  0200 0069 0300 0000  0300 0000 0200 0074
+  0200 0065 0200 0078  0200 0074 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0300 0000 0200 0020  0200 0020 0700 001C  0700 001C 0B00 0000  0900 0000 0300 0000
+
+  After classification into brackets
+  0700 001A 0B00 0000  0600 001A 0600 002C  0600 002C 0600 0022  0600 0020 0600 0027  0B00 0000 1200 230A  0B00 0000 1400 2329  0B00 0000 1600 2768  0B00 0000 0700 001B
+  0700 0029 0B00 0000  1700 2769 0B00 0000  1500 232A 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0B00 0000 1800 276A  0B00 0000 0700 002C  0700 001C 0B00 0000
+  1900 276B 0B00 0000  1300 230B 0B00 0000  0900 0000 0300 0000  0700 001A 0700 001A  0B00 0000 0600 001A  0600 002C 0600 002C  0600 0022 0600 0020  0600 0027 0300 0000
+  0200 0020 0200 0020  0200 0073 0200 006F  0200 006D 0200 0065  0300 0000 0300 0000  0200 0061 0200 0073  0200 0063 0200 0069  0200 0069 0300 0000  0300 0000 0200 0074
+  0200 0065 0200 0078  0200 0074 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0300 0000 0200 0020  0200 0020 0700 001C  0700 001C 0B00 0000  0900 0000 0300 0000
+
+  After bracket matching
+  0700 001A 0B00 0000  0600 001A 0600 002C  0600 002C 0600 0022  0600 0020 0600 0027  0B00 0000 1200 0022  0B00 0000 1400 0014  0B00 0000 1600 0012  0B00 0000 0700 001B
+  0700 0029 0B00 0000  1700 000D 0B00 0000  1500 000B 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0B00 0000 1800 0020  0B00 0000 0700 002C  0700 001C 0B00 0000
+  1900 001B 0B00 0000  1300 0009 0B00 0000  0900 0000 0300 0000  0700 001A 0700 001A  0B00 0000 0600 001A  0600 002C 0600 002C  0600 0022 0600 0020  0600 0027 0300 0000
+  0200 0020 0200 0020  0200 0073 0200 006F  0200 006D 0200 0065  0300 0000 0300 0000  0200 0061 0200 0073  0200 0063 0200 0069  0200 0069 0300 0000  0300 0000 0200 0074
+  0200 0065 0200 0078  0200 0074 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0300 0000 0200 0020  0200 0020 0700 001C  0700 001C 0B00 0000  0900 0000 0300 0000
+
+  After converting some new lines to semi colons
+  0700 001A 0B00 0000  0600 001A 0600 002C  0600 002C 0600 0022  0600 0020 0600 0027  0B00 0000 1200 0022  0B00 0000 1400 0014  0B00 0000 1600 0012  0B00 0000 0700 001B
+  0700 0029 0B00 0000  1700 000D 0B00 0000  1500 000B 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0B00 0000 1800 0020  0B00 0000 0700 002C  0700 001C 0B00 0000
+  1900 001B 0B00 0000  1300 0009 0B00 0000  0900 0000 0300 0000  0700 001A 0700 001A  0B00 0000 0600 001A  0600 002C 0600 002C  0600 0022 0600 0020  0600 0027 0300 0000
+  0200 0020 0200 0020  0200 0073 0200 006F  0200 006D 0200 0065  0A00 0000 0300 0000  0200 0061 0200 0073  0200 0063 0200 0069  0200 0069 0A00 0000  0300 0000 0200 0074
+  0200 0065 0200 0078  0200 0074 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0300 0000 0200 0020  0200 0020 0700 001C  0700 001C 0B00 0000  0900 0000 0300 0000
+
+  END
+
+
 =head2 lexicalNameFromLetter($l)
 
 Lexical name for a lexical item described by its letter
@@ -554,37 +652,43 @@ B<Example:>
 
 
 
-=head2 new($depth)
+=head2 new($depth, $description)
 
 Create a new term
 
-     Parameter  Description
-  1  $depth     Stack depth to be converted
+     Parameter     Description
+  1  $depth        Stack depth to be converted
+  2  $description  Text reason why we are creating a new term
 
 B<Example:>
 
 
     Mov $index,  1;
+    Mov rax,-1; Push rax;
     Mov rax, 3; Push rax;
     Mov rax, 2; Push rax;
     Mov rax, 1; Push rax;
 
-    new 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    new 3, 'test';  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-    Mov rax, "[rsp]";
-    PrintOutRegisterInHex rax;
+    Pop rax;  PrintOutRegisterInHex rax;
+    Pop rax;  PrintOutRegisterInHex rax;
     ok Assemble(debug => 0, eq => <<END);
-  0000 0000 0000 0001
-  0000 0000 0000 0002
-  0000 0000 0000 0003
+  New: test
+      r8: 0000 0000 0000 0001
+      r8: 0000 0000 0000 0002
+      r8: 0000 0000 0000 0003
      rax: 0000 0000 0000 000C
+     rax: FFFF FFFF FFFF FFFF
   END
 
 
-=head2 error()
+=head2 error($message)
 
 Die
 
+     Parameter  Description
+  1  $message   Error message
 
 B<Example:>
 
@@ -593,7 +697,9 @@ B<Example:>
     error "aaa bbbb";  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     ok Assemble(debug => 0, eq => <<END);
-  die aaa bbbb:
+  Error: aaa bbbb
+  Element:    r13: 0000 0000 0000 0000
+  Index  :    r12: 0000 0000 0000 0000
   END
 
 
@@ -647,7 +753,9 @@ B<Example:>
     PrintOutZF;
     ok Assemble(debug => 0, eq => <<END);
   ZF=1
-  die Expected as on the stack:
+  Error: Expected one of: 'as' on the stack
+  Element:    r13: 0000 0000 0000 0000
+  Index  :    r12: 0000 0000 0000 0000
   END
 
 
@@ -656,12 +764,51 @@ B<Example:>
 Convert the longest possible expression on top of the stack into a term
 
 
+B<Example:>
+
+
+    Mov r15,    -1;   Push r15;
+    Mov r15, $term;   Push r15;
+    Mov r15, $assign; Push r15;
+    Mov r15, $term;   Push r15;
+
+    reduce;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    Pop r15; PrintOutRegisterInHex r15;
+    Pop r14; PrintOutRegisterInHex r14;
+    ok Assemble(debug => 0, eq => <<END);
+  New: Term infix term
+      r8: 0000 0000 0000 000C
+      r8: 0000 0000 0000 000C
+      r8: 0000 0000 0000 0006
+     r15: 0000 0000 0000 000C
+     r14: FFFF FFFF FFFF FFFF
+  END
+
+
 =head2 parse(@parameters)
 
 Create a parser for an expression described by variables
 
      Parameter    Description
   1  @parameters  Parameters describing expression
+
+B<Example:>
+
+
+    my $l = [117440512];
+    Mov $start,  Rd(@$l);
+    Mov $size,   scalar(@$l);
+    parseExpression;
+    PrintOutStringNL "Result:";
+    PrintOutRegisterInHex r15;
+    ok Assemble(debug => 0, eq => <<END);
+  New: Initial variable
+      r8: 0000 0000 0000 0007
+  Result:
+     r15: 0000 0000 0000 000C
+  END
+
 
 
 =head1 Private Methods
@@ -783,6 +930,22 @@ Open
 Accept by reducing
 
 
+B<Example:>
+
+
+    Mov r15,           -1;  Push r15;
+    Mov r15, $OpenBracket;  Push r15;
+
+    reduceMultiple;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    Pop r15; PrintOutRegisterInHex r15;
+    Pop r14; PrintOutRegisterInHex r14;
+    ok Assemble(debug => 0, eq => <<END);
+     r15: 0000 0000 0000 0000
+     r14: FFFF FFFF FFFF FFFF
+  END
+
+
 =head2 accept_B()
 
 Closing parenthesis
@@ -813,12 +976,10 @@ Semi colon
 Variable
 
 
-=head2 parseExpression($parameters)
+=head2 parseExpression()
 
-Parse an expression.
+Parse the string of classified lexicals addressed by register $start of length $length.  The resulting parse tree (if any) is returned in r15.
 
-     Parameter    Description
-  1  $parameters  Parameters
 
 
 =head1 Index
@@ -826,9 +987,9 @@ Parse an expression.
 
 1 L<accept_a|/accept_a> - Assign
 
-2 L<accept_B|/accept_B> - Closing parenthesis
+2 L<accept_b|/accept_b> - Open
 
-3 L<accept_b|/accept_b> - Open
+3 L<accept_B|/accept_B> - Closing parenthesis
 
 4 L<accept_d|/accept_d> - Infix but not assign or semi-colon
 
@@ -836,37 +997,37 @@ Parse an expression.
 
 6 L<accept_q|/accept_q> - Post fix
 
-7 L<reduceMultiple|/reduceMultiple> - Accept by reducing
+7 L<accept_s|/accept_s> - Semi colon
 
-8 L<accept_s|/accept_s> - Semi colon
+8 L<accept_v|/accept_v> - Variable
 
-9 L<accept_v|/accept_v> - Variable
+9 L<checkSet|/checkSet> - Check that one of a set of items is on the top of the stack or complain if it is not
 
-10 L<checkSet|/checkSet> - Check that one of a set of items is on the top of the stack or complain if it is not
+10 L<checkStackHas|/checkStackHas> - Check that we have at least the specified number of elements on the stack
 
-11 L<checkStackHas|/checkStackHas> - Check that we have at least the specified number of elements on the stack
+11 L<ClassifyNewLines|/ClassifyNewLines> - A new line acts a semi colon if it appears immediately after a variable.
 
-12 L<ClassifyNewLines|/ClassifyNewLines> - A new line acts a semi colon if it appears immediately after a variable.
+12 L<error|/error> - Die
 
-13 L<error|/error> - Die
+13 L<lexicalNameFromLetter|/lexicalNameFromLetter> - Lexical name for a lexical item described by its letter
 
-14 L<lexicalNameFromLetter|/lexicalNameFromLetter> - Lexical name for a lexical item described by its letter
+14 L<lexicalNumberFromLetter|/lexicalNumberFromLetter> - Lexical number for a lexical item described by its letter
 
-15 L<lexicalNumberFromLetter|/lexicalNumberFromLetter> - Lexical number for a lexical item described by its letter
+15 L<loadCurrentChar|/loadCurrentChar> - Load the details of the character currently being processed
 
-16 L<loadCurrentChar|/loadCurrentChar> - Load the details of the character currently being processed
+16 L<new|/new> - Create a new term
 
-17 L<new|/new> - Create a new term
+17 L<parse|/parse> - Create a parser for an expression described by variables
 
-18 L<parse|/parse> - Create a parser for an expression described by variables
+18 L<parseExpression|/parseExpression> - Parse the string of classified lexicals addressed by register $start of length $length.
 
-19 L<parseExpression|/parseExpression> - Parse an expression.
+19 L<pushElement|/pushElement> - Push the current element on to the stack
 
-20 L<pushElement|/pushElement> - Push the current element on to the stack
+20 L<pushEmpty|/pushEmpty> - Push the empty element on to the stack
 
-21 L<pushEmpty|/pushEmpty> - Push the empty element on to the stack
+21 L<reduce|/reduce> - Convert the longest possible expression on top of the stack into a term
 
-22 L<reduce|/reduce> - Convert the longest possible expression on top of the stack into a term
+22 L<reduceMultiple|/reduceMultiple> - Accept by reducing
 
 23 L<testSet|/testSet> - Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
 
@@ -923,7 +1084,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 16;
+   {plan tests => 17;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -1029,11 +1190,11 @@ if (1) {                                                                        
   Mov rax, 3; Push rax;
   Mov rax, 2; Push rax;
   Mov rax, 1; Push rax;
-  new 3, '';
+  new 3, 'test';
   Pop rax;  PrintOutRegisterInHex rax;
   Pop rax;  PrintOutRegisterInHex rax;
   ok Assemble(debug => 0, eq => <<END);
-New:
+New: test
     r8: 0000 0000 0000 0001
     r8: 0000 0000 0000 0002
     r8: 0000 0000 0000 0003
@@ -1046,7 +1207,9 @@ END
 if (1) {                                                                        #Terror
   error "aaa bbbb";
   ok Assemble(debug => 0, eq => <<END);
-die aaa bbbb:
+Error: aaa bbbb
+Element:    r13: 0000 0000 0000 0000
+Index  :    r12: 0000 0000 0000 0000
 END
  }
 
@@ -1075,7 +1238,9 @@ if (1) {                                                                        
   PrintOutZF;
   ok Assemble(debug => 0, eq => <<END);
 ZF=1
-die Expected as on the stack:
+Error: Expected one of: 'as' on the stack
+Element:    r13: 0000 0000 0000 0000
+Index  :    r12: 0000 0000 0000 0000
 END
  }
 
@@ -1089,7 +1254,7 @@ if (1) {                                                                        
   Pop r15; PrintOutRegisterInHex r15;
   Pop r14; PrintOutRegisterInHex r14;
   ok Assemble(debug => 0, eq => <<END);
-New:
+New: Term infix term
     r8: 0000 0000 0000 000C
     r8: 0000 0000 0000 000C
     r8: 0000 0000 0000 0006
@@ -1137,15 +1302,15 @@ if (1) {
   Pop r15; PrintOutRegisterInHex r15;
   Pop r14; PrintOutRegisterInHex r14;
   ok Assemble(debug => 0, eq => <<END);
-New:
+New: Variable
     r8: 0000 0000 0000 0007
-New:
+New: Prefixed variable
     r8: 0000 0000 0000 000C
     r8: 0000 0000 0000 0005
-New:
+New: Prefixed variable
     r8: 0000 0000 0000 000C
     r8: 0000 0000 0000 0005
-New:
+New: Prefixed variable
     r8: 0000 0000 0000 000C
     r8: 0000 0000 0000 0005
    r15: 0000 0000 0000 000C
@@ -1154,35 +1319,31 @@ END
  }
 
 #latest:;
-if (1) {                                                                        #TparseExpression
+if (1) {                                                                        #Tparse
   my $l = [117440512];
   Mov $start,  Rd(@$l);
   Mov $size,   scalar(@$l);
   parseExpression;
   PrintOutStringNL "Result:";
   PrintOutRegisterInHex r15;
-  ok Assemble(debug => 1, eq => <<END);
-New:
+  ok Assemble(debug => 0, eq => <<END);
+New: Initial variable
     r8: 0000 0000 0000 0007
 Result:
    r15: 0000 0000 0000 000C
 END
  }
 
-latest:;
+#latest:;
 if (1) {
-  my @l      = $Lexical_Tables->{sampleLexicals}->@*;
-  Mov $start,  Rd(@l);
-  Mov $size,   scalar(@l);
-
-#  Mov rax, $start;
-#  Mov rdi, 16;
-#  PrintErrMemoryInHexNL;
+  my $l = [117440512, 100663296, 117440512];
+  Mov $start,  Rd(@$l);
+  Mov $size,   scalar(@$l);
 
   parseExpression;
   PrintOutStringNL "Result:";
   PrintOutRegisterInHex r15;
-  ok Assemble(debug => 1, eq => <<END);
+  ok Assemble(debug => 0, eq => <<END);
 New: Initial variable
     r8: 0000 0000 0000 0007
 New: Variable
@@ -1196,8 +1357,38 @@ Result:
 END
  }
 
+#latest:;
+if (1) {
+  my $l = [117440512, 100663296, 0, 0, 0, 117440512, 16777216, 16777216, 67108864, 0, 117440512, 16777216, 16777216, 150994944];
+
+  Mov $start,  Rd(@$l);
+  Mov $size,   scalar(@$l);
+
+  parseExpression;
+  PrintOutStringNL "Result:";
+  PrintOutRegisterInHex r15;
+  ok Assemble(debug => 1, eq => <<END);
+New: Initial variable
+    r8: 0000 0000 0000 0007
+New: Variable
+    r8: 0000 0005 0000 0007
+New: Variable
+    r8: 0000 000A 0000 0007
+New: Term infix term
+    r8: 0000 0000 0000 000C
+    r8: 0000 0000 0000 000C
+    r8: 0000 0008 0000 0004
+New: Term infix term
+    r8: 0000 0000 0000 000C
+    r8: 0000 0000 0000 000C
+    r8: 0000 0001 0000 0006
+Result:
+   r15: 0000 0000 0000 000C
+END
+ }
+
 #latest:
-if (0) {                                                                        # Parse some code
+if (0) {                                                                        #TClassifyNewLines   Parse some code
   my $lexDataFile = qq(unicode/lex/lex.data);                                   # As produced by unicode/lex/lex.pl
      $lexDataFile = qq(lib/Nasm/$lexDataFile) unless $develop;
 
