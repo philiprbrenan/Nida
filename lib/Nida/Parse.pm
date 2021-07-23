@@ -250,6 +250,7 @@ sub reduce()                                                                    
         IfEq
          {Add rsp, 3 * $ses;                                                    # Pop expression
           Push $d;
+          PrintOutStringNL "Reduce by ( term )" if $debug;
           Jmp $success;
          };
        };
@@ -285,6 +286,7 @@ sub reduce()                                                                    
       IfEq
        {Add rsp, 2 * $ses;                                                      # Pop expression
         Push $r;
+        PrintOutStringNL "Reduce by ;)" if $debug;
         Jmp $success;
        };
      };
@@ -1339,6 +1341,7 @@ Reduce 3:
     r8: 0000 0000 0000 0000
     r9: 0000 0000 0000 000C
    r10: 0000 0000 0000 0001
+Reduce by ( term )
 Reduce 2:
     r8: 0000 0000 0000 0010
     r9: 0000 0000 0000 000C
@@ -1500,6 +1503,7 @@ Reduce 3:
     r8: 0000 0004 0000 0000
     r9: 0000 0000 0000 000C
    r10: 0000 0006 0000 0001
+Reduce by ( term )
 Reduce 3:
     r8: 0000 0002 0000 0000
     r9: 0000 0003 0000 0000
@@ -1524,6 +1528,7 @@ Reduce 3:
     r8: 0000 0003 0000 0000
     r9: 0000 0000 0000 000C
    r10: 0000 0007 0000 0001
+Reduce by ( term )
 Reduce 3:
     r8: 0000 0001 0000 0006
     r9: 0000 0002 0000 0000
@@ -1568,6 +1573,7 @@ Reduce 3:
     r8: 0000 0009 0000 0000
     r9: 0000 0000 0000 000C
    r10: 0000 000B 0000 0001
+Reduce by ( term )
 Reduce 3:
     r8: 0000 0000 0000 000C
     r9: 0000 0008 0000 0004
@@ -1600,6 +1606,7 @@ Reduce 3:
     r8: 0000 0002 0000 0000
     r9: 0000 0000 0000 000C
    r10: 0000 000C 0000 0001
+Reduce by ( term )
 Reduce 3:
     r8: 0000 0000 0000 000C
     r9: 0000 0001 0000 0006
@@ -1682,6 +1689,7 @@ Reduce 3:
     r8: 0000 0004 0000 0000
     r9: 0000 0000 0000 000C
    r10: 0000 0006 0000 0001
+Reduce by ( term )
 Reduce 3:
     r8: 0000 0002 0000 0000
     r9: 0000 0003 0000 0000
@@ -1706,6 +1714,7 @@ Reduce 3:
     r8: 0000 0003 0000 0000
     r9: 0000 0000 0000 000C
    r10: 0000 0007 0000 0001
+Reduce by ( term )
 Reduce 3:
     r8: 0000 0001 0000 0006
     r9: 0000 0002 0000 0000
@@ -1750,6 +1759,7 @@ Reduce 3:
     r8: 0000 0009 0000 0000
     r9: 0000 0000 0000 000C
    r10: 0000 000B 0000 0001
+Reduce by ( term )
 Reduce 3:
     r8: 0000 0000 0000 000C
     r9: 0000 0008 0000 0004
@@ -1782,6 +1792,7 @@ Reduce 3:
     r8: 0000 0002 0000 0000
     r9: 0000 0000 0000 000C
    r10: 0000 000C 0000 0001
+Reduce by ( term )
 Reduce 3:
     r8: 0000 0000 0000 000C
     r9: 0000 0001 0000 0006
@@ -1802,15 +1813,10 @@ END
 
 #latest:
 if (1) {                                                                        #TClassifyNewLines   Parse some code
-  my $lexDataFile = qq(unicode/lex/lex.data);                                   # As produced by unicode/lex/lex.pl
-     $lexDataFile = qq(lib/Nasm/$lexDataFile) unless $develop;
-
-  my $lex = $Lex;                                                    # Load lexical definitions
-
   my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
              (Vq(out), Vq(size), Vq(opens), Vq('fail'));
 
-  my $source = Rutf8 $$lex{sampleText};                                         # String to be parsed in utf8
+  my $source = Rutf8 $$Lex{sampleText};                                         # String to be parsed in utf8
   my $sourceLength = StringLength Vq(string, $source);
      $sourceLength->outNL("Input  Length: ");
 
@@ -1824,16 +1830,16 @@ if (1) {                                                                        
   PrintOutStringNL "After conversion from utf8 to utf32";
   PrintUtf32($sourceLength32, $source32);                                       # Print utf32
 
-  Vmovdqu8 zmm0, "[".Rd(join ', ', $lex->{lexicalLow} ->@*)."]";                # Each double is [31::24] Classification, [21::0] Utf32 start character
-  Vmovdqu8 zmm1, "[".Rd(join ', ', $lex->{lexicalHigh}->@*)."]";                # Each double is [31::24] Range offset,   [21::0] Utf32 end character
+  Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{lexicalLow} ->@*)."]";                # Each double is [31::24] Classification, [21::0] Utf32 start character
+  Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{lexicalHigh}->@*)."]";                # Each double is [31::24] Range offset,   [21::0] Utf32 end character
 
   ClassifyWithInRangeAndSaveOffset address=>$source32, size=>$sourceLength32;   # Alphabetic classification
 
   PrintOutStringNL "After classification into alphabet ranges";
   PrintUtf32($sourceLength32, $source32);                                       # Print classified utf32
 
-  Vmovdqu8 zmm0, "[".Rd(join ', ', $lex->{bracketsLow} ->@*)."]";               # Each double is [31::24] Classification, [21::0] Utf32 start character
-  Vmovdqu8 zmm1, "[".Rd(join ', ', $lex->{bracketsHigh}->@*)."]";               # Each double is [31::24] Range offset,   [21::0] Utf32 end character
+  Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{bracketsLow} ->@*)."]";               # Each double is [31::24] Classification, [21::0] Utf32 start character
+  Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{bracketsHigh}->@*)."]";               # Each double is [31::24] Range offset,   [21::0] Utf32 end character
 
   ClassifyWithInRange address=>$source32, size=>$sourceLength32;                # Bracket matching
 
@@ -1965,6 +1971,7 @@ Reduce 3:
     r8: 0000 000D 0000 0000
     r9: 0000 0000 0000 000C
    r10: 0000 0012 0000 0001
+Reduce by ( term )
 Reduce 3:
     r8: 0000 0009 0000 0000
     r9: 0000 000B 0000 0000
@@ -1992,6 +1999,7 @@ Reduce 3:
     r8: 0000 000B 0000 0000
     r9: 0000 0000 0000 000C
    r10: 0000 0014 0000 0001
+Reduce by ( term )
 Reduce 3:
     r8: 0000 0002 0000 0006
     r9: 0000 0009 0000 0000
@@ -2060,6 +2068,7 @@ Reduce 3:
     r8: 0000 001B 0000 0000
     r9: 0000 0000 0000 000C
    r10: 0000 0020 0000 0001
+Reduce by ( term )
 Reduce 3:
     r8: 0000 0000 0000 000C
     r9: 0000 0016 0000 0004
@@ -2095,6 +2104,7 @@ Reduce 3:
     r8: 0000 0009 0000 0000
     r9: 0000 0000 0000 000C
    r10: 0000 0022 0000 0001
+Reduce by ( term )
 Reduce 3:
     r8: 0000 0000 0000 000C
     r9: 0000 0002 0000 0006
