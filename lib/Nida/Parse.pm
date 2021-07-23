@@ -10,7 +10,7 @@ use warnings FATAL => qw(all);
 use strict;
 use Carp qw(confess cluck);
 use Data::Dump qw(dump);
-use Data::Table::Text qw(:all);
+use Data::Table::Text qw(:all !parse);
 use Nasm::X86 qw(:all);
 use feature qw(say current_sub);
 
@@ -366,7 +366,7 @@ sub accept_v                                                                    
     });
   }
 
-sub parseExpression()                                                           #P Parse the string of classified lexicals addressed by register $start of length $length.  The resulting parse tree (if any) is returned in r15.
+sub parseExpressionCode()                                                       #P Parse the string of classified lexicals addressed by register $start of length $length.  The resulting parse tree (if any) is returned in r15.
  {my $end          = Label;
   Cmp $size, 0;                                                                 # Check for empty expression
   IfEq
@@ -457,16 +457,25 @@ END
   SetLabel $end;
  } # parseExpression
 
-sub parse(@)                                                                    # Create a parser for an expression described by variables
+sub parseExpression(@)                                                                  # Create a parser for an expression described by variables
  {my (@parameters) = @_;                                                        # Parameters describing expression
 
   my $s = Subroutine
    {my ($parameters) = @_;                                                      # Parameters
-
+    PushR my @save = map {"r$_"} 8..15;
     $$parameters{source}->setReg($start);                                       # Start of expression string after it has been classified
     $$parameters{size}  ->setReg($size);                                        # Number of characters in the expression
-    parseExpression;
-   } in => {source => 3, size => 3};
+
+    Push rbp; Mov rbp, rsp;                                                     # New frame
+
+    parseExpressionCode;
+
+    $$parameters{parse}->getReg(r15);                                           # Number of characters in the expression
+
+    Mov rsp, rbp; Pop rbp;
+                                                                                # Remove new frame
+    PopR @save;
+   } in => {source => 3, size => 3}, out => {parse => 3};
 
   $s->call(@parameters);
  } # parse
@@ -1387,6 +1396,34 @@ Result:
 END
  }
 
+latest:;
+if (1) {
+  my $l = [117440512, 100663296, 0, 0, 0, 117440512, 16777216, 16777216, 67108864, 0, 117440512, 16777216, 16777216, 150994944];
+
+  my $source = Vq('source',    Rd @$l);
+  my $size   = Vq('size',  scalar @$l);
+
+  parseExpression $source, $size, my $parse = Vq(parse);
+  $parse->outNL();
+  ok Assemble(debug => 1, eq => <<END);
+New: Initial variable
+    r8: 0000 0000 0000 0007
+New: Variable
+    r8: 0000 0005 0000 0007
+New: Variable
+    r8: 0000 000A 0000 0007
+New: Term infix term
+    r8: 0000 0000 0000 000C
+    r8: 0000 0000 0000 000C
+    r8: 0000 0008 0000 0004
+New: Term infix term
+    r8: 0000 0000 0000 000C
+    r8: 0000 0000 0000 000C
+    r8: 0000 0001 0000 0006
+parse: 0000 0000 0000 000C
+END
+ }
+
 #latest:
 if (0) {                                                                        #TClassifyNewLines   Parse some code
   my $lexDataFile = qq(unicode/lex/lex.data);                                   # As produced by unicode/lex/lex.pl
@@ -1438,7 +1475,7 @@ if (0) {                                                                        
   PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
 
   if (0 and $develop)                                                           #
-   {parse source=>$source32, size=>$sourceLength32, my $parse = Vq(parse);
+   {parseExpression source=>$source32, size=>$sourceLength32, my $parse = Vq(parse);
    }
 
   ok Assemble(debug => 1, eq => <<END);
