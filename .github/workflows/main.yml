@@ -1,4 +1,4 @@
-# Test Nida 2021-07-23 at 05:44:56
+# Test UnisynParse 2021-07-24 at 02:13:55
 
 name: Test
 
@@ -35,4 +35,4 @@ jobs:
 
     - name: Test
       run: |
-        perl lib/Nida/Parse.pm
+        perl lib/UnisynParse/Parse.pm
