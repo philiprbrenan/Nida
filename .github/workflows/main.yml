@@ -1,4 +1,4 @@
-# Test UnisynParse 2021-07-25 at 00:35:19
+# Test UnisynParse 2021-07-25 at 00:58:05
 
 name: Test
 
@@ -35,4 +35,4 @@ jobs:
 
     - name: Test
       run: |
-        perl lib/UnisynParse/Parse.pm
+        perl lib/Unisyn/Parse.pm
