@@ -1,4 +1,4 @@
-#!/usr/bin/perl -I/home/phil/perl/cpan/DataTableText/lib/ -I/home/phil/perl/cpan/NasmX86/lib/ -I/h-I/home/phil/perl/cpan/AsmC/lib/
+#!/usr/bin/perl -I/home/phil/perl/cpan/DataTableText/lib/ -I/home/phil/perl/cpan/NasmX86/lib/ -I/h-I/home/phil/perl/cpan/AsmC/lib/ -I/home/phil/perl/cpan/TreeTerm/lib/
 #-------------------------------------------------------------------------------
 # Parse a Unisyn expression.
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2021
