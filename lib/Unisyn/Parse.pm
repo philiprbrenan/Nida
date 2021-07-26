@@ -133,8 +133,7 @@ sub ClassifyNewLines(@)                                                         
                                                                                 # Convert variable followed by new line to variable white space semi-colon
       Cmp r10,     $n->variable;                                                # Is lexical type of last character a variable ?
       IfEq                                                                      # Lexical character of last character was a variable
-       {
-        Cmp r13,   $n->NewLine;
+       {Cmp r13,   $n->NewLine;
         IfEq                                                                    # Current character is new line
          {Mov r12, $n->NewLineSemiColon;
           Mov "[r15+3]", r12b;                                                  # Make the current character a new line semicolon as the new line character immediately follows a variable
@@ -2036,7 +2035,7 @@ parse: 0000 0000 0000 000C
 END
  }
 
-latest:
+#latest:
 if (1) {                                                                        #TClassifyNewLines   Parse some code
   my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
              (Vq(out), Vq(size), Vq(opens), Vq('fail'));
@@ -2059,7 +2058,6 @@ if (1) {                                                                        
   Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{lexicalHigh}->@*)."]";                # Each double is [31::24] Range offset,   [21::0] Utf32 end character
 
   ClassifyWithInRangeAndSaveOffset address=>$source32, size=>$sourceLength32;   # Alphabetic classification
-
   PrintOutStringNL "After classification into alphabet ranges";
   PrintUtf32($sourceLength32, $source32);                                       # Print classified utf32
 
@@ -2067,12 +2065,10 @@ if (1) {                                                                        
   Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{bracketsHigh}->@*)."]";               # Each double is [31::24] Range offset,   [21::0] Utf32 end character
 
   ClassifyWithInRange address=>$source32, size=>$sourceLength32;                # Bracket matching
-
   PrintOutStringNL "After classification into brackets";
   PrintUtf32($sourceLength32, $source32);                                       # Print classified brackets
 
   MatchBrackets address=>$source32, size=>$sourceLength32, $opens, $fail;       # Match brackets
-
   PrintOutStringNL "After bracket matching";
   PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
 
