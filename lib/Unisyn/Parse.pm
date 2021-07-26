@@ -213,8 +213,10 @@ sub checkSet($)                                                                 
   SetLabel $end;
  }
 
-sub reduce()                                                                    # Convert the longest possible expression on top of the stack into a term
- {my ($success, $end) = map {Label} 1..2;                                       # Exit points
+sub reduce($)                                                                   # Convert the longest possible expression on top of the stack into a term  at the specified priority
+ {my ($priority) = @_;                                                          # Priority of the operators to reduce
+  $priority =~ m(\A(1|3)\Z);                                                    # 1 - all operators, 2 - priority 2 operators
+  my ($success, $end) = map {Label} 1..2;                                       # Exit points
 
   checkStackHas 3;                                                              # At least three elements on the stack
   IfGe
@@ -232,7 +234,7 @@ sub reduce()                                                                    
     IfEq
      {testSet("t",  $r);
       IfEq
-       {testSet("ads", $d);
+       {testSet($priority == 1 ? "ads" : 'd', $d);                              # Reduce all operators or just reduce dyads
         IfEq
          {Add rsp, 3 * $ses;                                                    # Reorder into polish notation
           Push $_ for $d, $l, $r;
@@ -310,8 +312,18 @@ sub reduce()                                                                    
   SetLabel $end;                                                                # End
  } # reduce
 
+sub reduceMultiple($)                                                           #P Reduce existing operators on the stack
+ {my ($priority) = @_;                                                          # Priority of the operators to reduce
+  Vq('count',99)->for(sub                                                       # An improbably high but finit number of reductions
+   {my ($index, $start, $next, $end) = @_;                                      # Execute body
+    reduce($priority);
+    IfNe {Jmp $end};                                                            # Keep going as long as reductions are possible
+   });
+ }
+
 sub accept_a()                                                                  #P Assign
  {checkSet("t");
+  reduceMultiple 2;
   PrintOutStringNL "accept a" if $debug;
   pushElement;
  }
@@ -322,20 +334,12 @@ sub accept_b                                                                    
   pushElement;
  }
 
-sub reduceMultiple                                                               #P Accept by reducing
- {Vq('count',99)->for(sub
-   {my ($index, $start, $next, $end) = @_;                                      # Execute body
-    reduce;
-    IfNe {Jmp $end};                                                            # Keep going as long as reductions are possible
-   });
- }
-
 sub accept_B                                                                    #P Closing parenthesis
  {checkSet("bst");
   PrintOutStringNL "accept B" if $debug;
-  reduceMultiple;
+  reduceMultiple 1;
   pushElement;
-  reduceMultiple;
+  reduceMultiple 1;
   checkSet("bst");
  }
 
@@ -370,7 +374,7 @@ sub accept_s                                                                    
   IfEq                                                                          # Insert an empty element between two consecutive semicolons
    {pushEmpty;
    };
-  reduceMultiple;
+  reduceMultiple 1;
   pushElement;
  }
 
@@ -478,7 +482,7 @@ END
      };
    });
 
-  reduceMultiple;                                                               # Final reductions
+  reduceMultiple 1;                                                             # Final reductions
 
   checkStackHas 1;
   IfNe                                                                          # Incomplete expression
@@ -1515,7 +1519,7 @@ if (1) {                                                                        
   Mov r15, $term;   Push r15;
   Mov r15, $assign; Push r15;
   Mov r15, $term;   Push r15;
-  reduce;
+  reduce 1;
   Pop r15; PrintOutRegisterInHex r15;
   Pop r14; PrintOutRegisterInHex r14;
   ok Assemble(debug => 0, eq => <<END);
@@ -1536,7 +1540,7 @@ END
 if (1) {                                                                        #TreduceMultiple
   Mov r15,           -1;  Push r15;
   Mov r15, $OpenBracket;  Push r15;
-  reduceMultiple;
+  reduceMultiple 1;
   Pop r15; PrintOutRegisterInHex r15;
   Pop r14; PrintOutRegisterInHex r14;
   ok Assemble(debug => 0, eq => <<END);
@@ -1554,7 +1558,7 @@ if (1) {
   Mov r15, $OpenBracket;  Push r15;
   Mov r15, $term;         Push r15;
   Mov r15, $CloseBracket; Push r15;
-  reduceMultiple;
+  reduceMultiple 1;
   Pop r15; PrintOutRegisterInHex r15;
   Pop r14; PrintOutRegisterInHex r14;
   ok Assemble(debug => 0, eq => <<END);
