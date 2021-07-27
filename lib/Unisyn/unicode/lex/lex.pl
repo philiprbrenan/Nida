@@ -29,7 +29,7 @@ Text generation routine let us write some pretend code to parse
 
 sub LexicalConstant($$$;$)                                                      # Lexical constants as opposed to derived values
  {my ($name, $number, $letter, $like) = @_;                                     # Name of the lexical item, numeric code, character code, character code as used Tree::Term, a specialized instance of this Tree::Term which is never the less lexically identical to the Tree::Term
-  genHash("Nida::Lexical::Constant",                                            # Description of a lexical item connecting the definition in Tree::Term with that in Nida::Lexicals
+  genHash("Unisyn::Parse::Lexical::Constant",                                            # Description of a lexical item connecting the definition in Tree::Term with that in Nida::Lexicals
     name   => $name,                                                            #I Name of the lexical item
     number => $number,                                                          #I Numeric code for lexical item
     letter => $letter,                                                          #I Alphabetic name for lexical item
@@ -37,7 +37,7 @@ sub LexicalConstant($$$;$)                                                      
    );
  }
 
-my $Lexicals = genHash("Nida::Lexicals",                                        # Lexical items
+my $Lexicals = genHash("Unisyn::Parse::Lexicals",                                        # Lexical items
   OpenBracket       => LexicalConstant("OpenBracket",        0, 'b', 'b'),      # The lowest bit of an open bracket code is zero
   CloseBracket      => LexicalConstant("CloseBracket",       1, 'B', 'B'),      # The lowest bit of a close bracket code is one
   Ascii             => LexicalConstant("Ascii",              2, 'a', 'v'),      # Ascii characters
@@ -54,7 +54,7 @@ my $Lexicals = genHash("Nida::Lexicals",                                        
   NewLineWhiteSpace => LexicalConstant("WhiteSpaceNewLine", 13, 'h'),           # White space new line that can be ignored during lexical analysis but must be distinguished from other white space so that we can divide the source into lines
  );
 
-my $TreeTermLexicals = genHash("Nida::TreeTermLexicals",                        # Tree Term Lexical items embodied as Nida lexical items
+my $TreeTermLexicals = genHash("Unisyn::Parse::TreeTermLexicals",                        # Tree Term Lexical items embodied as Nida lexical items
   a => "assign",
   d => "dyad",
   b => "OpenBracket",
@@ -66,7 +66,7 @@ my $TreeTermLexicals = genHash("Nida::TreeTermLexicals",                        
   v => "variable",
  );
 
-my $Tables = genHash("Nida::Lexical::Tables",                                   # Tables used to parse lexical items
+my $Tables = genHash("Unisyn::Parse::Lexical::Tables",                                   # Tables used to parse lexical items
   alphabets        => undef,                                                    # Alphabets selected from uncode database
   alphabetRanges   => undef,                                                    # Number of alphabet ranges
   brackets         => undef,                                                    # Number of brackets
