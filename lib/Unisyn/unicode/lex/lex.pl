@@ -27,31 +27,31 @@ Text generation routine let us write some pretend code to parse
 
 =cut
 
-sub LexicalConstant($$;$)                                                       # Lexical constants as opposed to derived values
- {my ($name, $number, $letter, $like) = @_;                                     # Name of the lexical item, numeric code as used in Nida, character code as used Tree::Term, a specialized instance of this Tree::Term which is never the less lexically identical to the Tree::Term
+sub LexicalConstant($$$;$)                                                      # Lexical constants as opposed to derived values
+ {my ($name, $number, $letter, $like) = @_;                                     # Name of the lexical item, numeric code, character code, character code as used Tree::Term, a specialized instance of this Tree::Term which is never the less lexically identical to the Tree::Term
   genHash("Nida::Lexical::Constant",                                            # Description of a lexical item connecting the definition in Tree::Term with that in Nida::Lexicals
     name   => $name,                                                            #I Name of the lexical item
     number => $number,                                                          #I Numeric code for lexical item
     letter => $letter,                                                          #I Alphabetic name for lexical item
+    like   => $like,                                                            #I Parsed like this element from Tree::Term
    );
  }
 
 my $Lexicals = genHash("Nida::Lexicals",                                        # Lexical items
-  OpenBracket       => LexicalConstant("OpenBracket",        0, 'b'),           # The lowest bit of an open bracket code is zero
-  CloseBracket      => LexicalConstant("CloseBracket",       1, 'B'),           # The lowest bit of a close bracket code is one
-  Ascii             => LexicalConstant("Ascii",              2, 'a'),           # Ascii characters
-  NewLine           => LexicalConstant("NewLine",            3, 'n'),           # New line character in ascii
-  dyad              => LexicalConstant("dyad",               4, 'd'),           # Infix operator with left to right binding at priority 3
-  prefix            => LexicalConstant("prefix",             5, 'p'),           # Prefix operator - it applies only to the following variable
-  assign            => LexicalConstant("assign",             6, 'a'),           # Assign infix operator with right to left binding at priority 2.
-  variable          => LexicalConstant("variable",           7, 'v'),           # Variable although it could also be an ascii string or regular expression
-  suffix            => LexicalConstant("suffix",             8, 'q'),           # Suffix operator - it applies only to the preceding variable
-  semiColon         => LexicalConstant("semiColon",          9, 's'),           # Infix operator with left to right binding at priority 1
-  NewLineSemiColon  => LexicalConstant("NewLineSemiColon",  10, 'N'),           # A new line character that is also acting as a semi colon
+  OpenBracket       => LexicalConstant("OpenBracket",        0, 'b', 'b'),      # The lowest bit of an open bracket code is zero
+  CloseBracket      => LexicalConstant("CloseBracket",       1, 'B', 'B'),      # The lowest bit of a close bracket code is one
+  Ascii             => LexicalConstant("Ascii",              2, 'a', 'v'),      # Ascii characters
+  dyad              => LexicalConstant("dyad",               3, 'd', 'd'),      # Infix operator with left to right binding at priority 3
+  prefix            => LexicalConstant("prefix",             4, 'p', 'p'),      # Prefix operator - it applies only to the following variable
+  assign            => LexicalConstant("assign",             5, 'a', 'a'),      # Assign infix operator with right to left binding at priority 2.
+  variable          => LexicalConstant("variable",           6, 'v', 'v'),      # Variable although it could also be an ascii string or regular expression
+  suffix            => LexicalConstant("suffix",             7, 'q', 'q'),      # Suffix operator - it applies only to the preceding variable
+  semiColon         => LexicalConstant("semiColon",          8, 's', 's'),      # Infix operator with left to right binding at priority 1
+  term              => LexicalConstant("term",               9, 't', 't'),      # Term in the parse tree
+  empty             => LexicalConstant("empty",             10, 'e', 'e'),      # Empty term present between two adjacent semicolons
   WhiteSpace        => LexicalConstant("WhiteSpace",        11, 'W'),           # White space that can be ignored during lexical analysis
-  term              => LexicalConstant("term",              12, 't'),           # Term in the parse tree
-  empty             => LexicalConstant("empty",             13, 'e'),           # Empty term present between two adjacent semicolons
-  WhiteSpaceNewLine => LexicalConstant("WhiteSpaceNewLine", 14, 'h'),           # White space new line that can be ignored during lexical analysis but must be distinguished from other white space so that we can divide the source into lines
+  NewLineSemiColon  => LexicalConstant("NewLineSemiColon",  12, 'N'),           # A new line character that is also acting as a semi colon
+  NewLineWhiteSpace => LexicalConstant("WhiteSpaceNewLine", 13, 'h'),           # White space new line that can be ignored during lexical analysis but must be distinguished from other white space so that we can divide the source into lines
  );
 
 my $TreeTermLexicals = genHash("Nida::TreeTermLexicals",                        # Tree Term Lexical items embodied as Nida lexical items
@@ -335,39 +335,31 @@ sub brackets                                                                    
   $Tables->bracketsHigh = [@h];
  }
 
-sub tripleTerms                                                                 # All invalid transitions that could usefully interpret one or more intervening new lines as a variable or term and thereby become syntactically correct
+sub tripleTerms                                                                 # All invalid transitions that could usefully interpret one intervening new line as a semi colon
  {my %C = Tree::Term::LexicalStructure->codes->%*;
-  my @d = qw(d p q v B b);                                                      # Ignoring assing to avoid the possibility of assigning to a new line. Ignoring semi colon as intervening space is specially treated as empty.
-  my %semi; my %var;                                                            # The various ways we could treat a string of one or more new line characters followed by trailing spaces.
+  my @d = qw(a B b d p q v);                                                    # Ignoring semi colon as intervening space is specially treated as empty.
+  my %semi;                                                                     # Pairs between which we could usefully insert a semi colon
   for   my $a(@d)
    {for my $b(@d)
      {if (!Tree::Term::validPair($a, $b))
        {my $as = Tree::Term::validPair($a, 's');
         my $sb = Tree::Term::validPair('s', $b);
-        my $av = Tree::Term::validPair($a, 'v');
-        my $vb = Tree::Term::validPair('v', $b);
-        if    ($as && $sb and !($av && $vb))
+        if    ($as && $sb)
          {$semi{$a}{$b}++;
          lll "Semi $a $b";
-         }
-        elsif ($av && $vb and !($as && $sb))
-         {$var{$a}{$b}++;
-         lll "Var $a $b";
-         }
-        elsif ($av && $vb and $as && $sb)
-         {confess "$a to $b allows for both semi colon and variable";
          }
        }
      }
    }
  }
 
-sub translateSomeText($)                                                        # Translate some text
- {my ($s) = @_;                                                                 # String to translate
-  my @w = (substr($s, 0, 1));
-  for my $i(1..length($s))                                                      # Parse into strings of letters and spaces
-   {my $b = join '', sort split //, substr($s, $i - 1, 2) =~ s(\S) (a)gsr  =~ s(\s) ( )gsr;
-    my $c = substr($s, $i, 1);
+sub translateSomeText($$)                                                       # Translate some text
+ {my ($title, $string) = @_;                                                    # Name of text, string to translate
+  my @w = (substr($string, 0, 1));
+  for my $i(1..length($string))                                                      # Parse into strings of letters and spaces
+   {my $b = join '', sort split //,
+      substr($string, $i - 1, 2) =~ s(\S) (a)gsr  =~ s(\s) ( )gsr;
+    my $c = substr($string, $i, 1);
     if ($b ne ' a')
      {$w[-1] .= $c;
      }
@@ -415,7 +407,7 @@ sub translateSomeText($)                                                        
 #   elsif ($t =~ m(\s))       {$T .= $Tables->separator x length($w)}
     elsif ($t =~ m(\s))       {}                                                # Simplify by not spacing the lexicals during testing
     elsif ($t eq 'A')         {$T .= substr($w, 1) =~ s(-) (\n)gsr}
-    else {confess "Invalid lexical item $s"}
+    else {confess "Invalid lexical item $string"}
    }
 
   my @L;                                                                        # Translated text as lexical elements
@@ -431,7 +423,7 @@ sub translateSomeText($)                                                        
     elsif ($t eq 'B')         {push @L, $n{CloseBracket}}
     elsif ($t =~ m(\s))       {}
     elsif ($t eq 'A')         {push @L, $n{Ascii}}
-    else {confess "Invalid lexical item $s"}
+    else {confess "Invalid lexical item $string"}
    }
 
   lll "Sample text length in chars   :", sprintf("0x%x", length($T));
@@ -447,26 +439,34 @@ sub translateSomeText($)                                                        
 
   lll "Sample text    :\n$T";
   lll "Sample lexicals:\n", dump(\@L);
-  $Tables->sampleText     = $T;
-  $Tables->sampleLexicals = [map {$_<<24} @L];
+  $Tables->sampleText    ->{$title} = $T;                                       # Save sample text
+  $Tables->sampleLexicals->{$title} = [map {$_<<24} @L];
  }
 
 alphabets;                                                                      # Locate alphabets
 brackets;                                                                       # Locate brackets
 tripleTerms;
 
-translateSomeText <<END;                                                        # Translate some text into Nida
+translateSomeText 'v', <<END;                                                   # Translate some text
+va
+END
+
+translateSomeText 'vav', <<END;
+v1 aa v2
+END
+
+translateSomeText 'ws', <<END;
 va aassign b1 b2 b3 vbp B3 B2 dplus b4 vsc B4 B1 s
 vaa aassign
   Asome--ascii--text dplus
   vcc s
 END
 
-translateSomeText <<END;                                                        # Translate some text into Nida
+translateSomeText 'brackets', <<END;
 va aassign b1 b2 b3 vbp B3 B2 dplus b4 vsc B4 B1 s
 END
 
-translateSomeText <<END;                                                        # Translate some text into Nida
+translateSomeText 'nosemi', <<END;
 va aassign b1 b2 b3 vbp B3 B2 dplus b4 vsc B4 B1
 END
 
