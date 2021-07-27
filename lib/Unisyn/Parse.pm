@@ -31,8 +31,8 @@ are used to store information describing the parse tree.
 #D1 Parse                                                                       # Parse Unisyn expressions
 
 my $Lex = sub                                                                   # Lexical table definitions
- {my $f = qq(/home/phil/perl/cpan/NasmX86/lib/Nasm/unicode/lex/lex.data);       # As produced by unicode/lex/lex.pl
-     $f = qq(lib/Unisyn/unicode/lex/lex.data) unless $develop;
+ {my $d = qq(lib/Unisyn/unicode/lex/lex.data);                                  # As produced by unicode/lex/lex.pl
+  my $f = $develop ? qq(/home/phil/perl/cpan/UnisynParse/$d) : $d;
   my $l = eval readFile $f;                                                     # Load lexical definitions
   confess "$@\n" if $@;
   $l
