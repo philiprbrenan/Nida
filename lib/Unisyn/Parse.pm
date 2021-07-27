@@ -154,7 +154,7 @@ sub lexicalNameFromLetter($)                                                    
   my %l = $Lex->{treeTermLexicals}->%*;
   my $n = $l{$l};
   confess "No such lexical: $l" unless $n;
-  $n
+  $n->{short}
  }
 
 sub lexicalNumberFromLetter($)                                                  # Lexical number for a lexical item described by its letter
