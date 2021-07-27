@@ -37,10 +37,10 @@ loops and if statements with nested expressions:
 
 ```
      is
- [sub](https://perldoc.perl.org/perlsub.html)          as
+ sub          as
         array             then
                     ==                    else
-                 v1    [Vectors In Two Dimensions](https://pypi.org/project/Vector2/)         plus                  then
+                 v1    v2         plus                  then
                                v3      v4         ==                     else
                                                v5    v6         minus            times
                                                              v7       v8      v9           +
