@@ -1894,7 +1894,7 @@ if (1) {                                                                        
   parseExpression source=>$source32, size=>$sourceLength32, my $parse = Vq(parse);
   $parse->outNL();
 
-  ok Assemble(debug => 1, eq => <<END);
+  ok Assemble(debug => 0, eq => <<END);
 Input  Length: 0000 0000 0000 0057
 Output Length: 0000 0000 0000 015C
 After conversion from utf8 to utf32
