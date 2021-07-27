@@ -56,5 +56,5 @@ clearly within the three levels of operator precedence provided.
 
 ## Other languages
 
-Lisp, [Bash](https://en.wikipedia.org/wiki/Bash_(Unix_shell)), tcl are well known, successful languages that took the approach of
+Lisp, [Bash](https://en.wikipedia.org/wiki/Bash_(Unix_shell)), [Tcl](https://en.wikipedia.org/wiki/Tcl) are well known, successful languages that took the approach of
 having a generic syntax.
