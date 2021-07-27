@@ -29,7 +29,7 @@ Text generation routine let us write some pretend code to parse
 
 sub LexicalConstant($$$;$)                                                      # Lexical constants as opposed to derived values
  {my ($name, $number, $letter, $like) = @_;                                     # Name of the lexical item, numeric code, character code, character code as used Tree::Term, a specialized instance of this Tree::Term which is never the less lexically identical to the Tree::Term
-  genHash("Unisyn::Parse::Lexical::Constant",                                            # Description of a lexical item connecting the definition in Tree::Term with that in Nida::Lexicals
+  genHash("Unisyn::Parse::Lexical::Constant",                                   # Description of a lexical item connecting the definition in Tree::Term with that inUnisyn
     name   => $name,                                                            #I Name of the lexical item
     number => $number,                                                          #I Numeric code for lexical item
     letter => $letter,                                                          #I Alphabetic name for lexical item
@@ -37,7 +37,7 @@ sub LexicalConstant($$$;$)                                                      
    );
  }
 
-my $Lexicals = genHash("Unisyn::Parse::Lexicals",                                        # Lexical items
+my $Lexicals = genHash("Unisyn::Parse::Lexicals",                               # Lexical items in Unisyn
   OpenBracket       => LexicalConstant("OpenBracket",        0, 'b', 'b'),      # The lowest bit of an open bracket code is zero
   CloseBracket      => LexicalConstant("CloseBracket",       1, 'B', 'B'),      # The lowest bit of a close bracket code is one
   Ascii             => LexicalConstant("Ascii",              2, 'a', 'v'),      # Ascii characters
@@ -54,17 +54,7 @@ my $Lexicals = genHash("Unisyn::Parse::Lexicals",                               
   NewLineWhiteSpace => LexicalConstant("WhiteSpaceNewLine", 13, 'h'),           # White space new line that can be ignored during lexical analysis but must be distinguished from other white space so that we can divide the source into lines
  );
 
-my $TreeTermLexicals = genHash("Unisyn::Parse::TreeTermLexicals",                        # Tree Term Lexical items embodied as Nida lexical items
-  a => "assign",
-  d => "dyad",
-  b => "OpenBracket",
-  B => "CloseBracket",
-  p => "prefix",
-  s => "semiColon",
-  q => "suffix",
-  t => "term",
-  v => "variable",
- );
+my $TreeTermLexicals = Tree::Term::LexicalStructure->codes;
 
 my $Tables = genHash("Unisyn::Parse::Lexical::Tables",                                   # Tables used to parse lexical items
   alphabets        => undef,                                                    # Alphabets selected from uncode database
@@ -79,15 +69,15 @@ my $Tables = genHash("Unisyn::Parse::Lexical::Tables",                          
   lexicalHigh      => undef,                                                    # High zmm for lexical items
   lexicalLow       => undef,                                                    # Low  zmm for lexical items
   lexicals         => $Lexicals,                                                # The lexical items
-  sampleLexicals   => undef,                                                    # A sample Nida program as classified lexical items
-  sampleText       => undef,                                                    # A sample Nida program as text
+  sampleLexicals   => undef,                                                    # Has of sample program as arrays of lexical items
+  sampleText       => undef,                                                    # Sample programs in utf8
   treeTermLexicals => $TreeTermLexicals,                                        # Tree term lexicals
   semiColon        => q(⟢),                                                     # Semi colon symbol, left star: U+27E2
   separator        => q( ),                                                     # Space for separating non ascii items: U+205F
   structure        => Tree::Term::LexicalStructure,                             # Lexical structure from Tree::term
  );
 
-if (!-e $data)                                                                  # Download specification
+if (!-e $data)                                                                  # Download Unicode specification
  {say STDERR qx(curl -o $data $unicode);
  }
 
@@ -356,7 +346,7 @@ sub tripleTerms                                                                 
 sub translateSomeText($$)                                                       # Translate some text
  {my ($title, $string) = @_;                                                    # Name of text, string to translate
   my @w = (substr($string, 0, 1));
-  for my $i(1..length($string))                                                      # Parse into strings of letters and spaces
+  for my $i(1..length($string))                                                 # Parse into strings of letters and spaces
    {my $b = join '', sort split //,
       substr($string, $i - 1, 2) =~ s(\S) (a)gsr  =~ s(\s) ( )gsr;
     my $c = substr($string, $i, 1);
@@ -371,7 +361,7 @@ sub translateSomeText($$)                                                       
   my %alphabets;                                                                # Alphabets for each lexical
 
   for my $l(keys $TreeTermLexicals->%*)
-   {my $m = $TreeTermLexicals->{$l};
+   {my $m = $TreeTermLexicals->{$l}{short};
     my $n = $Tables->lexicalAlpha->{$m}[0];
     next unless $n;
     my $a = $Tables->alphabets->{$n};
@@ -470,7 +460,7 @@ translateSomeText 'nosemi', <<END;
 va aassign b1 b2 b3 vbp B3 B2 dplus b4 vsc B4 B1
 END
 
-say STDERR owf $lexicalsFile, dump($Tables);                                               # Write results
+say STDERR owf $lexicalsFile, dump($Tables);                                    # Write results
 
 __DATA__
 CIRCLED LATIN LETTER  : ⒶⒷⒸⒹⒺⒻⒼⒽⒾⒿⓀⓁⓂⓃⓄⓅⓆⓇⓈⓉⓊⓋⓌⓍⓎⓏⓐⓑⓒⓓⓔⓕⓖⓗⓘⓙⓚⓛⓜⓝⓞⓟⓠⓡⓢⓣⓤⓥⓦⓧⓨⓩ
