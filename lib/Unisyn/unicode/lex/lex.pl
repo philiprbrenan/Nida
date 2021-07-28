@@ -8,7 +8,7 @@ use strict;
 use Carp;
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
-use Test::More qw(no_plan);
+#use Test::More qw(no_plan);
 use Tree::Term;
 use feature qw(say state current_sub);
 use utf8;
@@ -345,18 +345,6 @@ sub tripleTerms                                                                 
 
 sub translateSomeText($$)                                                       # Translate some text
  {my ($title, $string) = @_;                                                    # Name of text, string to translate
-  my @w = (substr($string, 0, 1));
-  for my $i(1..length($string))                                                 # Parse into strings of letters and spaces
-   {my $b = join '', sort split //,
-      substr($string, $i - 1, 2) =~ s(\S) (a)gsr  =~ s(\s) ( )gsr;
-    my $c = substr($string, $i, 1);
-    if ($b ne ' a')
-     {$w[-1] .= $c;
-     }
-    else
-     {push @w, $c;
-     }
-   }
 
   my %alphabets;                                                                # Alphabets for each lexical
 
@@ -374,9 +362,9 @@ sub translateSomeText($$)                                                       
 
   my sub translate($)                                                           # Translate a string written in normal into the indicated alphabet
    {my ($lexical) = @_;                                                         # Lexical item to translate
-
     my $a =  $alphabets{substr($lexical, 0, 1)};                                # Alphabet to translate to
     my @a =   split //, $$a[1];                                                 # Alphabet to translate to
+
     for my $c(split //, substr($lexical, 1))
      {my $i = index $normal, $c;
       if ($$a[0] =~ m(\AmathematicalItalic\Z))
@@ -387,33 +375,31 @@ sub translateSomeText($$)                                                       
      }
    }
 
-  for my $w(@w)                                                                 # Translate to text
-   {my $t = substr($w, 0, 1); my $r = substr($w, 1);
-    if ($t =~ m(\A(a|d|v)\Z)) {translate $w}
-    elsif ($t eq 's')         {$T .= $Tables->alphabets->{semiColon}}
-    elsif ($t eq 'b')         {$T .= $Tables->bracketsOpen ->[$r]}
-    elsif ($t eq 'B')         {$T .= $Tables->bracketsClose->[$r]}
-#   elsif ($t =~ m(\n))       {$T .= $w}
-#   elsif ($t =~ m(\s))       {$T .= $Tables->separator x length($w)}
-    elsif ($t =~ m(\s))       {}                                                # Simplify by not spacing the lexicals during testing
-    elsif ($t eq 'A')         {$T .= substr($w, 1) =~ s(-) (\n)gsr}
-    else {confess "Invalid lexical item $string"}
+  for my $w(split /\s+/, $string)                                                  # Translate to text
+   {if    ($w =~ m(\A(a|d|v))) {translate $w}
+    elsif ($w =~ m(\As)) {$T .= $Tables->alphabets->{semiColon}}
+    elsif ($w =~ m(\Ab)) {$T .= $Tables->bracketsOpen ->[substr($w, 1)]}
+    elsif ($w =~ m(\AB)) {$T .= $Tables->bracketsClose->[substr($w, 1)]}
+    elsif ($w =~ m(\AS)) {$T .= ' '}
+    elsif ($w =~ m(\AN)) {$T .= "\n"}
+    elsif ($w =~ m(\AA)) {$T .= 'A'}
+    else {confess "Invalid lexical item $w in $string"}
    }
 
   my @L;                                                                        # Translated text as lexical elements
   my %l = $Tables->lexicals->%*;
   my %n = map {$_=>$l{$_}->number} sort keys %l;
-  for my $w(@w)                                                                 # Translate to lexical elements
+  for my $w(split /\s+/, $string)                                               # Translate to lexical elements
    {my $t = substr($w, 0, 1);
-       if ($t eq 'a')         {push @L, $n{assign}}
-    elsif ($t eq 'd')         {push @L, $n{dyad}}
-    elsif ($t eq 'v')         {push @L, $n{variable}}
-    elsif ($t eq 's')         {push @L, $n{semiColon}}
-    elsif ($t eq 'b')         {push @L, $n{OpenBracket}}
-    elsif ($t eq 'B')         {push @L, $n{CloseBracket}}
-    elsif ($t =~ m(\s))       {}
-    elsif ($t eq 'A')         {push @L, $n{Ascii}}
-    else {confess "Invalid lexical item $string"}
+       if ($w =~ m(\Aa)) {push @L, $n{assign}}
+    elsif ($w =~ m(\Ad)) {push @L, $n{dyad}}
+    elsif ($w =~ m(\Av)) {push @L, $n{variable}}
+    elsif ($w =~ m(\As)) {push @L, $n{semiColon}}
+    elsif ($w =~ m(\Ab)) {push @L, $n{OpenBracket}}
+    elsif ($w =~ m(\AB)) {push @L, $n{CloseBracket}}
+    elsif ($w =~ m(\AS)) {push @L, ($n{Ascii} << 24) + 32}
+    elsif ($w =~ m(\AN)) {push @L, ($n{Ascii} << 24) + 10}
+    elsif ($w =~ m(\AA)) {push @L, ($n{Ascii} << 24) + ord('A')}
    }
 
   lll "Sample text length in chars   :", sprintf("0x%x", length($T));
@@ -430,7 +416,7 @@ sub translateSomeText($$)                                                       
   lll "Sample text    :\n$T";
   lll "Sample lexicals:\n", dump(\@L);
   $Tables->sampleText    ->{$title} = $T;                                       # Save sample text
-  $Tables->sampleLexicals->{$title} = [map {$_<<24} @L];
+  $Tables->sampleLexicals->{$title} = [map {$_ < 16 ? $_<<24 : $_} @L];         # Boost lexical elements not already boosted
  }
 
 alphabets;                                                                      # Locate alphabets
@@ -458,6 +444,10 @@ END
 
 translateSomeText 'nosemi', <<END;
 va aassign b1 b2 b3 vbp B3 B2 dplus b4 vsc B4 B1
+END
+
+translateSomeText 's1', <<END;
+va aa N S S A N S S S
 END
 
 say STDERR owf $lexicalsFile, dump($Tables);                                    # Write results
