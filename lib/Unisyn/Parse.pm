@@ -1851,7 +1851,7 @@ END
  }
 
 #latest:
-if (1) {                                                                        #TClassifyNewLines   Parse some code
+if (1) {                                                                        # Parse some code
   my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
              (Vq(out), Vq(size), Vq(opens), Vq('fail'));
 
@@ -2110,6 +2110,112 @@ Current:
 accept s
 Push Element:
    r13: 0000 0017 0000 0008
+parse: 0000 0000 0000 0009
+END
+ }
+
+latest:
+if (1) {                                                                        # Parse some code
+  my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
+             (Vq(out), Vq(size), Vq(opens), Vq('fail'));
+
+  my $source = Rutf8 $$Lex{sampleText}{s1};                                     # String to be parsed in utf8
+  my $sourceLength = StringLength Vq(string, $source);
+     $sourceLength->outNL("Input  Length: ");
+
+  ConvertUtf8ToUtf32 Vq(u8,$source), size8 => $sourceLength,                    # Convert to utf32
+    (my $source32       = Vq(u32)),
+    (my $sourceSize32   = Vq(size32)),
+    (my $sourceLength32 = Vq(count));
+
+  $sourceSize32   ->outNL("Output Length: ");                                   # Write output length
+
+  PrintOutStringNL "After conversion from utf8 to utf32";
+  PrintUtf32($sourceLength32, $source32);                                       # Print utf32
+
+  Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{lexicalLow} ->@*)."]";                # Each double is [31::24] Classification, [21::0] Utf32 start character
+  Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{lexicalHigh}->@*)."]";                # Each double is [31::24] Range offset,   [21::0] Utf32 end character
+
+  ClassifyWithInRangeAndSaveOffset address=>$source32, size=>$sourceLength32;   # Alphabetic classification
+  PrintOutStringNL "After classification into alphabet ranges";
+  PrintUtf32($sourceLength32, $source32);                                       # Print classified utf32
+
+  Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{bracketsLow} ->@*)."]";               # Each double is [31::24] Classification, [21::0] Utf32 start character
+  Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{bracketsHigh}->@*)."]";               # Each double is [31::24] Range offset,   [21::0] Utf32 end character
+
+  ClassifyWithInRange address=>$source32, size=>$sourceLength32;                # Bracket matching
+  PrintOutStringNL "After classification into brackets";
+  PrintUtf32($sourceLength32, $source32);                                       # Print classified brackets
+
+  MatchBrackets address=>$source32, size=>$sourceLength32, $opens, $fail;       # Match brackets
+  PrintOutStringNL "After bracket matching";
+  PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
+
+#  ClassifyNewLines address=>$source32, size=>$sourceLength32;                   # Classify white space
+#  PrintOutStringNL "After converting some new lines to semi colons";
+#  PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
+
+  parseExpression source=>$source32, size=>$sourceLength32, my $parse = Vq(parse);
+  $parse->outNL();
+
+  ok Assemble(debug => 0, eq => <<END);
+Input  Length: 0000 0000 0000 0010
+Output Length: 0000 0000 0000 0040
+After conversion from utf8 to utf32
+0001 D5EE 0001 D44E  0000 000A 0000 0020  0000 0020 0000 0041  0000 000A 0000 0020  0000 0020 0000 0020
+After classification into alphabet ranges
+0600 001A 0500 001A  0200 000A 0200 0020  0200 0020 0200 0041  0200 000A 0200 0020  0200 0020 0200 0020
+After classification into brackets
+0600 001A 0500 001A  0200 000A 0200 0020  0200 0020 0200 0041  0200 000A 0200 0020  0200 0020 0200 0020
+After bracket matching
+0600 001A 0500 001A  0200 000A 0200 0020  0200 0020 0200 0041  0200 000A 0200 0020  0200 0020 0200 0020
+Push Element:
+   r13: 0000 0000 0000 0006
+New: accept initial variable
+    r8: 0000 0000 0000 0006
+Current:
+   r13: 0000 0001 0000 0005
+   r12: 0000 0000 0000 0001
+accept a
+Push Element:
+   r13: 0000 0001 0000 0005
+Current:
+   r13: 0000 0002 0000 0006
+   r12: 0000 0000 0000 0002
+accept v
+Push Element:
+   r13: 0000 0002 0000 0006
+New: Variable
+    r8: 0000 0002 0000 0006
+Current:
+   r13: 0000 0003 0000 0006
+   r12: 0000 0000 0000 0003
+Current:
+   r13: 0000 0004 0000 0006
+   r12: 0000 0000 0000 0004
+Current:
+   r13: 0000 0005 0000 0006
+   r12: 0000 0000 0000 0005
+Current:
+   r13: 0000 0006 0000 0006
+   r12: 0000 0000 0000 0006
+Current:
+   r13: 0000 0007 0000 0006
+   r12: 0000 0000 0000 0007
+Current:
+   r13: 0000 0008 0000 0006
+   r12: 0000 0000 0000 0008
+Current:
+   r13: 0000 0009 0000 0006
+   r12: 0000 0000 0000 0009
+Reduce 3:
+    r8: 0000 0000 0000 0009
+    r9: 0000 0001 0000 0005
+   r10: 0000 0000 0000 0009
+New: Term infix term
+    r8: 0000 0000 0000 0009
+    r8: 0000 0000 0000 0009
+    r8: 0000 0001 0000 0005
 parse: 0000 0000 0000 0009
 END
  }
