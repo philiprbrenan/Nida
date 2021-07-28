@@ -1349,7 +1349,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 18;
+   {plan tests => 19;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
