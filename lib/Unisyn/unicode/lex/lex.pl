@@ -51,12 +51,11 @@ my $Lexicals = genHash("Unisyn::Parse::Lexicals",                               
   empty             => LexicalConstant("empty",             10, 'e', 'e'),      # Empty term present between two adjacent semicolons
   WhiteSpace        => LexicalConstant("WhiteSpace",        11, 'W'),           # White space that can be ignored during lexical analysis
   NewLineSemiColon  => LexicalConstant("NewLineSemiColon",  12, 'N'),           # A new line character that is also acting as a semi colon
-  NewLineWhiteSpace => LexicalConstant("NewLineWhiteSpace", 13, 'h'),           # White space new line that can be ignored during lexical analysis but must be distinguished from other white space so that we can divide the source into lines
  );
 
 my $TreeTermLexicals = Tree::Term::LexicalStructure->codes;
 
-my $Tables = genHash("Unisyn::Parse::Lexical::Tables",                                   # Tables used to parse lexical items
+my $Tables = genHash("Unisyn::Parse::Lexical::Tables",                          # Tables used to parse lexical items
   alphabets        => undef,                                                    # Alphabets selected from uncode database
   alphabetRanges   => undef,                                                    # Number of alphabet ranges
   brackets         => undef,                                                    # Number of brackets
