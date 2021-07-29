@@ -7,7 +7,8 @@ use warnings FATAL => qw(all);
 use strict;
 use Carp;
 use Data::Dump qw(dump);
-use Test::More qw(no_plan);
+use Data::Table::Text qw(:all);
+use Test::More tests => 16;
 
 sub ignore(@)                                                                   # Decide which spaces can be ignored and which are actually ascii
  {my (@i) = @_;                                                                 # Array of 'v', 'a', 's', 'n'
