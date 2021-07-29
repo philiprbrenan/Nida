@@ -70,7 +70,7 @@ sub loadCurrentChar()                                                           
   Shl $element, 32;
   Mov $r, "[$start+4*$index+3]";                                                # Load lexical classification as lowest byte
 
-  Cmp $r."b", $$Lex{bracketsBase};                                              # Brackets , due to their numerosity, start after 0x10 with open even and close odd
+  Cmp $r, $$Lex{bracketsBase};                                                  # Brackets , due to their numerosity, start after 0x10 with open even and close odd
   IfGe                                                                          # Brackets
    {And $r, 1                                                                   # 0 - open, 1 - close
    }
@@ -155,34 +155,67 @@ sub ClassifyNewLines(@)                                                         
 sub ClassifyWhiteSpace(@)                                                       # Classify white space per: lib/Unisyn/whiteSpace/whiteSpaceClassification.pl
  {my (@parameters) = @_;                                                        # Parameters
   @_ >= 1 or confess;
-return
+
   my $s = Subroutine
    {my ($p) = @_;                                                               # Parameters
-    my $refChar  = r15; ### FREE                                                        # Reference to the current character
-    my $e        = r14;                                                         # Current char
+    my $e        = r15;                                                         # Current char
     my $eb       = $e."b";                                                      # Lexical type of current char
-    my $s        = r13;                                                         # State of white space between 'a'
-    my $S        = r12;                                                         # State of white space before  'a'
-    my $c        = r11;                                                         # Full classification of a character
+    my $s        = r14;                                                         # State of white space between 'a'
+    my $S        = r13;                                                         # State of white space before  'a'
+    my $c        = r12;                                                         # Full classification of a character
     my $cb       = $c."b";                                                      # Actual character within alphabet
-    my $address  = r10;                                                         # Address of input string
-    my $index    = r9;                                                          # Index of current char
-    PushR my @save = (r10, r11, r12, r13, r14, r15);
-
-#  for(my $i = 1; $i < @i; ++$i)                                                 # 'n' immediately after 'a'  is significant
-#   {confess "n preceded by s at position $i in\n".join('', @i)."\n"
-#      if $i[$i-1] eq 's' and $i[$i] eq 'n';
-#     $i[$i] = 'N' if $i[$i-1] eq 'a' and $i[$i] eq 'n';
-#   }
-    Mov $s, -1; Mov $S, -1;
+    my $address  = r11;                                                         # Address of input string
+    my $index    = r10;                                                         # Index of current char
+    my ($w1, $w2)= (r8."b", r9."b");                                            # Temporary work registers
+    PushR my @save = (r8, r9, r10, r11, r12, r13, r14, r15);
 
     $$p{address}->setReg($address);                                             # Address of string
+    Mov $s, -1; Mov $S, -1; Mov $index, 0;                                      # States, position
 
     $$p{size}->for(sub                                                          # Each character in expression
      {my ($indexVariable, $start, $next, $end) = @_;
+
       $indexVariable->setReg($index);
       Mov $eb, "[$address+4*$index+3]";                                         # Current lexical code
-      PrintErrRegisterInHex $e;
+
+      Block                                                                     # Trap space before new line and detect new line after ascii
+       {my ($start, $end) = @_;
+        Cmp $index, 0;
+        IfEq {Jmp $end};                                                        # Start beyond the first character so we can look back one character.
+
+        Cmp $eb, $Ascii;
+        IfNe {Jmp $end};                                                        # Current is ascii
+
+        Mov $w1, "[$address+4*$index-1]";                                       # Previous lexical code
+        Cmp $w1, $Ascii;
+        IfNe {Jmp $end};                                                        # Previous is ascii
+
+        if (1)                                                                  # Check for 's' followed by 'n' and 'a' followed by 'n'
+         {Mov $w1, "[$address+4*$index-4]";                                     # Previous character
+          Mov $w2, "[$address+4*$index]";                                       # Current character
+
+          Cmp $w1, $asciiSpace;                                                 # Check for space followed by new line
+          IfEq
+           {Cmp $w2, $asciiNewLine;
+            IfEq                                                                # 's' followed by 'n'
+             {PrintErrStringNL "Space detected before new line at index:";
+              PrintErrRegisterInHex $index;
+             };
+           };
+
+          Cmp $w1, $asciiSpace;                                                 # Check for space followed by new line
+          IfEq {Jmp $end};                                                      # Previous was 's'
+
+          Cmp $w1, $asciiNewLine;
+          IfEq {Jmp $end};                                                      # Previous was 'n'
+                                                                                # Previous is 'a' but not 's' or 'n'
+          Cmp $w2, $asciiNewLine;
+          IfNe {Jmp $end};                                                      # Current is 'n'
+
+          Mov $w2, $WhiteSpace;                                                 # Mark new line as significant
+          Mov "[$address+4*$index+3]", $w2;                                     # Current character
+         }
+       };
 
       Block                                                                     # Spaces and new lines between other ascii
        {my ($start, $end) = @_;
@@ -214,12 +247,12 @@ return
             Cmp $cb, $asciiSpace;
             IfEq
              {Mov $cb, $WhiteSpace;                                             # Mark as significant white space.
-              Mov "[$address+4*$s+3]", $cb;
+              #Mov "[$address+4*$s+3]", $cb;
               Jmp $next;
              };
             Cmp $cb, $asciiNewLine;
             IfEq
-             {Mov $cb, $NewLineWhiteSpace;                                      # Mark as significant new line
+             {Mov $cb, $WhiteSpace;                                             # Mark as significant new line
               Mov "[$address+4*$s+3]", $cb;
               Jmp $next;
              };
@@ -229,11 +262,11 @@ return
          };
        };
 
-      Block                                                                     # Spaces preceding ascii character
+      Block                                                                     # 's' preceding 'a' are significant
        {my ($start, $end) = @_;
         Cmp $S, -1;
-        IfEq                                                                    # Looking for space
-         {Cmp $eb, $Ascii;                                                      # Not ascii
+        IfEq                                                                    # Looking for 's'
+         {Cmp $eb, $Ascii;                                                      # Not 'a'
           IfNe
            {Mov $S, -1;
             Jmp $end
@@ -244,18 +277,67 @@ return
            {Mov $S, $index;
            Jmp $end;
            };
+         }
+        sub                                                                     # Looking for 'a'
+         {Cmp $eb, $Ascii;                                                      # Not 'a'
+          IfNe
+           {Mov $S, -1;
+            Jmp $end
+           };
+          Mov $cb, "[$address+4*$index]";                                       # Actual character in alphabet
+          Cmp $cb, $asciiSpace; IfEq {Jmp $end};                                # Skip 's'
 
-          Dec $index;                                                           # Up to the current character
+          Cmp $cb, $asciiNewLine;
+          IfEq                                                                  # New lines prevent 's' from preceeding 'a'
+           {Mov $s, -1;
+            Jmp $end
+           };
+
           For                                                                   # Move over spaces to non space ascii
            {my ($start, $end, $next) = @_;
-            Mov $cb, "[$address+4*$s]";                                         # Actual character in alphabet
-            Mov "byte[$address+4*$s+3]", $WhiteSpace;
-           } $s, $index;
-          Inc $index;                                                           # Restore current character
+            Mov $cb, $WhiteSpace;
+            Mov "[$address+4*$S+3]", $cb;
+           } $S, $index;
           Mov $S, -1;                                                           # Look for next possible space
          }
        };
      });
+
+    $$p{size}->for(sub                                                          # Invert white space so that significant white space becomes ascii and the remainder is ignored
+     {my ($indexVariable, $start, $next, $end) = @_;
+
+      $indexVariable->setReg($index);
+      Mov $eb, "[$address+4*$index+3]";                                         # Current lexical code
+
+      Block                                                                     # Invert non significant white space
+       {my ($start, $end) = @_;
+        Cmp $eb, $Ascii;
+        IfNe {Jmp $end};                                                        # Ascii
+
+        Mov $cb, "[$address+4*$index]";                                         # Actual character in alphabet
+        Cmp $cb, $asciiSpace;
+        IfEq
+         {Mov $w1, $WhiteSpace;                                                 # Mark space as not significant
+          Mov "[$address+4*$index+3]", $w1;
+          Jmp $next;
+         };
+        Cmp $cb, $asciiNewLine;
+        IfEq
+         {Mov $w1, $WhiteSpace;                                                 # Mark new line as not significant
+          Mov "[$address+4*$index+3]", $w1;
+          Jmp $next;
+         };
+       };
+
+      Block                                                                     # Mark significant white space
+       {my ($start, $end) = @_;
+        Cmp $eb, $WhiteSpace;
+        IfNe {Jmp $end};                                                        # Not significant white space
+        Mov $cb, $Ascii;
+        Mov "[$address+4*$index+3]", $cb;                                       # Mark as ascii
+       };
+     });
+
     PopR @save;
    } in  => {address => 3, size => 3};
 
@@ -509,13 +591,13 @@ sub accept_v                                                                    
   }
 
 sub parseExpressionCode()                                                       #P Parse the string of classified lexicals addressed by register $start of length $length.  The resulting parse tree (if any) is returned in r15.
- {my $end          = Label;
+ {my $end = Label;
+
   Cmp $size, 0;                                                                 # Check for empty expression
-  IfEq
-   {Jmp $end;
-   };
+  IfEq {Jmp $end};
 
   loadCurrentChar;                                                              # Load current character
+### Need test for ignorable white space as first character
   testSet($firstSet, $element);
   IfNe
    {error(<<END =~ s(\n) ( )gsr);
@@ -544,10 +626,7 @@ END
    {my ($start, $end, $next) = @_;                                              # Start and end of the classification loop
     loadCurrentChar;                                                            # Load current character
 
-    if ($debug)
-     {PrintOutStringNL "Current:";
-      PrintOutRegisterInHex $element, $index;
-     }
+    PrintOutRegisterInHex $element if $debug;
 
     Cmp $element."b", $WhiteSpace;
     IfEq {Jmp $next};                                                           # Ignore white space
@@ -577,7 +656,7 @@ END
     error("Unexpected lexical item");                                           # Not selected
    } $index, $size;
 
-  testSet($lastSet, $element);                                                  # Last element
+  testSet($lastSet, $prevChar);                                                 # Last lexical  element
   IfNe                                                                          # Incomplete expression
    {error("Incomplete expression");
    };
@@ -1730,8 +1809,9 @@ Push Element:
    r13: 0000 0000 0000 0006
 New: accept initial variable
     r8: 0000 0000 0000 0006
-Result:
-   r15: 0000 0000 0000 0009
+Error: Incomplete expression
+Element:    r13: 0000 0000 0000 0006
+Index  :    r12: 0000 0000 0000 0001
 END
  }
 
@@ -1749,15 +1829,11 @@ Push Element:
    r13: 0000 0000 0000 0006
 New: accept initial variable
     r8: 0000 0000 0000 0006
-Current:
    r13: 0000 0001 0000 0005
-   r12: 0000 0000 0000 0001
 accept a
 Push Element:
    r13: 0000 0001 0000 0005
-Current:
    r13: 0000 0002 0000 0006
-   r12: 0000 0000 0000 0002
 accept v
 Push Element:
    r13: 0000 0002 0000 0006
@@ -1791,41 +1867,29 @@ Push Element:
    r13: 0000 0000 0000 0006
 New: accept initial variable
     r8: 0000 0000 0000 0006
-Current:
    r13: 0000 0001 0000 0005
-   r12: 0000 0000 0000 0001
 accept a
 Push Element:
    r13: 0000 0001 0000 0005
-Current:
    r13: 0000 0002 0000 0000
-   r12: 0000 0000 0000 0002
 accept b
 Push Element:
    r13: 0000 0002 0000 0000
-Current:
    r13: 0000 0003 0000 0000
-   r12: 0000 0000 0000 0003
 accept b
 Push Element:
    r13: 0000 0003 0000 0000
-Current:
    r13: 0000 0004 0000 0000
-   r12: 0000 0000 0000 0004
 accept b
 Push Element:
    r13: 0000 0004 0000 0000
-Current:
    r13: 0000 0005 0000 0006
-   r12: 0000 0000 0000 0005
 accept v
 Push Element:
    r13: 0000 0005 0000 0006
 New: Variable
     r8: 0000 0005 0000 0006
-Current:
    r13: 0000 0006 0000 0001
-   r12: 0000 0000 0000 0006
 accept B
 Reduce 3:
     r8: 0000 0003 0000 0000
@@ -1848,9 +1912,7 @@ Reduce 3:
 Reduce 2:
     r8: 0000 0000 0000 0028
     r9: 0000 0003 0000 0000
-Current:
    r13: 0000 0007 0000 0001
-   r12: 0000 0000 0000 0007
 accept B
 Reduce 3:
     r8: 0000 0002 0000 0000
@@ -1873,29 +1935,21 @@ Reduce 3:
 Reduce 2:
     r8: 0000 0000 0000 0020
     r9: 0000 0002 0000 0000
-Current:
    r13: 0000 0008 0000 0003
-   r12: 0000 0000 0000 0008
 accept d
 Push Element:
    r13: 0000 0008 0000 0003
-Current:
    r13: 0000 0009 0000 0000
-   r12: 0000 0000 0000 0009
 accept b
 Push Element:
    r13: 0000 0009 0000 0000
-Current:
    r13: 0000 000A 0000 0006
-   r12: 0000 0000 0000 000A
 accept v
 Push Element:
    r13: 0000 000A 0000 0006
 New: Variable
     r8: 0000 000A 0000 0006
-Current:
    r13: 0000 000B 0000 0001
-   r12: 0000 0000 0000 000B
 accept B
 Reduce 3:
     r8: 0000 0008 0000 0003
@@ -1926,9 +1980,7 @@ Reduce 3:
 Reduce 2:
     r8: 0000 0000 0000 0020
     r9: 0000 0002 0000 0000
-Current:
    r13: 0000 000C 0000 0001
-   r12: 0000 0000 0000 000C
 accept B
 Reduce 3:
     r8: 0000 0001 0000 0005
@@ -1952,9 +2004,7 @@ New: Term infix term
     r8: 0000 0000 0000 0009
     r8: 0000 0000 0000 0009
     r8: 0000 0001 0000 0005
-Current:
    r13: 0000 000D 0000 0008
-   r12: 0000 0000 0000 000D
 accept s
 Push Element:
    r13: 0000 000D 0000 0008
@@ -2000,10 +2050,6 @@ if (1) {                                                                        
   PrintOutStringNL "After bracket matching";
   PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
 
-#  ClassifyNewLines address=>$source32, size=>$sourceLength32;                   # Classify white space
-#  PrintOutStringNL "After converting some new lines to semi colons";
-#  PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
-
   parseExpression source=>$source32, size=>$sourceLength32, my $parse = Vq(parse);
   $parse->outNL();
 
@@ -2026,59 +2072,35 @@ Push Element:
    r13: 0000 0000 0000 0006
 New: accept initial variable
     r8: 0000 0000 0000 0006
-Current:
    r13: 0000 0001 0000 0005
-   r12: 0000 0000 0000 0001
 accept a
 Push Element:
    r13: 0000 0001 0000 0005
-Current:
    r13: 0000 0002 0000 0005
-   r12: 0000 0000 0000 0002
-Current:
    r13: 0000 0003 0000 0005
-   r12: 0000 0000 0000 0003
-Current:
    r13: 0000 0004 0000 0005
-   r12: 0000 0000 0000 0004
-Current:
    r13: 0000 0005 0000 0005
-   r12: 0000 0000 0000 0005
-Current:
    r13: 0000 0006 0000 0005
-   r12: 0000 0000 0000 0006
-Current:
    r13: 0000 0007 0000 0000
-   r12: 0000 0000 0000 0007
 accept b
 Push Element:
    r13: 0000 0007 0000 0000
-Current:
    r13: 0000 0008 0000 0000
-   r12: 0000 0000 0000 0008
 accept b
 Push Element:
    r13: 0000 0008 0000 0000
-Current:
    r13: 0000 0009 0000 0000
-   r12: 0000 0000 0000 0009
 accept b
 Push Element:
    r13: 0000 0009 0000 0000
-Current:
    r13: 0000 000A 0000 0006
-   r12: 0000 0000 0000 000A
 accept v
 Push Element:
    r13: 0000 000A 0000 0006
 New: Variable
     r8: 0000 000A 0000 0006
-Current:
    r13: 0000 000B 0000 0006
-   r12: 0000 0000 0000 000B
-Current:
    r13: 0000 000C 0000 0001
-   r12: 0000 0000 0000 000C
 accept B
 Reduce 3:
     r8: 0000 0008 0000 0000
@@ -2101,9 +2123,7 @@ Reduce 3:
 Reduce 2:
     r8: 0000 0000 0000 0028
     r9: 0000 0008 0000 0000
-Current:
    r13: 0000 000D 0000 0001
-   r12: 0000 0000 0000 000D
 accept B
 Reduce 3:
     r8: 0000 0007 0000 0000
@@ -2126,41 +2146,25 @@ Reduce 3:
 Reduce 2:
     r8: 0000 0000 0000 0020
     r9: 0000 0007 0000 0000
-Current:
    r13: 0000 000E 0000 0003
-   r12: 0000 0000 0000 000E
 accept d
 Push Element:
    r13: 0000 000E 0000 0003
-Current:
    r13: 0000 000F 0000 0003
-   r12: 0000 0000 0000 000F
-Current:
    r13: 0000 0010 0000 0003
-   r12: 0000 0000 0000 0010
-Current:
    r13: 0000 0011 0000 0003
-   r12: 0000 0000 0000 0011
-Current:
    r13: 0000 0012 0000 0000
-   r12: 0000 0000 0000 0012
 accept b
 Push Element:
    r13: 0000 0012 0000 0000
-Current:
    r13: 0000 0013 0000 0006
-   r12: 0000 0000 0000 0013
 accept v
 Push Element:
    r13: 0000 0013 0000 0006
 New: Variable
     r8: 0000 0013 0000 0006
-Current:
    r13: 0000 0014 0000 0006
-   r12: 0000 0000 0000 0014
-Current:
    r13: 0000 0015 0000 0001
-   r12: 0000 0000 0000 0015
 accept B
 Reduce 3:
     r8: 0000 000E 0000 0003
@@ -2191,9 +2195,7 @@ Reduce 3:
 Reduce 2:
     r8: 0000 0000 0000 0020
     r9: 0000 0007 0000 0000
-Current:
    r13: 0000 0016 0000 0001
-   r12: 0000 0000 0000 0016
 accept B
 Reduce 3:
     r8: 0000 0001 0000 0005
@@ -2217,9 +2219,7 @@ New: Term infix term
     r8: 0000 0000 0000 0009
     r8: 0000 0000 0000 0009
     r8: 0000 0001 0000 0005
-Current:
    r13: 0000 0017 0000 0008
-   r12: 0000 0000 0000 0017
 accept s
 Push Element:
    r13: 0000 0017 0000 0008
@@ -2227,7 +2227,7 @@ parse: 0000 0000 0000 0009
 END
  }
 
-latest:
+#latest:
 if (1) {                                                                        # Parse some code
   my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
              (Vq(out), Vq(size), Vq(opens), Vq('fail'));
@@ -2264,12 +2264,8 @@ if (1) {                                                                        
   PrintOutStringNL "After bracket matching";
   PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
 
-#  ClassifyNewLines address=>$source32, size=>$sourceLength32;                   # Classify white space
-#  PrintOutStringNL "After converting some new lines to semi colons";
-#  PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
-
   ClassifyWhiteSpace address=>$source32, size=>$sourceLength32;                 # Classify white space
-  PrintOutStringNL "After classifying white space";
+#  PrintOutStringNL "After classifying white space";
   PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
 
   parseExpression source=>$source32, size=>$sourceLength32, my $parse = Vq(parse);
@@ -2286,45 +2282,28 @@ After classification into brackets
 0600 001A 0500 001A  0200 000A 0200 0020  0200 0020 0200 0041  0200 000A 0200 0020  0200 0020 0200 0020
 After bracket matching
 0600 001A 0500 001A  0200 000A 0200 0020  0200 0020 0200 0041  0200 000A 0200 0020  0200 0020 0200 0020
+0600 001A 0500 001A  0B00 000A 0200 0020  0200 0020 0200 0041  0200 000A 0B00 0020  0B00 0020 0B00 0020
 Push Element:
    r13: 0000 0000 0000 0006
 New: accept initial variable
     r8: 0000 0000 0000 0006
-Current:
    r13: 0000 0001 0000 0005
-   r12: 0000 0000 0000 0001
 accept a
 Push Element:
    r13: 0000 0001 0000 0005
-Current:
-   r13: 0000 0002 0000 0006
-   r12: 0000 0000 0000 0002
+   r13: 0000 0002 0000 000B
+   r13: 0000 0003 0000 0006
 accept v
 Push Element:
-   r13: 0000 0002 0000 0006
-New: Variable
-    r8: 0000 0002 0000 0006
-Current:
    r13: 0000 0003 0000 0006
-   r12: 0000 0000 0000 0003
-Current:
+New: Variable
+    r8: 0000 0003 0000 0006
    r13: 0000 0004 0000 0006
-   r12: 0000 0000 0000 0004
-Current:
    r13: 0000 0005 0000 0006
-   r12: 0000 0000 0000 0005
-Current:
    r13: 0000 0006 0000 0006
-   r12: 0000 0000 0000 0006
-Current:
-   r13: 0000 0007 0000 0006
-   r12: 0000 0000 0000 0007
-Current:
-   r13: 0000 0008 0000 0006
-   r12: 0000 0000 0000 0008
-Current:
-   r13: 0000 0009 0000 0006
-   r12: 0000 0000 0000 0009
+   r13: 0000 0007 0000 000B
+   r13: 0000 0008 0000 000B
+   r13: 0000 0009 0000 000B
 Reduce 3:
     r8: 0000 0000 0000 0009
     r9: 0000 0001 0000 0005
