@@ -47,27 +47,30 @@ my $index    = r12;                                                             
 my $element  = r13;                                                             # Contains the item being parsed
 my $start    = r14;                                                             # Start of the parse string
 my $size     = r15;                                                             # Length of the input string
-my $Ascii            = $$Lex{lexicals}{Ascii}           {number};               # Ascii
-my $assign           = $$Lex{lexicals}{assign}          {number};               # Assign
-my $CloseBracket     = $$Lex{lexicals}{CloseBracket}    {number};               # Close bracket
-my $empty            = $$Lex{lexicals}{empty}           {number};               # Empty element
-my $NewLineSemiColon = $$Lex{lexicals}{NewLineSemiColon}{number};               # New line semicolon
-my $OpenBracket      = $$Lex{lexicals}{OpenBracket}     {number};               # Open  bracket
-my $prefix           = $$Lex{lexicals}{prefix}          {number};               # Prefix operator
-my $semiColon        = $$Lex{lexicals}{semiColon}       {number};               # Semicolon
-my $term             = $$Lex{lexicals}{term}            {number};               # Term
-my $variable         = $$Lex{lexicals}{variable}        {number};               # Variable
-my $WhiteSpace       = $$Lex{lexicals}{WhiteSpace}      {number};               # Variable
-my $firstSet = $$Lex{structure}{first};                                         # First symbols allowed
-my $lastSet  = $$Lex{structure}{last};                                          # Last symbols allowed
+my $Ascii             = $$Lex{lexicals}{Ascii}            {number};             # Ascii
+my $assign            = $$Lex{lexicals}{assign}           {number};             # Assign
+my $CloseBracket      = $$Lex{lexicals}{CloseBracket}     {number};             # Close bracket
+my $empty             = $$Lex{lexicals}{empty}            {number};             # Empty element
+my $NewLineSemiColon  = $$Lex{lexicals}{NewLineSemiColon} {number};             # New line semicolon
+my $NewLineWhiteSpace = $$Lex{lexicals}{NewLineWhiteSpace}{number};             # New line semicolon
+my $OpenBracket       = $$Lex{lexicals}{OpenBracket}      {number};             # Open  bracket
+my $prefix            = $$Lex{lexicals}{prefix}           {number};             # Prefix operator
+my $semiColon         = $$Lex{lexicals}{semiColon}        {number};             # Semicolon
+my $term              = $$Lex{lexicals}{term}             {number};             # Term
+my $variable          = $$Lex{lexicals}{variable}         {number};             # Variable
+my $WhiteSpace        = $$Lex{lexicals}{WhiteSpace}       {number};             # Variable
+my $firstSet          = $$Lex{structure}{first};                                # First symbols allowed
+my $lastSet           = $$Lex{structure}{last};                                 # Last symbols allowed
+my $asciiNewLine      = ord("\n");                                              # New line in ascii
+my $asciiSpace        = ord(' ');                                               # Space in ascii
 
 sub loadCurrentChar()                                                           #P Load the details of the character currently being processed
  {my $r = $element."b";                                                         # Classification byte
   Mov $element, $index;                                                         # Load index of character as upper dword
   Shl $element, 32;
-  Mov $element."b", "[$start+4*$index+3]";                                      # Load lexical classification as lowest byte
+  Mov $r, "[$start+4*$index+3]";                                                # Load lexical classification as lowest byte
 
-  Cmp $r, 0x10;                                                                 # Brackets , doe to their numerosioty, start after 0x10 with open even and close odd
+  Cmp $r."b", $$Lex{bracketsBase};                                              # Brackets , due to their numerosity, start after 0x10 with open even and close odd
   IfGe                                                                          # Brackets
    {And $r, 1                                                                   # 0 - open, 1 - close
    }
@@ -148,6 +151,116 @@ sub ClassifyNewLines(@)                                                         
 
   $s->call(@parameters);
  } # ClassIfyNewLines
+
+sub ClassifyWhiteSpace(@)                                                       # Classify white space per: lib/Unisyn/whiteSpace/whiteSpaceClassification.pl
+ {my (@parameters) = @_;                                                        # Parameters
+  @_ >= 1 or confess;
+return
+  my $s = Subroutine
+   {my ($p) = @_;                                                               # Parameters
+    my $refChar  = r15; ### FREE                                                        # Reference to the current character
+    my $e        = r14;                                                         # Current char
+    my $eb       = $e."b";                                                      # Lexical type of current char
+    my $s        = r13;                                                         # State of white space between 'a'
+    my $S        = r12;                                                         # State of white space before  'a'
+    my $c        = r11;                                                         # Full classification of a character
+    my $cb       = $c."b";                                                      # Actual character within alphabet
+    my $address  = r10;                                                         # Address of input string
+    my $index    = r9;                                                          # Index of current char
+    PushR my @save = (r10, r11, r12, r13, r14, r15);
+
+#  for(my $i = 1; $i < @i; ++$i)                                                 # 'n' immediately after 'a'  is significant
+#   {confess "n preceded by s at position $i in\n".join('', @i)."\n"
+#      if $i[$i-1] eq 's' and $i[$i] eq 'n';
+#     $i[$i] = 'N' if $i[$i-1] eq 'a' and $i[$i] eq 'n';
+#   }
+    Mov $s, -1; Mov $S, -1;
+
+    $$p{address}->setReg($address);                                             # Address of string
+
+    $$p{size}->for(sub                                                          # Each character in expression
+     {my ($indexVariable, $start, $next, $end) = @_;
+      $indexVariable->setReg($index);
+      Mov $eb, "[$address+4*$index+3]";                                         # Current lexical code
+      PrintErrRegisterInHex $e;
+
+      Block                                                                     # Spaces and new lines between other ascii
+       {my ($start, $end) = @_;
+        Cmp $s, -1;
+        IfEq                                                                    # Looking for opening ascii
+         {Cmp $eb, $Ascii;  IfNe {Jmp $end};                                    # Not ascii
+          Mov $cb, "[$address+4*$index]";                                       # Actual character in alphabet
+          Cmp $cb, $asciiNewLine;  IfEq {Jmp $end};                             # Skip over new lines
+          Cmp $cb, $asciiSpace;    IfEq {Jmp $end};                             # Skip over spaces
+          IfEq
+           {Mov $s, $index; Inc $s;                                             # Ascii not space nor new line
+           };
+          Jmp $end;
+         }
+
+        sub                                                                     # Looking for closing ascii
+         {Cmp $eb, $Ascii;
+          IfNe                                                                  # Not ascii
+           {Mov $s, -1;
+            Jmp $end
+           };
+          Mov $cb, "[$address+4*$index]";                                       # Actual character in alphabet
+          Cmp $cb, $asciiNewLine;  IfEq {Jmp $end};                             # Skip over new lines
+          Cmp $cb, $asciiSpace;    IfEq {Jmp $end};                             # Skip over spaces
+
+          For                                                                   # Move over spaces and new lines between two ascii characters that are neither of new line or space
+           {my ($start, $end, $next) = @_;
+            Mov $cb, "[$address+4*$s]";                                         # Actual character in alphabet
+            Cmp $cb, $asciiSpace;
+            IfEq
+             {Mov $cb, $WhiteSpace;                                             # Mark as significant white space.
+              Mov "[$address+4*$s+3]", $cb;
+              Jmp $next;
+             };
+            Cmp $cb, $asciiNewLine;
+            IfEq
+             {Mov $cb, $NewLineWhiteSpace;                                      # Mark as significant new line
+              Mov "[$address+4*$s+3]", $cb;
+              Jmp $next;
+             };
+           } $s, $index;
+
+          Mov $s, $index; Inc $s;
+         };
+       };
+
+      Block                                                                     # Spaces preceding ascii character
+       {my ($start, $end) = @_;
+        Cmp $S, -1;
+        IfEq                                                                    # Looking for space
+         {Cmp $eb, $Ascii;                                                      # Not ascii
+          IfNe
+           {Mov $S, -1;
+            Jmp $end
+           };
+          Mov $cb, "[$address+4*$index]";                                       # Actual character in alphabet
+          Cmp $cb, $asciiSpace;                                                 # Space
+          IfEq
+           {Mov $S, $index;
+           Jmp $end;
+           };
+
+          Dec $index;                                                           # Up to the current character
+          For                                                                   # Move over spaces to non space ascii
+           {my ($start, $end, $next) = @_;
+            Mov $cb, "[$address+4*$s]";                                         # Actual character in alphabet
+            Mov "byte[$address+4*$s+3]", $WhiteSpace;
+           } $s, $index;
+          Inc $index;                                                           # Restore current character
+          Mov $S, -1;                                                           # Look for next possible space
+         }
+       };
+     });
+    PopR @save;
+   } in  => {address => 3, size => 3};
+
+  $s->call(@parameters);
+ } # ClassifyWhiteSpace
 
 sub lexicalNameFromLetter($)                                                    # Lexical name for a lexical item described by its letter
  {my ($l) = @_;                                                                 # Letter of the lexical item
@@ -2154,6 +2267,10 @@ if (1) {                                                                        
 #  ClassifyNewLines address=>$source32, size=>$sourceLength32;                   # Classify white space
 #  PrintOutStringNL "After converting some new lines to semi colons";
 #  PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
+
+  ClassifyWhiteSpace address=>$source32, size=>$sourceLength32;                 # Classify white space
+  PrintOutStringNL "After classifying white space";
+  PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
 
   parseExpression source=>$source32, size=>$sourceLength32, my $parse = Vq(parse);
   $parse->outNL();
