@@ -454,6 +454,10 @@ translateSomeText 'vnv', <<END;
 va N vb
 END
 
+translateSomeText 'vnvs', <<END;
+va N vb S S S S
+END
+
 say STDERR owf $lexicalsFile, dump($Tables);                                    # Write results
 
 __DATA__
