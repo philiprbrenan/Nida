@@ -16,18 +16,6 @@ use feature qw(say current_sub);
 
 my $develop = -e q(/home/phil/);                                                # Developing
 
-=pod
-
-The stack is used solely for tracking the lexical items still to be placed in
-the parse tree.  Each such stacked item description is 8 bytes wide. The irst 4
-bytes hold the classification of the lexical item as described by $Lexicals.
-The second 4 bytes hold the index of the character in the input stream at which
-this lexical items starts.  This index can be used to locate the start of the
-lexical item in the input stream and a a unique key to any multi way trees that
-are used to store information describing the parse tree.
-
-=cut
-
 #D1 Parse                                                                       # Parse Unisyn expressions
 
 my $Lex = sub                                                                   # Lexical table definitions
@@ -71,7 +59,7 @@ my $asciiSpace        = ord(' ');                                               
 sub loadCurrentChar()                                                           #P Load the details of the character currently being processed
  {my $r = $element."b";                                                         # Classification byte
   Mov $element, $index;                                                         # Load index of character as upper dword
-  Shl $element, $indexScale * $bitsPerByte;
+  Shl $element, $indexScale * $bitsPerByte;                                     # Save the index of the character in the upper half of the register so that we know where the character came from.
   Mov $r, "[$start+$indexScale*$index+$lexCodeOffset]";                         # Load lexical classification as lowest byte
 
   Cmp $r, $$Lex{bracketsBase};                                                  # Brackets , due to their numerosity, start after 0x10 with open even and close odd
@@ -117,7 +105,7 @@ sub pushEmpty()                                                                 
    }
  }
 
-sub ClassifyNewLines(@)                                                         # A new line acts a semi colon if it appears immediately after a variable.
+sub ClassifyNewLines(@)                                                         #P A new line acts a semi colon if it appears immediately after a variable.
  {my (@parameters) = @_;                                                        # Parameters
   @_ >= 1 or confess;
 
@@ -155,7 +143,7 @@ sub ClassifyNewLines(@)                                                         
   $s->call(@parameters);
  } # ClassIfyNewLines
 
-sub ClassifyWhiteSpace(@)                                                       # Classify white space per: lib/Unisyn/whiteSpace/whiteSpaceClassification.pl
+sub ClassifyWhiteSpace(@)                                                       #P Classify white space per: lib/Unisyn/whiteSpace/whiteSpaceClassification.pl
  {my (@parameters) = @_;                                                        # Parameters
   @_ >= 1 or confess;
 
@@ -760,333 +748,12 @@ A new line acts a semi colon if it appears immediately after a variable.
      Parameter    Description
   1  @parameters  Parameters
 
-B<Example:>
+=head2 ClassifyWhiteSpace(@parameters)
 
+Classify white space per: lib/Unisyn/whiteSpace/whiteSpaceClassification.pl
 
-    my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
-               (Vq(out), Vq(size), Vq(opens), Vq('fail'));
-
-    my $source = Rutf8 $$Lex{sampleText};                                         # String to be parsed in utf8
-    my $sourceLength = StringLength Vq(string, $source);
-       $sourceLength->outNL("Input  Length: ");
-
-    ConvertUtf8ToUtf32 Vq(u8,$source), size8 => $sourceLength,                    # Convert to utf32
-      (my $source32       = Vq(u32)),
-      (my $sourceSize32   = Vq(size32)),
-      (my $sourceLength32 = Vq(count));
-
-    $sourceSize32   ->outNL("Output Length: ");                                   # Write output length
-
-    PrintOutStringNL "After conversion from utf8 to utf32";
-    PrintUtf32($sourceLength32, $source32);                                       # Print utf32
-
-    Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{lexicalLow} ->@*)."]";                # Each double is [31::24] Classification, [21::0] Utf32 start character
-    Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{lexicalHigh}->@*)."]";                # Each double is [31::24] Range offset,   [21::0] Utf32 end character
-
-    ClassifyWithInRangeAndSaveOffset address=>$source32, size=>$sourceLength32;   # Alphabetic classification
-
-    PrintOutStringNL "After classification into alphabet ranges";
-    PrintUtf32($sourceLength32, $source32);                                       # Print classified utf32
-
-    Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{bracketsLow} ->@*)."]";               # Each double is [31::24] Classification, [21::0] Utf32 start character
-    Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{bracketsHigh}->@*)."]";               # Each double is [31::24] Range offset,   [21::0] Utf32 end character
-
-    ClassifyWithInRange address=>$source32, size=>$sourceLength32;                # Bracket matching
-
-    PrintOutStringNL "After classification into brackets";
-    PrintUtf32($sourceLength32, $source32);                                       # Print classified brackets
-
-    MatchBrackets address=>$source32, size=>$sourceLength32, $opens, $fail;       # Match brackets
-
-    PrintOutStringNL "After bracket matching";
-    PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
-
-
-    ClassifyNewLines address=>$source32, size=>$sourceLength32;                   # Classify white space  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
-
-
-    PrintOutStringNL "After converting some new lines to semi colons";
-    PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
-
-    parseExpression source=>$source32, size=>$sourceLength32, my $parse = Vq(parse);
-    $parse->outNL();
-
-    ok Assemble(debug => 1, eq => <<END);
-  Input  Length: 0000 0000 0000 007F
-  Output Length: 0000 0000 0000 01FC
-  After conversion from utf8 to utf32
-  0001 D5EE 0000 205F  0001 D44E 0001 D460  0001 D460 0001 D456  0001 D454 0001 D45B  0000 205F 0000 230A  0000 205F 0000 2329  0000 205F 0000 2768  0000 205F 0001 D5EF
-  0001 D5FD 0000 205F  0000 2769 0000 205F  0000 232A 0000 205F  0001 D429 0001 D425  0001 D42E 0001 D42C  0000 205F 0000 276A  0000 205F 0001 D600  0001 D5F0 0000 205F
-  0000 276B 0000 205F  0000 230B 0000 205F  0000 27E2 0000 000A
-  After classification into alphabet ranges
-  0700 001A 0B00 0000  0600 001A 0600 002C  0600 002C 0600 0022  0600 0020 0600 0027  0B00 0000 0000 230A  0B00 0000 0000 2329  0B00 0000 0000 2768  0B00 0000 0700 001B
-  0700 0029 0B00 0000  0000 2769 0B00 0000  0000 232A 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0B00 0000 0000 276A  0B00 0000 0700 002C  0700 001C 0B00 0000
-  0000 276B 0B00 0000  0000 230B 0B00 0000  0900 0000 0300 0000
-  After classification into brackets
-  0700 001A 0B00 0000  0600 001A 0600 002C  0600 002C 0600 0022  0600 0020 0600 0027  0B00 0000 1200 230A  0B00 0000 1400 2329  0B00 0000 1600 2768  0B00 0000 0700 001B
-  0700 0029 0B00 0000  1700 2769 0B00 0000  1500 232A 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0B00 0000 1800 276A  0B00 0000 0700 002C  0700 001C 0B00 0000
-  1900 276B 0B00 0000  1300 230B 0B00 0000  0900 0000 0300 0000
-  After bracket matching
-  0700 001A 0B00 0000  0600 001A 0600 002C  0600 002C 0600 0022  0600 0020 0600 0027  0B00 0000 1200 0022  0B00 0000 1400 0014  0B00 0000 1600 0012  0B00 0000 0700 001B
-  0700 0029 0B00 0000  1700 000D 0B00 0000  1500 000B 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0B00 0000 1800 0020  0B00 0000 0700 002C  0700 001C 0B00 0000
-  1900 001B 0B00 0000  1300 0009 0B00 0000  0900 0000 0300 0000
-  After converting some new lines to semi colons
-  0700 001A 0B00 0000  0600 001A 0600 002C  0600 002C 0600 0022  0600 0020 0600 0027  0B00 0000 1200 0022  0B00 0000 1400 0014  0B00 0000 1600 0012  0B00 0000 0700 001B
-  0700 0029 0B00 0000  1700 000D 0B00 0000  1500 000B 0B00 0000  0400 0029 0400 0025  0400 002E 0400 002C  0B00 0000 1800 0020  0B00 0000 0700 002C  0700 001C 0B00 0000
-  1900 001B 0B00 0000  1300 0009 0B00 0000  0900 0000 0300 0000
-  Push Element:
-     r13: 0000 0000 0000 0007
-  New: accept initial variable
-      r8: 0000 0000 0000 0007
-  Current:
-     r13: 0000 0001 0000 000B
-     r12: 0000 0000 0000 0001
-  Current:
-     r13: 0000 0002 0000 0006
-     r12: 0000 0000 0000 0002
-  accept a
-  Push Element:
-     r13: 0000 0002 0000 0006
-  Current:
-     r13: 0000 0003 0000 0006
-     r12: 0000 0000 0000 0003
-  Current:
-     r13: 0000 0004 0000 0006
-     r12: 0000 0000 0000 0004
-  Current:
-     r13: 0000 0005 0000 0006
-     r12: 0000 0000 0000 0005
-  Current:
-     r13: 0000 0006 0000 0006
-     r12: 0000 0000 0000 0006
-  Current:
-     r13: 0000 0007 0000 0006
-     r12: 0000 0000 0000 0007
-  Current:
-     r13: 0000 0008 0000 000B
-     r12: 0000 0000 0000 0008
-  Current:
-     r13: 0000 0009 0000 0000
-     r12: 0000 0000 0000 0009
-  accept b
-  Push Element:
-     r13: 0000 0009 0000 0000
-  Current:
-     r13: 0000 000A 0000 000B
-     r12: 0000 0000 0000 000A
-  Current:
-     r13: 0000 000B 0000 0000
-     r12: 0000 0000 0000 000B
-  accept b
-  Push Element:
-     r13: 0000 000B 0000 0000
-  Current:
-     r13: 0000 000C 0000 000B
-     r12: 0000 0000 0000 000C
-  Current:
-     r13: 0000 000D 0000 0000
-     r12: 0000 0000 0000 000D
-  accept b
-  Push Element:
-     r13: 0000 000D 0000 0000
-  Current:
-     r13: 0000 000E 0000 000B
-     r12: 0000 0000 0000 000E
-  Current:
-     r13: 0000 000F 0000 0007
-     r12: 0000 0000 0000 000F
-  accept v
-  Push Element:
-     r13: 0000 000F 0000 0007
-  New: Variable
-      r8: 0000 000F 0000 0007
-  Current:
-     r13: 0000 0010 0000 0007
-     r12: 0000 0000 0000 0010
-  Current:
-     r13: 0000 0011 0000 000B
-     r12: 0000 0000 0000 0011
-  Current:
-     r13: 0000 0012 0000 0001
-     r12: 0000 0000 0000 0012
-  accept B
-  Reduce 3:
-      r8: 0000 000B 0000 0000
-      r9: 0000 000D 0000 0000
-     r10: 0000 0000 0000 000C
-  Reduce 2:
-      r8: 0000 0000 0000 0030
-      r9: 0000 000D 0000 0000
-  Push Element:
-     r13: 0000 0012 0000 0001
-  Reduce 3:
-      r8: 0000 000D 0000 0000
-      r9: 0000 0000 0000 000C
-     r10: 0000 0012 0000 0001
-  Reduce by ( term )
-  Reduce 3:
-      r8: 0000 0009 0000 0000
-      r9: 0000 000B 0000 0000
-     r10: 0000 0000 0000 000C
-  Reduce 2:
-      r8: 0000 0000 0000 0028
-      r9: 0000 000B 0000 0000
-  Current:
-     r13: 0000 0013 0000 000B
-     r12: 0000 0000 0000 0013
-  Current:
-     r13: 0000 0014 0000 0001
-     r12: 0000 0000 0000 0014
-  accept B
-  Reduce 3:
-      r8: 0000 0009 0000 0000
-      r9: 0000 000B 0000 0000
-     r10: 0000 0000 0000 000C
-  Reduce 2:
-      r8: 0000 0000 0000 0028
-      r9: 0000 000B 0000 0000
-  Push Element:
-     r13: 0000 0014 0000 0001
-  Reduce 3:
-      r8: 0000 000B 0000 0000
-      r9: 0000 0000 0000 000C
-     r10: 0000 0014 0000 0001
-  Reduce by ( term )
-  Reduce 3:
-      r8: 0000 0002 0000 0006
-      r9: 0000 0009 0000 0000
-     r10: 0000 0000 0000 000C
-  Reduce 2:
-      r8: 0000 0000 0000 0020
-      r9: 0000 0009 0000 0000
-  Current:
-     r13: 0000 0015 0000 000B
-     r12: 0000 0000 0000 0015
-  Current:
-     r13: 0000 0016 0000 0004
-     r12: 0000 0000 0000 0016
-  accept d
-  Push Element:
-     r13: 0000 0016 0000 0004
-  Current:
-     r13: 0000 0017 0000 0004
-     r12: 0000 0000 0000 0017
-  Current:
-     r13: 0000 0018 0000 0004
-     r12: 0000 0000 0000 0018
-  Current:
-     r13: 0000 0019 0000 0004
-     r12: 0000 0000 0000 0019
-  Current:
-     r13: 0000 001A 0000 000B
-     r12: 0000 0000 0000 001A
-  Current:
-     r13: 0000 001B 0000 0000
-     r12: 0000 0000 0000 001B
-  accept b
-  Push Element:
-     r13: 0000 001B 0000 0000
-  Current:
-     r13: 0000 001C 0000 000B
-     r12: 0000 0000 0000 001C
-  Current:
-     r13: 0000 001D 0000 0007
-     r12: 0000 0000 0000 001D
-  accept v
-  Push Element:
-     r13: 0000 001D 0000 0007
-  New: Variable
-      r8: 0000 001D 0000 0007
-  Current:
-     r13: 0000 001E 0000 0007
-     r12: 0000 0000 0000 001E
-  Current:
-     r13: 0000 001F 0000 000B
-     r12: 0000 0000 0000 001F
-  Current:
-     r13: 0000 0020 0000 0001
-     r12: 0000 0000 0000 0020
-  accept B
-  Reduce 3:
-      r8: 0000 0016 0000 0004
-      r9: 0000 001B 0000 0000
-     r10: 0000 0000 0000 000C
-  Reduce 2:
-      r8: 0000 0000 0000 0038
-      r9: 0000 001B 0000 0000
-  Push Element:
-     r13: 0000 0020 0000 0001
-  Reduce 3:
-      r8: 0000 001B 0000 0000
-      r9: 0000 0000 0000 000C
-     r10: 0000 0020 0000 0001
-  Reduce by ( term )
-  Reduce 3:
-      r8: 0000 0000 0000 000C
-      r9: 0000 0016 0000 0004
-     r10: 0000 0000 0000 000C
-  New: Term infix term
-      r8: 0000 0000 0000 000C
-      r8: 0000 0000 0000 000C
-      r8: 0000 0016 0000 0004
-  Reduce 3:
-      r8: 0000 0002 0000 0006
-      r9: 0000 0009 0000 0000
-     r10: 0000 0000 0000 000C
-  Reduce 2:
-      r8: 0000 0000 0000 0020
-      r9: 0000 0009 0000 0000
-  Current:
-     r13: 0000 0021 0000 000B
-     r12: 0000 0000 0000 0021
-  Current:
-     r13: 0000 0022 0000 0001
-     r12: 0000 0000 0000 0022
-  accept B
-  Reduce 3:
-      r8: 0000 0002 0000 0006
-      r9: 0000 0009 0000 0000
-     r10: 0000 0000 0000 000C
-  Reduce 2:
-      r8: 0000 0000 0000 0020
-      r9: 0000 0009 0000 0000
-  Push Element:
-     r13: 0000 0022 0000 0001
-  Reduce 3:
-      r8: 0000 0009 0000 0000
-      r9: 0000 0000 0000 000C
-     r10: 0000 0022 0000 0001
-  Reduce by ( term )
-  Reduce 3:
-      r8: 0000 0000 0000 000C
-      r9: 0000 0002 0000 0006
-     r10: 0000 0000 0000 000C
-  New: Term infix term
-      r8: 0000 0000 0000 000C
-      r8: 0000 0000 0000 000C
-      r8: 0000 0002 0000 0006
-  Current:
-     r13: 0000 0023 0000 000B
-     r12: 0000 0000 0000 0023
-  Current:
-     r13: 0000 0024 0000 0009
-     r12: 0000 0000 0000 0024
-  accept s
-  Push Element:
-     r13: 0000 0024 0000 0009
-  Current:
-     r13: 0000 0025 0000 0003
-     r12: 0000 0000 0000 0025
-  accept v
-  Push Element:
-     r13: 0000 0025 0000 0003
-  New: Variable
-      r8: 0000 0025 0000 0003
-  Error: Incomplete expression
-  Element:    r13: 0000 0025 0000 0003
-  Index  :    r12: 0000 0000 0000 0026
-  END
-
+     Parameter    Description
+  1  @parameters  Parameters
 
 =head2 lexicalNameFromLetter($l)
 
@@ -1101,7 +768,7 @@ B<Example:>
 
     is_deeply lexicalNameFromLetter('a'), q(assign);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-    is_deeply lexicalNumberFromLetter('a'), 6;
+    is_deeply lexicalNumberFromLetter('a'), $assign;
 
 
 =head2 lexicalNumberFromLetter($l)
@@ -1116,7 +783,7 @@ B<Example:>
 
     is_deeply lexicalNameFromLetter('a'), q(assign);
 
-    is_deeply lexicalNumberFromLetter('a'), 6;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    is_deeply lexicalNumberFromLetter('a'), $assign;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
 
 
@@ -1146,7 +813,7 @@ B<Example:>
       r8: 0000 0000 0000 0001
       r8: 0000 0000 0000 0002
       r8: 0000 0000 0000 0003
-     rax: 0000 0000 0000 000C
+     rax: 0000 0000 0000 0009
      rax: FFFF FFFF FFFF FFFF
   END
 
@@ -1227,10 +894,12 @@ B<Example:>
   END
 
 
-=head2 reduce()
+=head2 reduce($priority)
 
-Convert the longest possible expression on top of the stack into a term
+Convert the longest possible expression on top of the stack into a term  at the specified priority
 
+     Parameter  Description
+  1  $priority  Priority of the operators to reduce
 
 B<Example:>
 
@@ -1240,20 +909,20 @@ B<Example:>
     Mov r15, $assign; Push r15;
     Mov r15, $term;   Push r15;
 
-    reduce;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    reduce 1;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     Pop r15; PrintOutRegisterInHex r15;
     Pop r14; PrintOutRegisterInHex r14;
     ok Assemble(debug => 0, eq => <<END);
   Reduce 3:
-      r8: 0000 0000 0000 000C
-      r9: 0000 0000 0000 0006
-     r10: 0000 0000 0000 000C
+      r8: 0000 0000 0000 0009
+      r9: 0000 0000 0000 0005
+     r10: 0000 0000 0000 0009
   New: Term infix term
-      r8: 0000 0000 0000 000C
-      r8: 0000 0000 0000 000C
-      r8: 0000 0000 0000 0006
-     r15: 0000 0000 0000 000C
+      r8: 0000 0000 0000 0009
+      r8: 0000 0000 0000 0009
+      r8: 0000 0000 0000 0005
+     r15: 0000 0000 0000 0009
      r14: FFFF FFFF FFFF FFFF
   END
 
@@ -1264,6 +933,98 @@ Create a parser for an expression described by variables
 
      Parameter    Description
   1  @parameters  Parameters describing expression
+
+B<Example:>
+
+
+    my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
+               (Vq(out), Vq(size), Vq(opens), Vq('fail'));
+
+    my $source = Rutf8 $$Lex{sampleText}{s1};                                     # String to be parsed in utf8
+    my $sourceLength = StringLength Vq(string, $source);
+       $sourceLength->outNL("Input  Length: ");
+
+    ConvertUtf8ToUtf32 Vq(u8,$source), size8 => $sourceLength,                    # Convert to utf32
+      (my $source32       = Vq(u32)),
+      (my $sourceSize32   = Vq(size32)),
+      (my $sourceLength32 = Vq(count));
+
+    $sourceSize32   ->outNL("Output Length: ");                                   # Write output length
+
+    PrintOutStringNL "After conversion from utf8 to utf32";
+    PrintUtf32($sourceLength32, $source32);                                       # Print utf32
+
+    Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{lexicalLow} ->@*)."]";                # Each double is [31::24] Classification, [21::0] Utf32 start character
+    Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{lexicalHigh}->@*)."]";                # Each double is [31::24] Range offset,   [21::0] Utf32 end character
+
+    ClassifyWithInRangeAndSaveOffset address=>$source32, size=>$sourceLength32;   # Alphabetic classification
+    PrintOutStringNL "After classification into alphabet ranges";
+    PrintUtf32($sourceLength32, $source32);                                       # Print classified utf32
+
+    Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{bracketsLow} ->@*)."]";               # Each double is [31::24] Classification, [21::0] Utf32 start character
+    Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{bracketsHigh}->@*)."]";               # Each double is [31::24] Range offset,   [21::0] Utf32 end character
+
+    ClassifyWithInRange address=>$source32, size=>$sourceLength32;                # Bracket matching
+    PrintOutStringNL "After classification into brackets";
+    PrintUtf32($sourceLength32, $source32);                                       # Print classified brackets
+
+    MatchBrackets address=>$source32, size=>$sourceLength32, $opens, $fail;       # Match brackets
+    PrintOutStringNL "After bracket matching";
+    PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
+
+    ClassifyWhiteSpace address=>$source32, size=>$sourceLength32;                 # Classify white space
+  #  PrintOutStringNL "After classifying white space";
+    PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
+
+
+    parseExpression source=>$source32, size=>$sourceLength32, my $parse = Vq(parse);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    $parse->outNL();
+
+    ok Assemble(debug => 0, eq => <<END);
+  Input  Length: 0000 0000 0000 0010
+  Output Length: 0000 0000 0000 0040
+  After conversion from utf8 to utf32
+  0001 D5EE 0001 D44E  0000 000A 0000 0020  0000 0020 0000 0041  0000 000A 0000 0020  0000 0020 0000 0020
+  After classification into alphabet ranges
+  0600 001A 0500 001A  0200 000A 0200 0020  0200 0020 0200 0041  0200 000A 0200 0020  0200 0020 0200 0020
+  After classification into brackets
+  0600 001A 0500 001A  0200 000A 0200 0020  0200 0020 0200 0041  0200 000A 0200 0020  0200 0020 0200 0020
+  After bracket matching
+  0600 001A 0500 001A  0200 000A 0200 0020  0200 0020 0200 0041  0200 000A 0200 0020  0200 0020 0200 0020
+  0600 001A 0500 001A  0B00 000A 0200 0020  0200 0020 0200 0041  0200 000A 0B00 0020  0B00 0020 0B00 0020
+  Push Element:
+     r13: 0000 0000 0000 0006
+  New: accept initial variable
+      r8: 0000 0000 0000 0006
+     r13: 0000 0001 0000 0005
+  accept a
+  Push Element:
+     r13: 0000 0001 0000 0005
+     r13: 0000 0002 0000 000B
+     r13: 0000 0003 0000 0006
+  accept v
+  Push Element:
+     r13: 0000 0003 0000 0006
+  New: Variable
+      r8: 0000 0003 0000 0006
+     r13: 0000 0004 0000 0006
+     r13: 0000 0005 0000 0006
+     r13: 0000 0006 0000 0006
+     r13: 0000 0007 0000 000B
+     r13: 0000 0008 0000 000B
+     r13: 0000 0009 0000 000B
+  Reduce 3:
+      r8: 0000 0000 0000 0009
+      r9: 0000 0001 0000 0005
+     r10: 0000 0000 0000 0009
+  New: Term infix term
+      r8: 0000 0000 0000 0009
+      r8: 0000 0000 0000 0009
+      r8: 0000 0001 0000 0005
+  parse: 0000 0000 0000 0009
+  END
+
 
 
 =head1 Private Methods
@@ -1300,10 +1061,10 @@ B<Example:>
     ok Assemble(debug => 0, eq => <<END);
      r13: 0000 0000 0000 0000
      r13: 0000 0000 0000 0001
-     r13: 0000 0000 0000 0007
-     r13: 0000 0000 0000 0007
-     r13: 0000 0000 0000 0009
-     r13: 0000 0000 0000 0009
+     r13: 0000 0000 0000 0006
+     r13: 0000 0000 0000 0006
+     r13: 0000 0000 0000 0008
+     r13: 0000 0000 0000 0008
   END
 
     Push rbp;
@@ -1367,7 +1128,33 @@ B<Example:>
     PrintOutRegisterInHex rax;
     ok Assemble(debug => 0, eq => <<END);
   Push Empty
-     rax: 0000 0001 0000 000D
+     rax: 0000 0001 0000 000A
+  END
+
+
+=head2 reduceMultiple($priority)
+
+Reduce existing operators on the stack
+
+     Parameter  Description
+  1  $priority  Priority of the operators to reduce
+
+B<Example:>
+
+
+    Mov r15,           -1;  Push r15;
+    Mov r15, $OpenBracket;  Push r15;
+
+    reduceMultiple 1;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    Pop r15; PrintOutRegisterInHex r15;
+    Pop r14; PrintOutRegisterInHex r14;
+    ok Assemble(debug => 0, eq => <<END);
+  Reduce 2:
+      r8: 0000 0000 0000 0010
+      r9: 0000 0000 0000 0000
+     r15: 0000 0000 0000 0000
+     r14: FFFF FFFF FFFF FFFF
   END
 
 
@@ -1379,30 +1166,6 @@ Assign
 =head2 accept_b()
 
 Open
-
-
-=head2 reduceMultiple()
-
-Accept by reducing
-
-
-B<Example:>
-
-
-    Mov r15,           -1;  Push r15;
-    Mov r15, $OpenBracket;  Push r15;
-
-    reduceMultiple;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
-
-    Pop r15; PrintOutRegisterInHex r15;
-    Pop r14; PrintOutRegisterInHex r14;
-    ok Assemble(debug => 0, eq => <<END);
-  Reduce 2:
-      r8: 0000 0000 0000 0010
-      r9: 0000 0000 0000 0000
-     r15: 0000 0000 0000 0000
-     r14: FFFF FFFF FFFF FFFF
-  END
 
 
 =head2 accept_B()
@@ -1466,29 +1229,31 @@ Parse the string of classified lexicals addressed by register $start of length $
 
 11 L<ClassifyNewLines|/ClassifyNewLines> - A new line acts a semi colon if it appears immediately after a variable.
 
-12 L<error|/error> - Die
+12 L<ClassifyWhiteSpace|/ClassifyWhiteSpace> - Classify white space per: lib/Unisyn/whiteSpace/whiteSpaceClassification.
 
-13 L<lexicalNameFromLetter|/lexicalNameFromLetter> - Lexical name for a lexical item described by its letter
+13 L<error|/error> - Die
 
-14 L<lexicalNumberFromLetter|/lexicalNumberFromLetter> - Lexical number for a lexical item described by its letter
+14 L<lexicalNameFromLetter|/lexicalNameFromLetter> - Lexical name for a lexical item described by its letter
 
-15 L<loadCurrentChar|/loadCurrentChar> - Load the details of the character currently being processed
+15 L<lexicalNumberFromLetter|/lexicalNumberFromLetter> - Lexical number for a lexical item described by its letter
 
-16 L<new|/new> - Create a new term
+16 L<loadCurrentChar|/loadCurrentChar> - Load the details of the character currently being processed
 
-17 L<parseExpression|/parseExpression> - Create a parser for an expression described by variables
+17 L<new|/new> - Create a new term
 
-18 L<parseExpressionCode|/parseExpressionCode> - Parse the string of classified lexicals addressed by register $start of length $length.
+18 L<parseExpression|/parseExpression> - Create a parser for an expression described by variables
 
-19 L<pushElement|/pushElement> - Push the current element on to the stack
+19 L<parseExpressionCode|/parseExpressionCode> - Parse the string of classified lexicals addressed by register $start of length $length.
 
-20 L<pushEmpty|/pushEmpty> - Push the empty element on to the stack
+20 L<pushElement|/pushElement> - Push the current element on to the stack
 
-21 L<reduce|/reduce> - Convert the longest possible expression on top of the stack into a term
+21 L<pushEmpty|/pushEmpty> - Push the empty element on to the stack
 
-22 L<reduceMultiple|/reduceMultiple> - Accept by reducing
+22 L<reduce|/reduce> - Convert the longest possible expression on top of the stack into a term  at the specified priority
 
-23 L<testSet|/testSet> - Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
+23 L<reduceMultiple|/reduceMultiple> - Reduce existing operators on the stack
+
+24 L<testSet|/testSet> - Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
 
 =head1 Installation
 
@@ -2230,7 +1995,7 @@ END
  }
 
 latest:
-if (1) {                                                                        # Parse some code
+if (1) {                                                                        #TparseExpression
   my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
              (Vq(out), Vq(size), Vq(opens), Vq('fail'));
 
