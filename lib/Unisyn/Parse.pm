@@ -2363,6 +2363,16 @@ Push Element:
 parse: 0000 0000 0000 0009
 END
 
+#latest:
+ok T(q(brackets), <<END) if 0;
+ParseUtf8
+END
+
+#latest:
+ok T(q(brackets), <<END) if 0;
+ParseUtf8
+END
+
 ok 1 for 23..99;
 
 unlink $_ for qw(hash print2 sde-log.txt sde-ptr-check.out.txt z.txt);          # Remove incidental files
