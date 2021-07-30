@@ -341,10 +341,6 @@ sub tripleTerms                                                                 
      }
    }
   lll "New line insertions points\n", dump(\%semi, \%possible);
-  for my $A(sort keys %semi)         {
-  for my $B(sort keys $semi{$A}->%*) {
-    my $i =
-  }}
  }
 
 sub translateSomeText($$)                                                       # Translate some text
@@ -452,6 +448,10 @@ END
 
 translateSomeText 's1', <<END;
 va aa N S S A N S S S
+END
+
+translateSomeText 'vnv', <<END;
+va N vb
 END
 
 say STDERR owf $lexicalsFile, dump($Tables);                                    # Write results
