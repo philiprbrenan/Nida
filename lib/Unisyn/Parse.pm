@@ -289,7 +289,7 @@ sub ClassifyWhiteSpace(@)                                                       
             Jmp $end
            };
           getAlpha $cb;                                                         # Actual character in alphabet
-          Cmp $cb, $asciiSpace; IfEq {Jmp $end};                                # Skip 's'
+          Cmp $cb, $asciiSpace; Je $end;                                        # Skip 's'
 
           Cmp $cb, $asciiNewLine;
           IfEq                                                                  # New lines prevent 's' from preceeding 'a'
@@ -332,8 +332,7 @@ sub ClassifyWhiteSpace(@)                                                       
 
       Block                                                                     # Mark significant white space
        {my ($start, $end) = @_;
-        Cmp $eb, $WhiteSpace;
-        Jne $end;                                                               # Not significant white space
+        Cmp $eb, $WhiteSpace; Jne $end;                                         # Not significant white space
         putLexicalCode $index, $Ascii;                                          # Mark as ascii
        };
      });
@@ -344,8 +343,7 @@ sub ClassifyWhiteSpace(@)                                                       
   $s->call(@parameters);
  } # ClassifyWhiteSpace
 
-#sub ClassifyNewLines(@)                                                         # Classify new lines tripleTerms() in: UnisynParse/lib/Unisyn/unicode/lex/lex.pl
-
+#sub ClassifyNewLines(@)                                                        # Classify new lines tripleTerms() in: UnisynParse/lib/Unisyn/unicode/lex/lex.pl
 
 sub lexicalNameFromLetter($)                                                    # Lexical name for a lexical item described by its letter
  {my ($l) = @_;                                                                 # Letter of the lexical item
@@ -514,7 +512,7 @@ sub reduceMultiple($)                                                           
   Vq('count',99)->for(sub                                                       # An improbably high but finit number of reductions
    {my ($index, $start, $next, $end) = @_;                                      # Execute body
     reduce($priority);
-    IfNe {Jmp $end};                                                            # Keep going as long as reductions are possible
+    Jne $end;                                                                   # Keep going as long as reductions are possible
    });
  }
 
@@ -583,12 +581,12 @@ sub accept_v                                                                    
    Vq(count,99)->for(sub                                                        # Reduce prefix operators
     {my ($index, $start, $next, $end) = @_;
      checkStackHas 2;
-     IfLt {Jmp $end};
+     Jl $end;
      my ($l, $r) = ($w1, $w2);
      Mov $l, "[rsp+".(1*$ses)."]";
      Mov $r, "[rsp+".(0*$ses)."]";
      testSet("p", $l);
-     IfNe {Jmp $end};
+     Jne $end;
      new(2, "Prefixed variable");
     });
   }
@@ -597,7 +595,7 @@ sub parseExpressionCode()                                                       
  {my $end = Label;
 
   Cmp $size, 0;                                                                 # Check for empty expression
-  IfEq {Jmp $end};
+  Je $end;
 
   loadCurrentChar;                                                              # Load current character
 ### Need test for ignorable white space as first character
