@@ -158,41 +158,53 @@ sub ClassifyWhiteSpace(@)                                                       
 
   my $s = Subroutine
    {my ($p) = @_;                                                               # Parameters
-    my $e        = r15;                                                         # Current char
-    my $eb       = $e."b";                                                      # Lexical type of current char
+    my $eb       = r15."b";                                                     # Lexical type of current char
     my $s        = r14;                                                         # State of white space between 'a'
     my $S        = r13;                                                         # State of white space before  'a'
-    my $c        = r12;                                                         # Full classification of a character
-    my $cb       = $c."b";                                                      # Actual character within alphabet
+    my $cb       = r12."b";                                                     # Actual character within alphabet
     my $address  = r11;                                                         # Address of input string
     my $index    = r10;                                                         # Index of current char
     my ($w1, $w2)= (r8."b", r9."b");                                            # Temporary work registers
+
+    my sub getAlpha($;$)                                                        # Load the position of a lexical item in its alphabet from the current character
+     {my ($register, $indexReg) = @_;                                           # Register to load, optional index register
+      my $i = $index // $indexReg;                                              # Supplied indx or default
+      Mov $register, "[$address+4*$i]";                                         # Load lexical code
+     };
+
+    my sub getLexicalCode($)                                                    # Load the lexical code of the current character in memory into the specified register.
+     {my ($register) = @_;                                                      # Register to load
+      Mov $register, "[$address+4*$index+3]";                                   # Load lexical code
+     };
+
+    my sub putLexicalCode($$)                                                   # Put the specified lexical code into the current character in memory.
+     {my ($index, $code) = @_;                                                  # Index register, code
+      Mov $w1, $code;
+      Mov "[$address+4*$index+3]", $w1;                                         # Save lexical code
+     };
+
     PushR my @save = (r8, r9, r10, r11, r12, r13, r14, r15);
 
     $$p{address}->setReg($address);                                             # Address of string
-    Mov $s, -1; Mov $S, -1; Mov $index, 0;                                      # States, position
+    Mov $s, -1; Mov $S, -1; Mov $index, 0;                                      # Initial states, position
 
     $$p{size}->for(sub                                                          # Each character in expression
      {my ($indexVariable, $start, $next, $end) = @_;
 
       $indexVariable->setReg($index);
-      Mov $eb, "[$address+4*$index+3]";                                         # Current lexical code
+      getLexicalCode $eb;                                                       # Current lexical code
 
       Block                                                                     # Trap space before new line and detect new line after ascii
        {my ($start, $end) = @_;
-        Cmp $index, 0;
-        IfEq {Jmp $end};                                                        # Start beyond the first character so we can look back one character.
-
-        Cmp $eb, $Ascii;
-        IfNe {Jmp $end};                                                        # Current is ascii
+        Cmp $index, 0;    Je  $end;                                             # Start beyond the first character so we can look back one character.
+        Cmp $eb, $Ascii;  Jne $end;                                             # Current is ascii
 
         Mov $w1, "[$address+4*$index-1]";                                       # Previous lexical code
-        Cmp $w1, $Ascii;
-        IfNe {Jmp $end};                                                        # Previous is ascii
+        Cmp $w1, $Ascii;  Jne $end;                                             # Previous is ascii
 
         if (1)                                                                  # Check for 's' followed by 'n' and 'a' followed by 'n'
          {Mov $w1, "[$address+4*$index-4]";                                     # Previous character
-          Mov $w2, "[$address+4*$index]";                                       # Current character
+          getAlpha $w2;                                                         # Current character
 
           Cmp $w1, $asciiSpace;                                                 # Check for space followed by new line
           IfEq
@@ -203,17 +215,11 @@ sub ClassifyWhiteSpace(@)                                                       
              };
            };
 
-          Cmp $w1, $asciiSpace;                                                 # Check for space followed by new line
-          IfEq {Jmp $end};                                                      # Previous was 's'
+          Cmp $w1, $asciiSpace;    Je  $end;                                    # Check for  'a' followed by 'n'
+          Cmp $w1, $asciiNewLine;  Je  $end;                                    # Current is 'a' but not 'n' or 's'
+          Cmp $w2, $asciiNewLine;  Jne $end;                                    # Current is 'n'
 
-          Cmp $w1, $asciiNewLine;
-          IfEq {Jmp $end};                                                      # Previous was 'n'
-                                                                                # Previous is 'a' but not 's' or 'n'
-          Cmp $w2, $asciiNewLine;
-          IfNe {Jmp $end};                                                      # Current is 'n'
-
-          Mov $w2, $WhiteSpace;                                                 # Mark new line as significant
-          Mov "[$address+4*$index+3]", $w2;                                     # Current character
+          putLexicalCode $index, $WhiteSpace;                                   # Mark new line as significant
          }
        };
 
@@ -221,10 +227,10 @@ sub ClassifyWhiteSpace(@)                                                       
        {my ($start, $end) = @_;
         Cmp $s, -1;
         IfEq                                                                    # Looking for opening ascii
-         {Cmp $eb, $Ascii;  IfNe {Jmp $end};                                    # Not ascii
-          Mov $cb, "[$address+4*$index]";                                       # Actual character in alphabet
-          Cmp $cb, $asciiNewLine;  IfEq {Jmp $end};                             # Skip over new lines
-          Cmp $cb, $asciiSpace;    IfEq {Jmp $end};                             # Skip over spaces
+         {Cmp $eb, $Ascii;         Jne $end;                                    # Not ascii
+          getAlpha $cb;                                                         # Current character
+          Cmp $cb, $asciiNewLine;  Je $end;                                     # Skip over new lines
+          Cmp $cb, $asciiSpace;    Je $end;                                     # Skip over spaces
           IfEq
            {Mov $s, $index; Inc $s;                                             # Ascii not space nor new line
            };
@@ -237,23 +243,21 @@ sub ClassifyWhiteSpace(@)                                                       
            {Mov $s, -1;
             Jmp $end
            };
-          Mov $cb, "[$address+4*$index]";                                       # Actual character in alphabet
-          Cmp $cb, $asciiNewLine;  IfEq {Jmp $end};                             # Skip over new lines
-          Cmp $cb, $asciiSpace;    IfEq {Jmp $end};                             # Skip over spaces
+          getAlpha $cb;                                                         # Current character
+          Cmp $cb, $asciiNewLine; Je $end;                                      # Skip over new lines
+          Cmp $cb, $asciiSpace;   Je $end;                                      # Skip over spaces
 
           For                                                                   # Move over spaces and new lines between two ascii characters that are neither of new line or space
            {my ($start, $end, $next) = @_;
-            Mov $cb, "[$address+4*$s]";                                         # Actual character in alphabet
+            getAlpha $cb, $s;                                                   # 's' or 'n'
             Cmp $cb, $asciiSpace;
             IfEq
-             {Mov $cb, $WhiteSpace;                                             # Mark as significant white space.
-              #Mov "[$address+4*$s+3]", $cb;
+             {putLexicalCode $s, $WhiteSpace;                                   # Mark as significant white space.
               Jmp $next;
              };
             Cmp $cb, $asciiNewLine;
             IfEq
-             {Mov $cb, $WhiteSpace;                                             # Mark as significant new line
-              Mov "[$address+4*$s+3]", $cb;
+             {putLexicalCode $index, $WhiteSpace;                               # Mark as significant new line
               Jmp $next;
              };
            } $s, $index;
@@ -271,11 +275,11 @@ sub ClassifyWhiteSpace(@)                                                       
            {Mov $S, -1;
             Jmp $end
            };
-          Mov $cb, "[$address+4*$index]";                                       # Actual character in alphabet
+          getAlpha $cb;                                                         # Actual character in alphabet
           Cmp $cb, $asciiSpace;                                                 # Space
           IfEq
            {Mov $S, $index;
-           Jmp $end;
+            Jmp $end;
            };
          }
         sub                                                                     # Looking for 'a'
@@ -284,7 +288,7 @@ sub ClassifyWhiteSpace(@)                                                       
            {Mov $S, -1;
             Jmp $end
            };
-          Mov $cb, "[$address+4*$index]";                                       # Actual character in alphabet
+          getAlpha $cb;                                                         # Actual character in alphabet
           Cmp $cb, $asciiSpace; IfEq {Jmp $end};                                # Skip 's'
 
           Cmp $cb, $asciiNewLine;
@@ -295,8 +299,7 @@ sub ClassifyWhiteSpace(@)                                                       
 
           For                                                                   # Move over spaces to non space ascii
            {my ($start, $end, $next) = @_;
-            Mov $cb, $WhiteSpace;
-            Mov "[$address+4*$S+3]", $cb;
+            putLexicalCode $S, $WhiteSpace;                                     # Mark new line as significant
            } $S, $index;
           Mov $S, -1;                                                           # Look for next possible space
          }
@@ -307,24 +310,22 @@ sub ClassifyWhiteSpace(@)                                                       
      {my ($indexVariable, $start, $next, $end) = @_;
 
       $indexVariable->setReg($index);
-      Mov $eb, "[$address+4*$index+3]";                                         # Current lexical code
+      getLexicalCode $eb;                                                       # Current lexical code
 
       Block                                                                     # Invert non significant white space
        {my ($start, $end) = @_;
         Cmp $eb, $Ascii;
-        IfNe {Jmp $end};                                                        # Ascii
+        Jne $end;                                                               # Ascii
 
-        Mov $cb, "[$address+4*$index]";                                         # Actual character in alphabet
+        getAlpha $cb;                                                           # Actual character in alphabet
         Cmp $cb, $asciiSpace;
         IfEq
-         {Mov $w1, $WhiteSpace;                                                 # Mark space as not significant
-          Mov "[$address+4*$index+3]", $w1;
+         {putLexicalCode $index, $WhiteSpace;
           Jmp $next;
          };
         Cmp $cb, $asciiNewLine;
         IfEq
-         {Mov $w1, $WhiteSpace;                                                 # Mark new line as not significant
-          Mov "[$address+4*$index+3]", $w1;
+         {putLexicalCode $index, $WhiteSpace;                                   # Mark new line as not significant
           Jmp $next;
          };
        };
@@ -332,9 +333,8 @@ sub ClassifyWhiteSpace(@)                                                       
       Block                                                                     # Mark significant white space
        {my ($start, $end) = @_;
         Cmp $eb, $WhiteSpace;
-        IfNe {Jmp $end};                                                        # Not significant white space
-        Mov $cb, $Ascii;
-        Mov "[$address+4*$index+3]", $cb;                                       # Mark as ascii
+        Jne $end;                                                               # Not significant white space
+        putLexicalCode $index, $Ascii;                                          # Mark as ascii
        };
      });
 
@@ -343,6 +343,9 @@ sub ClassifyWhiteSpace(@)                                                       
 
   $s->call(@parameters);
  } # ClassifyWhiteSpace
+
+#sub ClassifyNewLines(@)                                                         # Classify new lines tripleTerms() in: UnisynParse/lib/Unisyn/unicode/lex/lex.pl
+
 
 sub lexicalNameFromLetter($)                                                    # Lexical name for a lexical item described by its letter
  {my ($l) = @_;                                                                 # Letter of the lexical item
@@ -2227,7 +2230,7 @@ parse: 0000 0000 0000 0009
 END
  }
 
-#latest:
+latest:
 if (1) {                                                                        # Parse some code
   my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
              (Vq(out), Vq(size), Vq(opens), Vq('fail'));
