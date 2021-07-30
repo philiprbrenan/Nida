@@ -158,29 +158,31 @@ sub ClassifyWhiteSpace(@)                                                       
 
   my $s = Subroutine
    {my ($p) = @_;                                                               # Parameters
-    my $eb       = r15."b";                                                     # Lexical type of current char
-    my $s        = r14;                                                         # State of white space between 'a'
-    my $S        = r13;                                                         # State of white space before  'a'
-    my $cb       = r12."b";                                                     # Actual character within alphabet
-    my $address  = r11;                                                         # Address of input string
-    my $index    = r10;                                                         # Index of current char
-    my ($w1, $w2)= (r8."b", r9."b");                                            # Temporary work registers
+    my $eb            = r15."b";                                                # Lexical type of current char
+    my $s             = r14;                                                    # State of white space between 'a'
+    my $S             = r13;                                                    # State of white space before  'a'
+    my $cb            = r12."b";                                                # Actual character within alphabet
+    my $address       = r11;                                                    # Address of input string
+    my $index         = r10;                                                    # Index of current char
+    my ($w1, $w2)     = (r8."b", r9."b");                                       # Temporary work registers
+    my $indexScale    = 4;                                                      # The size of a utf32 character
+    my $lexCodeOffset = 3;                                                      # The offset in a classified character to the lexical code.
 
     my sub getAlpha($;$)                                                        # Load the position of a lexical item in its alphabet from the current character
      {my ($register, $indexReg) = @_;                                           # Register to load, optional index register
       my $i = $index // $indexReg;                                              # Supplied indx or default
-      Mov $register, "[$address+4*$i]";                                         # Load lexical code
+      Mov $register, "[$address+$indexScale*$i]";                               # Load lexical code
      };
 
     my sub getLexicalCode($)                                                    # Load the lexical code of the current character in memory into the specified register.
      {my ($register) = @_;                                                      # Register to load
-      Mov $register, "[$address+4*$index+3]";                                   # Load lexical code
+      Mov $register, "[$address+$indexScale*$index+$lexCodeOffset]";            # Load lexical code
      };
 
     my sub putLexicalCode($$)                                                   # Put the specified lexical code into the current character in memory.
      {my ($index, $code) = @_;                                                  # Index register, code
       Mov $w1, $code;
-      Mov "[$address+4*$index+3]", $w1;                                         # Save lexical code
+      Mov "[$address+$indexScale*$index+$lexCodeOffset]", $w1;                  # Save lexical code
      };
 
     PushR my @save = (r8, r9, r10, r11, r12, r13, r14, r15);
@@ -199,11 +201,11 @@ sub ClassifyWhiteSpace(@)                                                       
         Cmp $index, 0;    Je  $end;                                             # Start beyond the first character so we can look back one character.
         Cmp $eb, $Ascii;  Jne $end;                                             # Current is ascii
 
-        Mov $w1, "[$address+4*$index-1]";                                       # Previous lexical code
+        Mov $w1, "[$address+$indexScale*$index-$indexScale+$lexCodeOffset]";    # Previous lexical code
         Cmp $w1, $Ascii;  Jne $end;                                             # Previous is ascii
 
         if (1)                                                                  # Check for 's' followed by 'n' and 'a' followed by 'n'
-         {Mov $w1, "[$address+4*$index-4]";                                     # Previous character
+         {Mov $w1, "[$address+$indexScale*$index-$indexScale]";                 # Previous character
           getAlpha $w2;                                                         # Current character
 
           Cmp $w1, $asciiSpace;                                                 # Check for space followed by new line
@@ -342,8 +344,6 @@ sub ClassifyWhiteSpace(@)                                                       
 
   $s->call(@parameters);
  } # ClassifyWhiteSpace
-
-#sub ClassifyNewLines(@)                                                        # Classify new lines tripleTerms() in: UnisynParse/lib/Unisyn/unicode/lex/lex.pl
 
 sub lexicalNameFromLetter($)                                                    # Lexical name for a lexical item described by its letter
  {my ($l) = @_;                                                                 # Letter of the lexical item
