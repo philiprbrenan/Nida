@@ -293,6 +293,7 @@ sub brackets                                                                    
 
   my @l; my @h;
   my $index = $Tables->bracketsBase;                                            # Brackets are numbered from here
+
   for my $t(@t)                                                                 # Load zmm0, zmm1
    {if (@$t > 1)
      {push @l, sprintf("0x%08x", $$t[0] [0] + ($index<<24));
@@ -311,6 +312,7 @@ sub brackets                                                                    
      }
     $index += 1;
    }
+
   push @l, 0 while @l < 16;
   push @h, 0 while @h < 16;
   $Tables->brackets = @l;                                                       # Number of brackets
@@ -375,7 +377,7 @@ sub translateSomeText($$)                                                       
      }
    }
 
-  for my $w(split /\s+/, $string)                                                  # Translate to text
+  for my $w(split /\s+/, $string)                                               # Translate to text
    {if    ($w =~ m(\A(a|d|v))) {translate $w}
     elsif ($w =~ m(\As)) {$T .= $Tables->alphabets->{semiColon}}
     elsif ($w =~ m(\Ab)) {$T .= $Tables->bracketsOpen ->[substr($w, 1)]}
