@@ -48,6 +48,7 @@ my $NewLineWhiteSpace = $$Lex{lexicals}{NewLineWhiteSpace}{number};             
 my $OpenBracket       = $$Lex{lexicals}{OpenBracket}      {number};             # Open  bracket
 my $prefix            = $$Lex{lexicals}{prefix}           {number};             # Prefix operator
 my $semiColon         = $$Lex{lexicals}{semiColon}        {number};             # Semicolon
+my $suffix            = $$Lex{lexicals}{suffix}           {number};             # Suffix
 my $term              = $$Lex{lexicals}{term}             {number};             # Term
 my $variable          = $$Lex{lexicals}{variable}         {number};             # Variable
 my $WhiteSpace        = $$Lex{lexicals}{WhiteSpace}       {number};             # Variable
@@ -64,6 +65,11 @@ sub getAlpha($$$)                                                               
 sub getLexicalCode($$$)                                                         # Load the lexical code of the current character in memory into the specified register.
  {my ($register, $address, $index) = @_;                                        # Register to load, address of start of string, index into string
   Mov $register, "[$address+$indexScale*$index+$lexCodeOffset]";                # Load lexical code
+ }
+
+sub getPrevLexicalCode($$$)                                                     # Get the lexical code of the previous character
+ {my ($register, $address, $index) = @_;                                        # Register to load, address of start of string, index into string
+  Mov $register, "[$address+$indexScale*$index-$$indexScale+$lexCodeOffset]";   # Load lexical code
  }
 
 sub putLexicalCode($$$$)                                                        # Put the specified lexical code into the current character in memory.
@@ -121,43 +127,96 @@ sub pushEmpty()                                                                 
    }
  }
 
-sub ClassifyNewLines(@)                                                         #P A new line acts a semi colon if it appears immediately after a variable.
+sub ClassifyNewLines(@)                                                         #P Scan input string looking for opportunitiesd to convert new lines into semi colons
  {my (@parameters) = @_;                                                        # Parameters
   @_ >= 1 or confess;
 
-  my %l = $Lex->{lexicals}->%*;                                                 # Lexical types
-  my $n = genHash(__PACKAGE__.'::Lexical::Numbers',                             # Lexical numbers
-    map {$_ => $l{$_}{number}} keys %l
-   );
-
   my $s = Subroutine
    {my ($p) = @_;                                                               # Parameters
-    PushR my @save = (r10, r11, r12, r13, r14, r15);
+    my $current       = r15;                                                    # Index of the current character
+    my $middle        = r14;                                                    # Index of the middle character
+    my $first         = r13;                                                    # Index of the first character
+    my $address       = r12;                                                    # Address of input string
+    my $size          = r11;                                                    # Length of input utf32 string
+    my($c1, $c2)      = (r8."b", r9."b");                                       # Lexical codes being tested
 
-    $$p{size}->for(sub                                                          # Each character in expression
-     {my ($index, $start, $next, $end) = @_;
-      my $a = $$p{address} + $index * $indexScale;
-      $a->setReg(r15);
-      Mov r14d, "[r15]";                                                        # Current character
-      Mov r13, r14;                                                             # Current character
-                                                                                # Convert variable followed by new line to variable white space semi-colon
-      Cmp r10,     $n->variable;                                                # Is lexical type of last character a variable ?
-      IfEq                                                                      # Lexical character of last character was a variable
-       {Cmp r13,   $n->NewLine;
-        IfEq                                                                    # Current character is new line
-         {Mov r12, $n->NewLineSemiColon;
-          Mov "[r15+$lexCodeOffset]", r12b;                                     # Make the current character a new line semicolon as the new line character immediately follows a variable
+    PushR my @save = (r8, r9, r10, r11, r12, r13, r14, r15);
+
+    $$p{address}->setReg($address);                                             # Address of string
+    Mov $current, 2; Mov $middle, 1; Mov $first, 0;
+
+    For                                                                         # Each character in input string
+     {my ($start, $end, $next) = @_;                                            # Start, end and next labels
+
+      getLexicalCode $c1, $address, $middle;                                    # Lexical code of the middle character
+      Cmp $c1, $WhiteSpace;
+      IfEq
+       {getAlpha $c1, $address, $middle;
+
+        Cmp $c1, $asciiNewLine;
+        IfEq                                                                    # Middle character is a insignificant new line and thus could be a semicolon
+         {getLexicalCode $c1, $address, $first;
+
+          my sub makeSemiColon                                                  # Make a new line into a new line semicolon
+           {putLexicalCode $c2, $address, $middle, $NewLineWhiteSpace;
+           }
+
+          my sub check_bpv                                                      # Make new line if followed by 'b', 'p' or 'v'
+           {getLexicalCode $c1, $address, $current;
+            Cmp $c1, $OpenBracket;
+            IfEq
+             {makeSemiColon;
+             }
+            sub
+             {Cmp $c1, $prefix;
+              IfEq
+               {makeSemiColon;
+               }
+              sub
+               {Cmp $c1, $variable;
+                IfEq
+                 {makeSemiColon;
+                 };
+               };
+             };
+           }
+
+          Cmp $c1, $CloseBracket;                                               # Check first character of sequence
+          IfEq
+           {check_bpv;
+           }
+          sub
+           {Cmp $c1, $suffix;
+            IfEq
+             {check_bpv;
+             }
+            sub
+             {Cmp $c1, $variable;
+              IfEq
+               {check_bpv;
+               };
+             };
+           };
          };
        };
 
-      KeepFree r10;
-      Mov r10, r13;                                                             # New last lexical type
-     });
+      Mov $first, $middle; Mov $middle, $current;                               # Find next lexical item
+      getLexicalCode $c1, $address, $current;                                   # Current lexical code
+      Mov $middle, $current;
+      Inc $current;                                                             # Next possible character
+      For
+       {my ($start, $end, $next) = @_;
+        getLexicalCode $c2, $address, $current;                                 # Lexical code of  next character
+        Cmp $c1, $c2;
+        Jne $end;                                                               # Terminate when we are in a different lexical item
+       } $current, $size;
+     } $current, $size;
+
     PopR @save;
-   } in  => {address => 3, size => 3}; #, out => {fail => 3};
+   } in  => {address => 3, size => 3};
 
   $s->call(@parameters);
- } # ClassIfyNewLines
+ } # ClassifyNewLines
 
 sub ClassifyWhiteSpace(@)                                                       #P Classify white space per: lib/Unisyn/whiteSpace/whiteSpaceClassification.pl
  {my (@parameters) = @_;                                                        # Parameters
