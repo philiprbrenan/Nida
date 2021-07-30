@@ -44,7 +44,6 @@ my $assign            = $$Lex{lexicals}{assign}           {number};             
 my $CloseBracket      = $$Lex{lexicals}{CloseBracket}     {number};             # Close bracket
 my $empty             = $$Lex{lexicals}{empty}            {number};             # Empty element
 my $NewLineSemiColon  = $$Lex{lexicals}{NewLineSemiColon} {number};             # New line semicolon
-my $NewLineWhiteSpace = $$Lex{lexicals}{NewLineWhiteSpace}{number};             # New line semicolon
 my $OpenBracket       = $$Lex{lexicals}{OpenBracket}      {number};             # Open  bracket
 my $prefix            = $$Lex{lexicals}{prefix}           {number};             # Prefix operator
 my $semiColon         = $$Lex{lexicals}{semiColon}        {number};             # Semicolon
@@ -67,13 +66,9 @@ sub getLexicalCode($$$)                                                         
   Mov $register, "[$address+$indexScale*$index+$lexCodeOffset]";                # Load lexical code
  }
 
-sub getPrevLexicalCode($$$)                                                     # Get the lexical code of the previous character
- {my ($register, $address, $index) = @_;                                        # Register to load, address of start of string, index into string
-  Mov $register, "[$address+$indexScale*$index-$$indexScale+$lexCodeOffset]";   # Load lexical code
- }
-
 sub putLexicalCode($$$$)                                                        # Put the specified lexical code into the current character in memory.
  {my ($register, $address, $index, $code) = @_;                                 # Register used to laod code, address of string, index into string, code to put
+  defined($code) or confess;
   Mov $register, $code;
   Mov "[$address+$indexScale*$index+$lexCodeOffset]", $register;                # Save lexical code
  }
@@ -143,10 +138,12 @@ sub ClassifyNewLines(@)                                                         
     PushR my @save = (r8, r9, r10, r11, r12, r13, r14, r15);
 
     $$p{address}->setReg($address);                                             # Address of string
+    $$p{size}   ->setReg($size);                                                # Size of string
     Mov $current, 2; Mov $middle, 1; Mov $first, 0;
 
     For                                                                         # Each character in input string
      {my ($start, $end, $next) = @_;                                            # Start, end and next labels
+
 
       getLexicalCode $c1, $address, $middle;                                    # Lexical code of the middle character
       Cmp $c1, $WhiteSpace;
@@ -158,12 +155,13 @@ sub ClassifyNewLines(@)                                                         
          {getLexicalCode $c1, $address, $first;
 
           my sub makeSemiColon                                                  # Make a new line into a new line semicolon
-           {putLexicalCode $c2, $address, $middle, $NewLineWhiteSpace;
+           {putLexicalCode $c2, $address, $middle, $NewLineSemiColon;
            }
 
           my sub check_bpv                                                      # Make new line if followed by 'b', 'p' or 'v'
            {getLexicalCode $c1, $address, $current;
             Cmp $c1, $OpenBracket;
+
             IfEq
              {makeSemiColon;
              }
@@ -1380,7 +1378,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 19;
+   {plan tests => 20;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -2066,7 +2064,7 @@ parse: 0000 0000 0000 0009
 END
  }
 
-latest:
+#latest:
 if (1) {                                                                        #TparseExpression
   my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
              (Vq(out), Vq(size), Vq(opens), Vq('fail'));
@@ -2151,6 +2149,79 @@ New: Term infix term
     r8: 0000 0000 0000 0009
     r8: 0000 0000 0000 0009
     r8: 0000 0001 0000 0005
+parse: 0000 0000 0000 0009
+END
+ }
+
+latest:
+if (1) {                                                                        #TparseExpression
+  my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
+             (Vq(out), Vq(size), Vq(opens), Vq('fail'));
+
+  my $source = Rutf8 $$Lex{sampleText}{vnv};                                    # String to be parsed in utf8
+  my $sourceLength = StringLength Vq(string, $source);
+     $sourceLength->outNL("Input  Length: ");
+
+  ConvertUtf8ToUtf32 Vq(u8,$source), size8 => $sourceLength,                    # Convert to utf32
+    (my $source32       = Vq(u32)),
+    (my $sourceSize32   = Vq(size32)),
+    (my $sourceLength32 = Vq(count));
+
+  $sourceSize32   ->outNL("Output Length: ");                                   # Write output length
+
+  PrintOutStringNL "After conversion from utf8 to utf32";
+  PrintUtf32($sourceLength32, $source32);                                       # Print utf32
+
+  Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{lexicalLow} ->@*)."]";                # Each double is [31::24] Classification, [21::0] Utf32 start character
+  Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{lexicalHigh}->@*)."]";                # Each double is [31::24] Range offset,   [21::0] Utf32 end character
+
+  ClassifyWithInRangeAndSaveOffset address=>$source32, size=>$sourceLength32;   # Alphabetic classification
+  PrintOutStringNL "After classification into alphabet ranges";
+  PrintUtf32($sourceLength32, $source32);                                       # Print classified utf32
+
+  Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{bracketsLow} ->@*)."]";               # Each double is [31::24] Classification, [21::0] Utf32 start character
+  Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{bracketsHigh}->@*)."]";               # Each double is [31::24] Range offset,   [21::0] Utf32 end character
+
+  ClassifyWhiteSpace address=>$source32, size=>$sourceLength32;                 # Classify white space
+  PrintUtf32($sourceLength32, $source32);
+
+  ClassifyNewLines address=>$source32, size=>$sourceLength32;                   # Classify new lines
+  PrintUtf32($sourceLength32, $source32);
+
+  parseExpression source=>$source32, size=>$sourceLength32, my $parse = Vq(parse);
+  $parse->outNL();
+
+  ok Assemble(debug => 1, eq => <<END);
+Input  Length: 0000 0000 0000 0009
+Output Length: 0000 0000 0000 0024
+After conversion from utf8 to utf32
+0001 D5EE 0000 000A
+After classification into alphabet ranges
+0600 001A 0200 000A
+0600 001A 0B00 000A
+0600 001A 0C00 000A
+Push Element:
+   r13: 0000 0000 0000 0006
+New: accept initial variable
+    r8: 0000 0000 0000 0006
+   r13: 0000 0001 0000 0008
+accept s
+Push Element:
+   r13: 0000 0001 0000 0008
+   r13: 0000 0002 0000 0006
+accept v
+Push Element:
+   r13: 0000 0002 0000 0006
+New: Variable
+    r8: 0000 0002 0000 0006
+Reduce 3:
+    r8: 0000 0000 0000 0009
+    r9: 0000 0001 0000 0008
+   r10: 0000 0000 0000 0009
+New: Term infix term
+    r8: 0000 0000 0000 0009
+    r8: 0000 0000 0000 0009
+    r8: 0000 0001 0000 0008
 parse: 0000 0000 0000 0009
 END
  }
