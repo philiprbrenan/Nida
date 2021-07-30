@@ -767,6 +767,75 @@ sub parseExpression(@)                                                          
   $s->call(@parameters);
  } # parse
 
+sub parseUtf8(@)                                                                # Parse a unisyn expression encoded as utf8
+ {my (@parameters) = @_;                                                        # Parameters
+  @_ >= 1 or confess;
+
+  my $s = Subroutine
+   {my ($p) = @_;                                                               # Parameters
+
+    PrintErrStringNL "Parseutf8" if $debug;
+
+    PushR my @save = (zmm0, zmm1);
+
+    ConvertUtf8ToUtf32 u8 => $$p{address}, size8 => $$p{size},                  # Convert to utf32
+      (my $source32       = Vq(u32)),
+      (my $sourceSize32   = Vq(size32)),
+      (my $sourceLength32 = Vq(count));
+
+    if ($debug)
+     {PrintOutStringNL "After conversion from utf8 to utf32";
+      $sourceSize32   ->outNL("Output Length: ");                               # Write output length
+      PrintUtf32($sourceLength32, $source32);                                   # Print utf32
+     }
+
+    Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{lexicalLow} ->@*)."]";              # Each double is [31::24] Classification, [21::0] Utf32 start character
+    Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{lexicalHigh}->@*)."]";              # Each double is [31::24] Range offset,   [21::0] Utf32 end character
+
+    ClassifyWithInRangeAndSaveOffset address=>$source32, size=>$sourceLength32; # Alphabetic classification
+    if ($debug)
+     {PrintOutStringNL "After classification into alphabet ranges";
+      PrintUtf32($sourceLength32, $source32);                                   # Print classified utf32
+     }
+
+    Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{bracketsLow} ->@*)."]";             # Each double is [31::24] Classification, [21::0] Utf32 start character
+    Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{bracketsHigh}->@*)."]";             # Each double is [31::24] Range offset,   [21::0] Utf32 end character
+
+    ClassifyWithInRange address=>$source32, size=>$sourceLength32;              # Bracket classification
+    if ($debug)
+     {PrintOutStringNL "After classification into brackets";
+      PrintUtf32($sourceLength32, $source32);                                   # Print classified brackets
+     }
+
+    my $opens = Vq(opens);
+    MatchBrackets address=>$source32, size=>$sourceLength32, $opens, $$p{fail}; # Match brackets
+    if ($debug)
+     {PrintOutStringNL "After bracket matching";
+      PrintUtf32($sourceLength32, $source32);                                   # Print matched brackets
+     }
+
+    ClassifyWhiteSpace address=>$source32, size=>$sourceLength32;               # Classify white space
+    if ($debug)
+     {PrintOutStringNL "After white space classification";
+      PrintUtf32($sourceLength32, $source32);
+     }
+
+    ClassifyNewLines address=>$source32, size=>$sourceLength32;                 # Classify new lines
+    if ($debug)
+     {PrintOutStringNL "After classifying new lines";
+      PrintUtf32($sourceLength32, $source32);
+     }
+
+    parseExpression source=>$source32, size=>$sourceLength32, $$p{parse};
+
+    $$p{parse}->outNL if $debug;
+
+    PopR @save;
+   } in  => {address => 3, size => 3}, out => {parse => 3, fail => 3};
+
+  $s->call(@parameters);
+ } # parseUtf8
+
 #d
 #-------------------------------------------------------------------------------
 # Export - eeee
@@ -2093,7 +2162,7 @@ if (1) {                                                                        
   Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{bracketsLow} ->@*)."]";               # Each double is [31::24] Classification, [21::0] Utf32 start character
   Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{bracketsHigh}->@*)."]";               # Each double is [31::24] Range offset,   [21::0] Utf32 end character
 
-  ClassifyWithInRange address=>$source32, size=>$sourceLength32;                # Bracket matching
+  ClassifyWithInRange address=>$source32, size=>$sourceLength32;                # Bracket classification
   PrintOutStringNL "After classification into brackets";
   PrintUtf32($sourceLength32, $source32);                                       # Print classified brackets
 
@@ -2155,50 +2224,27 @@ END
 
 latest:
 if (1) {                                                                        #TparseExpression
-  my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
-             (Vq(out), Vq(size), Vq(opens), Vq('fail'));
+  my $source  = $$Lex{sampleText}{vnv};                                         # String to be parsed in utf8
+  my $address = Rutf8 $source;
+  my $size    = StringLength Vq(string, $address);
+  my $fail  = Vq('fail');
+  my $parse = Vq('parse');
 
-  my $source = Rutf8 $$Lex{sampleText}{vnv};                                    # String to be parsed in utf8
-  my $sourceLength = StringLength Vq(string, $source);
-     $sourceLength->outNL("Input  Length: ");
-
-  ConvertUtf8ToUtf32 Vq(u8,$source), size8 => $sourceLength,                    # Convert to utf32
-    (my $source32       = Vq(u32)),
-    (my $sourceSize32   = Vq(size32)),
-    (my $sourceLength32 = Vq(count));
-
-  $sourceSize32   ->outNL("Output Length: ");                                   # Write output length
-
-  PrintOutStringNL "After conversion from utf8 to utf32";
-  PrintUtf32($sourceLength32, $source32);                                       # Print utf32
-
-  Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{lexicalLow} ->@*)."]";                # Each double is [31::24] Classification, [21::0] Utf32 start character
-  Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{lexicalHigh}->@*)."]";                # Each double is [31::24] Range offset,   [21::0] Utf32 end character
-
-  ClassifyWithInRangeAndSaveOffset address=>$source32, size=>$sourceLength32;   # Alphabetic classification
-  PrintOutStringNL "After classification into alphabet ranges";
-  PrintUtf32($sourceLength32, $source32);                                       # Print classified utf32
-
-  Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{bracketsLow} ->@*)."]";               # Each double is [31::24] Classification, [21::0] Utf32 start character
-  Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{bracketsHigh}->@*)."]";               # Each double is [31::24] Range offset,   [21::0] Utf32 end character
-
-  ClassifyWhiteSpace address=>$source32, size=>$sourceLength32;                 # Classify white space
-  PrintUtf32($sourceLength32, $source32);
-
-  ClassifyNewLines address=>$source32, size=>$sourceLength32;                   # Classify new lines
-  PrintUtf32($sourceLength32, $source32);
-
-  parseExpression source=>$source32, size=>$sourceLength32, my $parse = Vq(parse);
-  $parse->outNL();
+  parseUtf8  Vq(address, $address),  $size, $fail, $parse;
 
   ok Assemble(debug => 1, eq => <<END);
-Input  Length: 0000 0000 0000 0009
-Output Length: 0000 0000 0000 0024
 After conversion from utf8 to utf32
+Output Length: 0000 0000 0000 0024
 0001 D5EE 0000 000A
 After classification into alphabet ranges
 0600 001A 0200 000A
+After classification into brackets
+0600 001A 0200 000A
+After bracket matching
+0600 001A 0200 000A
+After white space classification
 0600 001A 0B00 000A
+After classifying new lines
 0600 001A 0C00 000A
 Push Element:
    r13: 0000 0000 0000 0006
