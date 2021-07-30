@@ -122,6 +122,440 @@ sub pushEmpty()                                                                 
    }
  }
 
+sub lexicalNameFromLetter($)                                                    # Lexical name for a lexical item described by its letter
+ {my ($l) = @_;                                                                 # Letter of the lexical item
+  my %l = $Lex->{treeTermLexicals}->%*;
+  my $n = $l{$l};
+  confess "No such lexical: $l" unless $n;
+  $n->{short}
+ }
+
+sub lexicalNumberFromLetter($)                                                  # Lexical number for a lexical item described by its letter
+ {my ($l) = @_;                                                                 # Letter of the lexical item
+  my $n = lexicalNameFromLetter $l;
+  my $N = $Lex->{lexicals}{$n}{number};
+  confess "No such lexical named: $n" unless defined $N;
+  $N
+ }
+
+sub new($$)                                                                     # Create a new term
+ {my ($depth, $description) = @_;                                               # Stack depth to be converted, text reason why we are creating a new term
+  PrintOutStringNL "New: $description" if $debug;
+  for my $i(1..$depth)
+   {Pop $w1;
+    PrintOutRegisterInHex $w1 if $debug;
+   }
+  Mov $w1, $term;                                                               # Term
+  Push $w1;                                                                     # Place simulated term on stack
+ }
+
+sub error($)                                                                    # Die
+ {my ($message) = @_;                                                           # Error message
+  PrintOutStringNL "Error: $message";
+  PrintOutString "Element: ";
+  PrintOutRegisterInHex $element;
+  PrintOutString "Index  : ";
+  PrintOutRegisterInHex $index;
+  Exit(0);
+ }
+
+sub testSet($$)                                                                 # Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
+ {my ($set, $register) = @_;                                                    # Set of lexical letters, Register to test
+  my @n = map {sprintf("0x%x", lexicalNumberFromLetter $_)} split //, $set;     # Each lexical item by number from letter
+  my $end = Label;
+  for my $n(@n)
+   {Cmp $register."b", $n;
+    IfEq {SetZF; Jmp $end};
+   }
+  ClearZF;
+  SetLabel $end;
+ }
+
+sub checkSet($)                                                                 # Check that one of a set of items is on the top of the stack or complain if it is not
+ {my ($set) = @_;                                                               # Set of lexical letters
+  my @n =  map {lexicalNumberFromLetter $_} split //, $set;
+  my $end = Label;
+
+  for my $n(@n)
+   {Cmp "byte[rsp]", $n;
+    IfEq {SetZF; Jmp $end};
+   }
+  error("Expected one of: '$set' on the stack");
+  ClearZF;
+  SetLabel $end;
+ }
+
+sub reduce($)                                                                   # Convert the longest possible expression on top of the stack into a term  at the specified priority
+ {my ($priority) = @_;                                                          # Priority of the operators to reduce
+  $priority =~ m(\A(1|3)\Z);                                                    # 1 - all operators, 2 - priority 2 operators
+  my ($success, $end) = map {Label} 1..2;                                       # Exit points
+
+  checkStackHas 3;                                                              # At least three elements on the stack
+  IfGe
+   {my ($l, $d, $r) = ($w1, $w2, $w3);
+    Mov $l, "[rsp+".(2*$ses)."]";                                               # Top 3 elements on the stack
+    Mov $d, "[rsp+".(1*$ses)."]";
+    Mov $r, "[rsp+".(0*$ses)."]";
+
+    if ($debug)
+     {PrintOutStringNL "Reduce 3:";
+      PrintOutRegisterInHex $l, $d, $r;
+     }
+
+    testSet("t",  $l);                                                          # Parse out infix operator expression
+    IfEq
+     {testSet("t",  $r);
+      IfEq
+       {testSet($priority == 1 ? "ads" : 'd', $d);                              # Reduce all operators or just reduce dyads
+        IfEq
+         {Add rsp, 3 * $ses;                                                    # Reorder into polish notation
+          Push $_ for $d, $l, $r;
+          new(3, "Term infix term");
+          Jmp $success;
+         };
+       };
+     };
+
+    testSet("b",  $l);                                                          # Parse parenthesized term
+    IfEq
+     {testSet("B",  $r);
+      IfEq
+       {testSet("t",  $d);
+        IfEq
+         {Add rsp, 3 * $ses;                                                    # Pop expression
+          Push $d;
+          PrintOutStringNL "Reduce by ( term )" if $debug;
+          Jmp $success;
+         };
+       };
+     };
+    KeepFree $l, $d, $r;
+   };
+
+  checkStackHas 2;                                                              # At least two elements on the stack
+  IfGe                                                                          # Convert an empty pair of parentheses to an empty term
+   {my ($l, $r) = ($w1, $w2);
+
+    if ($debug)
+     {PrintOutStringNL "Reduce 2:";
+      PrintOutRegisterInHex $l, $r;
+     }
+
+    KeepFree $l, $r;                                                            # Why ?
+    Mov $l, "[rsp+".(1*$ses)."]";                                               # Top 3 elements on the stack
+    Mov $r, "[rsp+".(0*$ses)."]";
+    testSet("b",  $l);                                                          # Empty pair of parentheses
+    IfEq
+     {testSet("B",  $r);
+      IfEq
+       {Add rsp, 2 * $ses;                                                      # Pop expression
+        pushEmpty;
+        new(1, "Empty brackets");
+        Jmp $success;
+       };
+     };
+    testSet("s",  $l);                                                          # Semi-colon, close implies remove unneeded semi
+    IfEq
+     {testSet("B",  $r);
+      IfEq
+       {Add rsp, 2 * $ses;                                                      # Pop expression
+        Push $r;
+        PrintOutStringNL "Reduce by ;)" if $debug;
+        Jmp $success;
+       };
+     };
+    testSet("p", $l);                                                           # Prefix, term
+    IfEq
+     {testSet("t",  $r);
+      IfEq
+       {new(2, "Prefix term");
+        Jmp $success;
+       };
+     };
+    KeepFree $l, $r;
+   };
+
+  ClearZF;                                                                      # Failed to match anything
+  Jmp $end;
+
+  SetLabel $success;                                                            # Successfully matched
+  SetZF;
+
+  SetLabel $end;                                                                # End
+ } # reduce
+
+sub reduceMultiple($)                                                           #P Reduce existing operators on the stack
+ {my ($priority) = @_;                                                          # Priority of the operators to reduce
+  Vq('count',99)->for(sub                                                       # An improbably high but finit number of reductions
+   {my ($index, $start, $next, $end) = @_;                                      # Execute body
+    reduce($priority);
+    Jne $end;                                                                   # Keep going as long as reductions are possible
+   });
+ }
+
+sub accept_a()                                                                  #P Assign
+ {checkSet("t");
+  reduceMultiple 2;
+  PrintOutStringNL "accept a" if $debug;
+  pushElement;
+ }
+
+sub accept_b                                                                    #P Open
+ {checkSet("abdps");
+  PrintOutStringNL "accept b" if $debug;
+  pushElement;
+ }
+
+sub accept_B                                                                    #P Closing parenthesis
+ {checkSet("bst");
+  PrintOutStringNL "accept B" if $debug;
+  reduceMultiple 1;
+  pushElement;
+  reduceMultiple 1;
+  checkSet("bst");
+ }
+
+sub accept_d                                                                    #P Infix but not assign or semi-colon
+ {checkSet("t");
+  PrintOutStringNL "accept d" if $debug;
+  pushElement;
+ }
+
+sub accept_p                                                                    #P Prefix
+ {checkSet("abdps");
+  PrintOutStringNL "accept p" if $debug;
+  pushElement;
+ }
+
+sub accept_q                                                                    #P Post fix
+ {checkSet("t");
+  PrintOutStringNL "accept q" if $debug;
+  IfEq                                                                          # Post fix operator applied to a term
+   {Pop $w1;
+    pushElement;
+    Push $w1;
+    new(2, "Postfix");
+   }
+ }
+
+sub accept_s                                                                    #P Semi colon
+ {checkSet("bst");
+  PrintOutStringNL "accept s" if $debug;
+  Mov $w1, "[rsp]";
+  testSet("s",  $w1);
+  IfEq                                                                          # Insert an empty element between two consecutive semicolons
+   {pushEmpty;
+   };
+  reduceMultiple 1;
+  pushElement;
+ }
+
+sub accept_v                                                                    #P Variable
+  {checkSet("abdps");
+   PrintOutStringNL "accept v" if $debug;
+   pushElement;
+   new(1, "Variable");
+   Vq(count,99)->for(sub                                                        # Reduce prefix operators
+    {my ($index, $start, $next, $end) = @_;
+     checkStackHas 2;
+     Jl $end;
+     my ($l, $r) = ($w1, $w2);
+     Mov $l, "[rsp+".(1*$ses)."]";
+     Mov $r, "[rsp+".(0*$ses)."]";
+     testSet("p", $l);
+     Jne $end;
+     new(2, "Prefixed variable");
+    });
+  }
+
+sub parseExpressionCode()                                                       #P Parse the string of classified lexicals addressed by register $start of length $length.  The resulting parse tree (if any) is returned in r15.
+ {my $end = Label;
+  my $eb  = $element."b";                                                       # Contains a byte from the item being parsed
+
+  Cmp $size, 0;                                                                 # Check for empty expression
+  Je $end;
+
+  loadCurrentChar;                                                              # Load current character
+### Need test for ignorable white space as first character
+  testSet($firstSet, $element);
+  IfNe
+   {error(<<END =~ s(\n) ( )gsr);
+Expression must start with 'opening parenthesis', 'prefix
+operator', 'semi-colon' or 'variable'.
+END
+   };
+
+  testSet("v", $element);                                                       # Single variable
+  IfEq
+   {pushElement;
+    new(1, "accept initial variable");
+   }
+  sub
+   {testSet("s", $element);                                                     # Semi
+    IfEq
+     {pushEmpty;
+      new(1, "accept initial semicolon");
+     };
+    pushElement;
+   };
+
+  Inc $index;                                                                   # We have processed the first character above
+
+  For                                                                           # Parse each utf32 character after it has been classified
+   {my ($start, $end, $next) = @_;                                              # Start and end of the classification loop
+    loadCurrentChar;                                                            # Load current character
+
+    PrintOutRegisterInHex $element if $debug;
+
+    Cmp $eb, $WhiteSpace;
+    IfEq {Jmp $next};                                                           # Ignore white space
+
+    Cmp $eb, 1;
+    IfGt                                                                        # Brackets are singular but everything else can potential be a plurality
+     {Cmp $prevChar."b", $eb;                                                   # Compare with previous element known not to be whitespace
+      IfEq                                                                      # Ignore white space
+       {Jmp $next
+       };
+     };
+    Mov $prevChar, $element;                                                    # Save element to previous element now we know we are on a different element
+
+    for my $l(sort keys $Lex->{lexicals}->%*)                                   # Each possible lexical item after classification
+     {my $x = $Lex->{lexicals}{$l}{letter};
+      next unless $x;                                                           # Skip chaarcters that do noit have a letter defined for Tree::Term because the lexical items needed to layout a file of lexic al items are folded down to the actual lexicals required to represent the language independent of the textual layout with whitespace.
+
+      my $n = $Lex->{lexicals}{$l}{number};
+      Comment "Compare to $n for $l";
+      Cmp $eb, $n;
+
+      IfEq
+       {eval "accept_$x";
+        Jmp $next
+       };
+     }
+    error("Unexpected lexical item");                                           # Not selected
+   } $index, $size;
+
+  testSet($lastSet, $prevChar);                                                 # Last lexical  element
+  IfNe                                                                          # Incomplete expression
+   {error("Incomplete expression");
+   };
+
+  Vq('count', 99)->for(sub                                                      # Remove trailing semicolons if present
+   {my ($index, $start, $next, $end) = @_;                                      # Execute body
+    checkStackHas 2;
+    IfLt {Jmp $end};                                                            # Does not have two or more elements
+    Pop $w1;
+    testSet("s", $w1);                                                          # Check that the top most element is a semi colon
+    IfNe                                                                        # Not a semi colon so put it back and finish the loop
+     {Push $w1;
+      Jmp $end;
+     };
+   });
+
+  reduceMultiple 1;                                                             # Final reductions
+
+  checkStackHas 1;
+  IfNe                                                                          # Incomplete expression
+   {error("Multiple expressions on stack");
+   };
+
+  Pop r15;                                                                      # The resulting parse tree
+  SetLabel $end;
+ } # parseExpression
+
+sub parseExpression(@)                                                          # Create a parser for an expression described by variables
+ {my (@parameters) = @_;                                                        # Parameters describing expression
+
+  my $s = Subroutine
+   {my ($parameters) = @_;                                                      # Parameters
+    PushR my @save = map {"r$_"} 8..15;
+    $$parameters{source}->setReg($start);                                       # Start of expression string after it has been classified
+    $$parameters{size}  ->setReg($size);                                        # Number of characters in the expression
+
+    Push rbp; Mov rbp, rsp;                                                     # New frame
+
+    parseExpressionCode;
+
+    $$parameters{parse}->getReg(r15);                                           # Number of characters in the expression
+
+    Mov rsp, rbp; Pop rbp;
+                                                                                # Remove new frame
+    PopR @save;
+   } in => {source => 3, size => 3}, out => {parse => 3};
+
+  $s->call(@parameters);
+ } # parse
+
+sub MatchBrackets(@)                                                            # Replace the low three bytes of a utf32 bracket character with 24 bits of offset to the matching opening or closing bracket. Opening brackets have even codes from 0x10 to 0x4e while the corresponding closing bracket has a code one higher.
+ {my (@parameters) = @_;                                                        # Parameters
+  @_ >= 1 or confess;
+
+  my $s = Subroutine
+   {my ($p) = @_;                                                               # Parameters
+    Comment "Match brackets in utf 32 text";
+    my $finish = Label;
+    PushR my @save = (xmm0, k7, r10, r11, r12, r13, r14, r15, rbp);             # r15 current character address. r14 is the current classification. r13 the last classification code. r12 the stack depth. r11 the number of opening brackets found. r10  address of first utf32 character.
+    Mov rbp, rsp;                                                               # Save stack location so we can use the stack to record the brackets we have found
+    ClearRegisters r11, r12, r15;                                               # Count the number of brackets and track the stack depth, index of each character
+    Cq(three, 3)->setMaskFirst(k7);                                             # These are the number of bytes that we are going to use for the offsets of brackets which limits the size of a program to 24 million utf32 characters
+    $$p{fail}   ->getConst(0);                                                  # Clear failure indicator
+    $$p{opens}  ->getConst(0);                                                  # Clear count of opens
+    $$p{address}->setReg(r10);                                                  # Address of first utf32 character
+    my $w = RegisterSize eax;                                                   # Size of a utf32 character
+
+    $$p{size}->for(sub                                                          # Process each utf32 character in the block of memory
+     {my ($index, $start, $next, $end) = @_;
+      my $continue = Label;
+
+      Mov r14b, "[r10+$w*r15+3]";                                               # Classification character
+
+      Cmp r14, 0x10;                                                            # First bracket
+      Jl $continue;                                                             # Less than first bracket
+      Cmp r14, 0x4f;                                                            # Last bracket
+      Jg $continue;                                                             # Greater than last bracket
+
+      Test r14, 1;                                                              # Zero means that the bracket is an opener
+      IfZ sub                                                                   # Save an opener then continue
+       {Push r15;                                                               # Save position in input
+        Push r14;                                                               # Save opening code
+        Inc r11;                                                                # Count number of opening brackets
+        Inc r12;                                                                # Number of brackets currently open
+        Jmp $continue;
+       };
+      Cmp r12, 1;                                                               # Check that there is a bracket to match on the stack
+      IfLt sub                                                                  # Nothing on stack
+       {Not r15;                                                                # Minus the offset at which the error occurred so that we can fail at zero
+        $$p{fail}->getReg(r15);                                                 # Position in input that caused the failure
+        Jmp $finish;                                                            # Return
+       };
+      Mov r13, "[rsp]";                                                         # Peek at the opening bracket code which is on top of the stack
+      Inc r13;                                                                  # Expected closing bracket
+      Cmp r13, r14;                                                             # Check for match
+      IfNe sub                                                                  # Mismatch
+       {Not r15;                                                                # Minus the offset at which the error occurred so that we can fail at zero
+        $$p{fail}->getReg(r15);                                                 # Position in input that caused the failure
+        Jmp $finish;                                                            # Return
+       };
+      Pop r13;                                                                  # The closing bracket matches the opening bracket
+      Pop r13;                                                                  # Offset of opener
+      Dec r12;                                                                  # Close off bracket sequence
+      Vpbroadcastq xmm0, r15;                                                   # Load offset of opener
+      Vmovdqu8 "[r10+$w*r13]\{k7}", xmm0;                                       # Save offset of opener in the code for the closer - the classification is left intact so we still know what kind of bracket we have
+      Vpbroadcastq xmm0, r13;                                                   # Load offset of opener
+      Vmovdqu8 "[r10+$w*r15]\{k7}", xmm0;                                       # Save offset of closer in the code for the openercloser - the classification is left intact so we still know what kind of bracket we have
+      SetLabel $continue;                                                       # Continue with next character
+      Inc r15;                                                                  # Next character
+     });
+
+    SetLabel $finish;
+    Mov rsp, rbp;                                                               # Restore stack
+    $$p{opens}->getReg(r11);                                                    # Number of brackets opened
+    PopR @save;
+   } in  => {address => 3, size => 3}, out => {fail => 3, opens => 3};
+
+  $s->call(@parameters);
+ } # MatchBrackets
+
 sub ClassifyNewLines(@)                                                         #P Scan input string looking for opportunitiesd to convert new lines into semi colons
  {my (@parameters) = @_;                                                        # Parameters
   @_ >= 1 or confess;
@@ -403,369 +837,6 @@ sub ClassifyWhiteSpace(@)                                                       
 
   $s->call(@parameters);
  } # ClassifyWhiteSpace
-
-sub lexicalNameFromLetter($)                                                    # Lexical name for a lexical item described by its letter
- {my ($l) = @_;                                                                 # Letter of the lexical item
-  my %l = $Lex->{treeTermLexicals}->%*;
-  my $n = $l{$l};
-  confess "No such lexical: $l" unless $n;
-  $n->{short}
- }
-
-sub lexicalNumberFromLetter($)                                                  # Lexical number for a lexical item described by its letter
- {my ($l) = @_;                                                                 # Letter of the lexical item
-  my $n = lexicalNameFromLetter $l;
-  my $N = $Lex->{lexicals}{$n}{number};
-  confess "No such lexical named: $n" unless defined $N;
-  $N
- }
-
-sub new($$)                                                                     # Create a new term
- {my ($depth, $description) = @_;                                               # Stack depth to be converted, text reason why we are creating a new term
-  PrintOutStringNL "New: $description" if $debug;
-  for my $i(1..$depth)
-   {Pop $w1;
-    PrintOutRegisterInHex $w1 if $debug;
-   }
-  Mov $w1, $term;                                                               # Term
-  Push $w1;                                                                     # Place simulated term on stack
- }
-
-sub error($)                                                                    # Die
- {my ($message) = @_;                                                           # Error message
-  PrintOutStringNL "Error: $message";
-  PrintOutString "Element: ";
-  PrintOutRegisterInHex $element;
-  PrintOutString "Index  : ";
-  PrintOutRegisterInHex $index;
-  Exit(0);
- }
-
-sub testSet($$)                                                                 # Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
- {my ($set, $register) = @_;                                                    # Set of lexical letters, Register to test
-  my @n = map {sprintf("0x%x", lexicalNumberFromLetter $_)} split //, $set;     # Each lexical item by number from letter
-  my $end = Label;
-  for my $n(@n)
-   {Cmp $register."b", $n;
-    IfEq {SetZF; Jmp $end};
-   }
-  ClearZF;
-  SetLabel $end;
- }
-
-sub checkSet($)                                                                 # Check that one of a set of items is on the top of the stack or complain if it is not
- {my ($set) = @_;                                                               # Set of lexical letters
-  my @n =  map {lexicalNumberFromLetter $_} split //, $set;
-  my $end = Label;
-
-  for my $n(@n)
-   {Cmp "byte[rsp]", $n;
-    IfEq {SetZF; Jmp $end};
-   }
-  error("Expected one of: '$set' on the stack");
-  ClearZF;
-  SetLabel $end;
- }
-
-sub reduce($)                                                                   # Convert the longest possible expression on top of the stack into a term  at the specified priority
- {my ($priority) = @_;                                                          # Priority of the operators to reduce
-  $priority =~ m(\A(1|3)\Z);                                                    # 1 - all operators, 2 - priority 2 operators
-  my ($success, $end) = map {Label} 1..2;                                       # Exit points
-
-  checkStackHas 3;                                                              # At least three elements on the stack
-  IfGe
-   {my ($l, $d, $r) = ($w1, $w2, $w3);
-    Mov $l, "[rsp+".(2*$ses)."]";                                               # Top 3 elements on the stack
-    Mov $d, "[rsp+".(1*$ses)."]";
-    Mov $r, "[rsp+".(0*$ses)."]";
-
-    if ($debug)
-     {PrintOutStringNL "Reduce 3:";
-      PrintOutRegisterInHex $l, $d, $r;
-     }
-
-    testSet("t",  $l);                                                          # Parse out infix operator expression
-    IfEq
-     {testSet("t",  $r);
-      IfEq
-       {testSet($priority == 1 ? "ads" : 'd', $d);                              # Reduce all operators or just reduce dyads
-        IfEq
-         {Add rsp, 3 * $ses;                                                    # Reorder into polish notation
-          Push $_ for $d, $l, $r;
-          new(3, "Term infix term");
-          Jmp $success;
-         };
-       };
-     };
-
-    testSet("b",  $l);                                                          # Parse parenthesized term
-    IfEq
-     {testSet("B",  $r);
-      IfEq
-       {testSet("t",  $d);
-        IfEq
-         {Add rsp, 3 * $ses;                                                    # Pop expression
-          Push $d;
-          PrintOutStringNL "Reduce by ( term )" if $debug;
-          Jmp $success;
-         };
-       };
-     };
-    KeepFree $l, $d, $r;
-   };
-
-  checkStackHas 2;                                                              # At least two elements on the stack
-  IfGe                                                                          # Convert an empty pair of parentheses to an empty term
-   {my ($l, $r) = ($w1, $w2);
-
-    if ($debug)
-     {PrintOutStringNL "Reduce 2:";
-      PrintOutRegisterInHex $l, $r;
-     }
-
-    KeepFree $l, $r;                                                            # Why ?
-    Mov $l, "[rsp+".(1*$ses)."]";                                               # Top 3 elements on the stack
-    Mov $r, "[rsp+".(0*$ses)."]";
-    testSet("b",  $l);                                                          # Empty pair of parentheses
-    IfEq
-     {testSet("B",  $r);
-      IfEq
-       {Add rsp, 2 * $ses;                                                      # Pop expression
-        pushEmpty;
-        new(1, "Empty brackets");
-        Jmp $success;
-       };
-     };
-    testSet("s",  $l);                                                          # Semi-colon, close implies remove unneeded semi
-    IfEq
-     {testSet("B",  $r);
-      IfEq
-       {Add rsp, 2 * $ses;                                                      # Pop expression
-        Push $r;
-        PrintOutStringNL "Reduce by ;)" if $debug;
-        Jmp $success;
-       };
-     };
-    testSet("p", $l);                                                           # Prefix, term
-    IfEq
-     {testSet("t",  $r);
-      IfEq
-       {new(2, "Prefix term");
-        Jmp $success;
-       };
-     };
-    KeepFree $l, $r;
-   };
-
-  ClearZF;                                                                      # Failed to match anything
-  Jmp $end;
-
-  SetLabel $success;                                                            # Successfully matched
-  SetZF;
-
-  SetLabel $end;                                                                # End
- } # reduce
-
-sub reduceMultiple($)                                                           #P Reduce existing operators on the stack
- {my ($priority) = @_;                                                          # Priority of the operators to reduce
-  Vq('count',99)->for(sub                                                       # An improbably high but finit number of reductions
-   {my ($index, $start, $next, $end) = @_;                                      # Execute body
-    reduce($priority);
-    Jne $end;                                                                   # Keep going as long as reductions are possible
-   });
- }
-
-sub accept_a()                                                                  #P Assign
- {checkSet("t");
-  reduceMultiple 2;
-  PrintOutStringNL "accept a" if $debug;
-  pushElement;
- }
-
-sub accept_b                                                                    #P Open
- {checkSet("abdps");
-  PrintOutStringNL "accept b" if $debug;
-  pushElement;
- }
-
-sub accept_B                                                                    #P Closing parenthesis
- {checkSet("bst");
-  PrintOutStringNL "accept B" if $debug;
-  reduceMultiple 1;
-  pushElement;
-  reduceMultiple 1;
-  checkSet("bst");
- }
-
-sub accept_d                                                                    #P Infix but not assign or semi-colon
- {checkSet("t");
-  PrintOutStringNL "accept d" if $debug;
-  pushElement;
- }
-
-sub accept_p                                                                    #P Prefix
- {checkSet("abdps");
-  PrintOutStringNL "accept p" if $debug;
-  pushElement;
- }
-
-sub accept_q                                                                    #P Post fix
- {checkSet("t");
-  PrintOutStringNL "accept q" if $debug;
-  IfEq                                                                          # Post fix operator applied to a term
-   {Pop $w1;
-    pushElement;
-    Push $w1;
-    new(2, "Postfix");
-   }
- }
-
-sub accept_s                                                                    #P Semi colon
- {checkSet("bst");
-  PrintOutStringNL "accept s" if $debug;
-  Mov $w1, "[rsp]";
-  testSet("s",  $w1);
-  IfEq                                                                          # Insert an empty element between two consecutive semicolons
-   {pushEmpty;
-   };
-  reduceMultiple 1;
-  pushElement;
- }
-
-sub accept_v                                                                    #P Variable
-  {checkSet("abdps");
-   PrintOutStringNL "accept v" if $debug;
-   pushElement;
-   new(1, "Variable");
-   Vq(count,99)->for(sub                                                        # Reduce prefix operators
-    {my ($index, $start, $next, $end) = @_;
-     checkStackHas 2;
-     Jl $end;
-     my ($l, $r) = ($w1, $w2);
-     Mov $l, "[rsp+".(1*$ses)."]";
-     Mov $r, "[rsp+".(0*$ses)."]";
-     testSet("p", $l);
-     Jne $end;
-     new(2, "Prefixed variable");
-    });
-  }
-
-sub parseExpressionCode()                                                       #P Parse the string of classified lexicals addressed by register $start of length $length.  The resulting parse tree (if any) is returned in r15.
- {my $end = Label;
-
-  Cmp $size, 0;                                                                 # Check for empty expression
-  Je $end;
-
-  loadCurrentChar;                                                              # Load current character
-### Need test for ignorable white space as first character
-  testSet($firstSet, $element);
-  IfNe
-   {error(<<END =~ s(\n) ( )gsr);
-Expression must start with 'opening parenthesis', 'prefix
-operator', 'semi-colon' or 'variable'.
-END
-   };
-
-  testSet("v", $element);                                                       # Single variable
-  IfEq
-   {pushElement;
-    new(1, "accept initial variable");
-   }
-  sub
-   {testSet("s", $element);                                                     # Semi
-    IfEq
-     {pushEmpty;
-      new(1, "accept initial semicolon");
-     };
-    pushElement;
-   };
-
-  Inc $index;                                                                   # We have processed the first character above
-
-  For                                                                           # Parse each utf32 character after it has been classified
-   {my ($start, $end, $next) = @_;                                              # Start and end of the classification loop
-    loadCurrentChar;                                                            # Load current character
-
-    PrintOutRegisterInHex $element if $debug;
-
-    Cmp $element."b", $WhiteSpace;
-    IfEq {Jmp $next};                                                           # Ignore white space
-
-    Cmp $element."b", 1;
-    IfGt                                                                        # Brackets are singular but everything else can potential be a plurality
-     {Cmp $prevChar."b", $element."b";                                          # Compare with previous element known not to be whitespace
-      IfEq                                                                      # Ignore white space
-       {Jmp $next
-       };
-     };
-    Mov $prevChar, $element;                                                    # Save element to previous element now we know we are on a different element
-
-    for my $l(sort keys $Lex->{lexicals}->%*)                                   # Each possible lexical item after classification
-     {my $x = $Lex->{lexicals}{$l}{letter};
-      next unless $x;                                                           # Skip chaarcters that do noit have a letter defined for Tree::Term because the lexical items needed to layout a file of lexic al items are folded down to the actual lexicals required to represent the language independent of the textual layout with whitespace.
-
-      my $n = $Lex->{lexicals}{$l}{number};
-      Comment "Compare to $n for $l";
-      Cmp $element."b", $n;
-
-      IfEq
-       {eval "accept_$x";
-        Jmp $next
-       };
-     }
-    error("Unexpected lexical item");                                           # Not selected
-   } $index, $size;
-
-  testSet($lastSet, $prevChar);                                                 # Last lexical  element
-  IfNe                                                                          # Incomplete expression
-   {error("Incomplete expression");
-   };
-
-  Vq('count', 99)->for(sub                                                      # Remove trailing semicolons if present
-   {my ($index, $start, $next, $end) = @_;                                      # Execute body
-    checkStackHas 2;
-    IfLt {Jmp $end};                                                            # Does not have two or more elements
-    Pop $w1;
-    testSet("s", $w1);                                                          # Check that the top most element is a semi colon
-    IfNe                                                                        # Not a semi colon so put it back and finish the loop
-     {Push $w1;
-      Jmp $end;
-     };
-   });
-
-  reduceMultiple 1;                                                             # Final reductions
-
-  checkStackHas 1;
-  IfNe                                                                          # Incomplete expression
-   {error("Multiple expressions on stack");
-   };
-
-  Pop r15;                                                                      # The resulting parse tree
-  SetLabel $end;
- } # parseExpression
-
-sub parseExpression(@)                                                          # Create a parser for an expression described by variables
- {my (@parameters) = @_;                                                        # Parameters describing expression
-
-  my $s = Subroutine
-   {my ($parameters) = @_;                                                      # Parameters
-    PushR my @save = map {"r$_"} 8..15;
-    $$parameters{source}->setReg($start);                                       # Start of expression string after it has been classified
-    $$parameters{size}  ->setReg($size);                                        # Number of characters in the expression
-
-    Push rbp; Mov rbp, rsp;                                                     # New frame
-
-    parseExpressionCode;
-
-    $$parameters{parse}->getReg(r15);                                           # Number of characters in the expression
-
-    Mov rsp, rbp; Pop rbp;
-                                                                                # Remove new frame
-    PopR @save;
-   } in => {source => 3, size => 3}, out => {parse => 3};
-
-  $s->call(@parameters);
- } # parse
 
 sub parseUtf8(@)                                                                # Parse a unisyn expression encoded as utf8
  {my (@parameters) = @_;                                                        # Parameters
@@ -2276,7 +2347,6 @@ New: Term infix term
 parse: 0000 0000 0000 0009
 END
 
-
 #latest:
 ok T(q(vnvs), <<END);
 ParseUtf8
@@ -2320,6 +2390,32 @@ New: Term infix term
     r8: 0000 0000 0000 0009
     r8: 0000 0001 0000 0008
 parse: 0000 0000 0000 0009
+END
+
+latest:
+ok T(q(vnsvs), <<END);
+ParseUtf8
+After conversion from utf8 to utf32
+Output Length: 0000 0000 0000 005C
+0001 D5EE 0001 D5EE  0000 000A 0000 0020  0000 0020 0000 0020  0001 D5EF 0001 D5EF  0000 0020 0000 0020
+After classification into alphabet ranges
+0600 001A 0600 001A  0200 000A 0200 0020  0200 0020 0200 0020  0600 001B 0600 001B  0200 0020 0200 0020
+After classification into brackets
+0600 001A 0600 001A  0200 000A 0200 0020  0200 0020 0200 0020  0600 001B 0600 001B  0200 0020 0200 0020
+After bracket matching
+0600 001A 0600 001A  0200 000A 0200 0020  0200 0020 0200 0020  0600 001B 0600 001B  0200 0020 0200 0020
+After white space classification
+0600 001A 0600 001A  0B00 000A 0B00 0020  0B00 0020 0B00 0020  0600 001B 0600 001B  0B00 0020 0B00 0020
+After classifying new lines
+0600 001A 0600 001A  0C00 000A 0B00 0020  0B00 0020 0B00 0020  0600 001B 0600 001B  0B00 0020 0B00 0020
+Push Element:
+   r13: 0000 0000 0000 0006
+New: accept initial variable
+    r8: 0000 0000 0000 0006
+   r13: 0000 0001 0000 0006
+Error: Expected one of: 'abdps' on the stack
+Element:    r13: 0000 0001 0000 0006
+Index  :    r12: 0000 0000 0000 0001
 END
 
 unlink $_ for qw(hash print2 sde-log.txt sde-ptr-check.out.txt z.txt);          # Remove incidental files
