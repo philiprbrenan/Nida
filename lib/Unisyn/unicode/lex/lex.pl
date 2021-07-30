@@ -327,7 +327,7 @@ sub brackets                                                                    
 sub tripleTerms                                                                 # All invalid transitions that could usefully interpret one intervening new line as a semi colon
  {my %C = Tree::Term::LexicalStructure->codes->%*;
   my @d = qw(a B b d p q v);                                                    # Ignoring semi colon as intervening space is specially treated as empty.
-  my %semi;                                                                     # Pairs between which we could usefully insert a semi colon
+  my %semi; my %possible;                                                          # Pairs between which we could usefully insert a semi colon
   for   my $a(@d)
    {for my $b(@d)
      {if (!Tree::Term::validPair($a, $b))
@@ -335,11 +335,16 @@ sub tripleTerms                                                                 
         my $sb = Tree::Term::validPair('s', $b);
         if    ($as && $sb)
          {$semi{$a}{$b}++;
-         lll "Semi $a $b";
+          $possible{$a}++; $possible{$b}++;                                     # Lexicals relevant to new line insertion
          }
        }
      }
    }
+  lll "New line insertions points\n", dump(\%semi, \%possible);
+  for my $A(sort keys %semi)         {
+  for my $B(sort keys $semi{$A}->%*) {
+    my $i =
+  }}
  }
 
 sub translateSomeText($$)                                                       # Translate some text
