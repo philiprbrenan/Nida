@@ -56,11 +56,27 @@ my $lastSet           = $$Lex{structure}{last};                                 
 my $asciiNewLine      = ord("\n");                                              # New line in ascii
 my $asciiSpace        = ord(' ');                                               # Space in ascii
 
+sub getAlpha($$$)                                                               # Load the position of a lexical item in its alphabet from the current character
+ {my ($register, $address, $index) = @_;                                        # Register to load, address of start of string, index into string
+  Mov $register, "[$address+$indexScale*$index]";                               # Load lexical code
+ }
+
+sub getLexicalCode($$$)                                                         # Load the lexical code of the current character in memory into the specified register.
+ {my ($register, $address, $index) = @_;                                        # Register to load, address of start of string, index into string
+  Mov $register, "[$address+$indexScale*$index+$lexCodeOffset]";                # Load lexical code
+ }
+
+sub putLexicalCode($$$$)                                                        # Put the specified lexical code into the current character in memory.
+ {my ($register, $address, $index, $code) = @_;                                 # Register used to laod code, address of string, index into string, code to put
+  Mov $register, $code;
+  Mov "[$address+$indexScale*$index+$lexCodeOffset]", $register;                # Save lexical code
+ }
+
 sub loadCurrentChar()                                                           #P Load the details of the character currently being processed
  {my $r = $element."b";                                                         # Classification byte
   Mov $element, $index;                                                         # Load index of character as upper dword
   Shl $element, $indexScale * $bitsPerByte;                                     # Save the index of the character in the upper half of the register so that we know where the character came from.
-  Mov $r, "[$start+$indexScale*$index+$lexCodeOffset]";                         # Load lexical classification as lowest byte
+  getLexicalCode $r, $start, $index;                                            # Load lexical classification as lowest byte
 
   Cmp $r, $$Lex{bracketsBase};                                                  # Brackets , due to their numerosity, start after 0x10 with open even and close odd
   IfGe                                                                          # Brackets
@@ -96,9 +112,9 @@ sub pushElement()                                                               
  }
 
 sub pushEmpty()                                                                 #P Push the empty element on to the stack
- {Mov $w1, $index;
-  Shl $w1, $indexScale * $bitsPerByte;
-  Or  $w1, $empty;
+ {Mov  $w1, $index;
+  Shl  $w1, $indexScale * $bitsPerByte;
+  Or   $w1, $empty;
   Push $w1;
   if ($debug)
    {PrintOutStringNL "Push Empty";
@@ -159,19 +175,16 @@ sub ClassifyWhiteSpace(@)                                                       
 
     my sub getAlpha($;$)                                                        # Load the position of a lexical item in its alphabet from the current character
      {my ($register, $indexReg) = @_;                                           # Register to load, optional index register
-      my $i = $index // $indexReg;                                              # Supplied indx or default
-      Mov $register, "[$address+$indexScale*$i]";                               # Load lexical code
+      getAlpha $register, $address,  $index // $indexReg                        # Supplied index or default
      };
 
-    my sub getLexicalCode($)                                                    # Load the lexical code of the current character in memory into the specified register.
-     {my ($register) = @_;                                                      # Register to load
-      Mov $register, "[$address+$indexScale*$index+$lexCodeOffset]";            # Load lexical code
+    my sub getLexicalCode()                                                     # Load the lexical code of the current character in memory into the current character
+     {getLexicalCode $eb, $address,  $index;                                    # Supplied index or default
      };
 
-    my sub putLexicalCode($$)                                                   # Put the specified lexical code into the current character in memory.
-     {my ($index, $code) = @_;                                                  # Index register, code
-      Mov $w1, $code;
-      Mov "[$address+$indexScale*$index+$lexCodeOffset]", $w1;                  # Save lexical code
+    my sub putLexicalCode($;$)                                                   # Put the specified lexical code into the current character in memory.
+     {my ($code, $indexReg) = @_;                                               # Code, optional index register
+      putLexicalCode $w1, $address, ($indexReg//$index), $code;
      };
 
     PushR my @save = (r8, r9, r10, r11, r12, r13, r14, r15);
@@ -183,7 +196,7 @@ sub ClassifyWhiteSpace(@)                                                       
      {my ($indexVariable, $start, $next, $end) = @_;
 
       $indexVariable->setReg($index);
-      getLexicalCode $eb;                                                       # Current lexical code
+      getLexicalCode;                                                           # Current lexical code
 
       Block                                                                     # Trap space before new line and detect new line after ascii
        {my ($start, $end) = @_;
@@ -210,7 +223,7 @@ sub ClassifyWhiteSpace(@)                                                       
           Cmp $w1, $asciiNewLine;  Je  $end;                                    # Current is 'a' but not 'n' or 's'
           Cmp $w2, $asciiNewLine;  Jne $end;                                    # Current is 'n'
 
-          putLexicalCode $index, $WhiteSpace;                                   # Mark new line as significant
+          putLexicalCode $WhiteSpace;                                           # Mark new line as significant
          }
        };
 
@@ -243,12 +256,12 @@ sub ClassifyWhiteSpace(@)                                                       
             getAlpha $cb, $s;                                                   # 's' or 'n'
             Cmp $cb, $asciiSpace;
             IfEq
-             {putLexicalCode $s, $WhiteSpace;                                   # Mark as significant white space.
+             {putLexicalCode $WhiteSpace, $s;                                   # Mark as significant white space.
               Jmp $next;
              };
             Cmp $cb, $asciiNewLine;
             IfEq
-             {putLexicalCode $index, $WhiteSpace;                               # Mark as significant new line
+             {putLexicalCode $WhiteSpace;                                       # Mark as significant new line
               Jmp $next;
              };
            } $s, $index;
@@ -290,7 +303,7 @@ sub ClassifyWhiteSpace(@)                                                       
 
           For                                                                   # Move over spaces to non space ascii
            {my ($start, $end, $next) = @_;
-            putLexicalCode $S, $WhiteSpace;                                     # Mark new line as significant
+            putLexicalCode $WhiteSpace, $S;                                     # Mark new line as significant
            } $S, $index;
           Mov $S, -1;                                                           # Look for next possible space
          }
@@ -301,7 +314,7 @@ sub ClassifyWhiteSpace(@)                                                       
      {my ($indexVariable, $start, $next, $end) = @_;
 
       $indexVariable->setReg($index);
-      getLexicalCode $eb;                                                       # Current lexical code
+      getLexicalCode;                                                           # Current lexical code
 
       Block                                                                     # Invert non significant white space
        {my ($start, $end) = @_;
@@ -311,12 +324,12 @@ sub ClassifyWhiteSpace(@)                                                       
         getAlpha $cb;                                                           # Actual character in alphabet
         Cmp $cb, $asciiSpace;
         IfEq
-         {putLexicalCode $index, $WhiteSpace;
+         {putLexicalCode $WhiteSpace;
           Jmp $next;
          };
         Cmp $cb, $asciiNewLine;
         IfEq
-         {putLexicalCode $index, $WhiteSpace;                                   # Mark new line as not significant
+         {putLexicalCode $WhiteSpace;                                           # Mark new line as not significant
           Jmp $next;
          };
        };
@@ -324,7 +337,7 @@ sub ClassifyWhiteSpace(@)                                                       
       Block                                                                     # Mark significant white space
        {my ($start, $end) = @_;
         Cmp $eb, $WhiteSpace; Jne $end;                                         # Not significant white space
-        putLexicalCode $index, $Ascii;                                          # Mark as ascii
+        putLexicalCode $Ascii;                                                  # Mark as ascii
        };
      });
 
