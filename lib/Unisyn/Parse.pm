@@ -38,15 +38,19 @@ my $Lex = sub                                                                   
   $l
  }->();
 
-my $debug    = 0;                                                               # 1 - Trace actions on stack
+my $debug             = 0;                                                      # 1 - Trace actions on stack
 
-my $ses      = RegisterSize rax;                                                # Size of an element on the stack
+my $ses               = RegisterSize rax;                                       # Size of an element on the stack
 my ($w1, $w2, $w3, $w4) = (r8, r9, r10, r11);                                   # Work registers
-my $prevChar = r11;                                                             # The previous character parsed
-my $index    = r12;                                                             # Index of current element
-my $element  = r13;                                                             # Contains the item being parsed
-my $start    = r14;                                                             # Start of the parse string
-my $size     = r15;                                                             # Length of the input string
+my $prevChar          = r11;                                                    # The previous character parsed
+my $index             = r12;                                                    # Index of current element
+my $element           = r13;                                                    # Contains the item being parsed
+my $start             = r14;                                                    # Start of the parse string
+my $size              = r15;                                                    # Length of the input string
+my $indexScale        = 4;                                                      # The size of a utf32 character
+my $lexCodeOffset     = 3;                                                      # The offset in a classified character to the lexical code.
+my $bitsPerByte       = 8;                                                      # The number of bits in a byte
+
 my $Ascii             = $$Lex{lexicals}{Ascii}            {number};             # Ascii
 my $assign            = $$Lex{lexicals}{assign}           {number};             # Assign
 my $CloseBracket      = $$Lex{lexicals}{CloseBracket}     {number};             # Close bracket
@@ -67,8 +71,8 @@ my $asciiSpace        = ord(' ');                                               
 sub loadCurrentChar()                                                           #P Load the details of the character currently being processed
  {my $r = $element."b";                                                         # Classification byte
   Mov $element, $index;                                                         # Load index of character as upper dword
-  Shl $element, 32;
-  Mov $r, "[$start+4*$index+3]";                                                # Load lexical classification as lowest byte
+  Shl $element, $indexScale * $bitsPerByte;
+  Mov $r, "[$start+$indexScale*$index+$lexCodeOffset]";                         # Load lexical classification as lowest byte
 
   Cmp $r, $$Lex{bracketsBase};                                                  # Brackets , due to their numerosity, start after 0x10 with open even and close odd
   IfGe                                                                          # Brackets
@@ -105,7 +109,7 @@ sub pushElement()                                                               
 
 sub pushEmpty()                                                                 #P Push the empty element on to the stack
  {Mov $w1, $index;
-  Shl $w1, 32;
+  Shl $w1, $indexScale * $bitsPerByte;
   Or  $w1, $empty;
   Push $w1;
   if ($debug)
@@ -128,18 +132,17 @@ sub ClassifyNewLines(@)                                                         
 
     $$p{size}->for(sub                                                          # Each character in expression
      {my ($index, $start, $next, $end) = @_;
-      my $a = $$p{address} + $index * 4;
+      my $a = $$p{address} + $index * $indexScale;
       $a->setReg(r15);
       Mov r14d, "[r15]";                                                        # Current character
       Mov r13, r14;                                                             # Current character
-#     lexType r13;                                                              # Classify lexical type of current character
                                                                                 # Convert variable followed by new line to variable white space semi-colon
       Cmp r10,     $n->variable;                                                # Is lexical type of last character a variable ?
       IfEq                                                                      # Lexical character of last character was a variable
        {Cmp r13,   $n->NewLine;
         IfEq                                                                    # Current character is new line
          {Mov r12, $n->NewLineSemiColon;
-          Mov "[r15+3]", r12b;                                                  # Make the current character a new line semicolon as the new line character immediately follows a variable
+          Mov "[r15+$lexCodeOffset]", r12b;                                     # Make the current character a new line semicolon as the new line character immediately follows a variable
          };
        };
 
@@ -165,8 +168,6 @@ sub ClassifyWhiteSpace(@)                                                       
     my $address       = r11;                                                    # Address of input string
     my $index         = r10;                                                    # Index of current char
     my ($w1, $w2)     = (r8."b", r9."b");                                       # Temporary work registers
-    my $indexScale    = 4;                                                      # The size of a utf32 character
-    my $lexCodeOffset = 3;                                                      # The offset in a classified character to the lexical code.
 
     my sub getAlpha($;$)                                                        # Load the position of a lexical item in its alphabet from the current character
      {my ($register, $indexReg) = @_;                                           # Register to load, optional index register
