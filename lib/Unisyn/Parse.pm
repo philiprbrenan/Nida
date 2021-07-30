@@ -774,7 +774,7 @@ sub parseUtf8(@)                                                                
   my $s = Subroutine
    {my ($p) = @_;                                                               # Parameters
 
-    PrintErrStringNL "Parseutf8" if $debug;
+    PrintOutStringNL "ParseUtf8" if $debug;
 
     PushR my @save = (zmm0, zmm1);
 
@@ -1447,7 +1447,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 20;
+   {plan tests => 21;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -2222,17 +2222,22 @@ parse: 0000 0000 0000 0009
 END
  }
 
-latest:
-if (1) {                                                                        #TparseExpression
-  my $source  = $$Lex{sampleText}{vnv};                                         # String to be parsed in utf8
+sub T($$)                                                                       # Test a parse
+ {my ($key, $expected) = @_;                                                    # Key of text to be parsed, expected result
+  my $source  = $$Lex{sampleText}{$key};                                        # String to be parsed in utf8
+  defined $source or confess;
   my $address = Rutf8 $source;
   my $size    = StringLength Vq(string, $address);
   my $fail  = Vq('fail');
   my $parse = Vq('parse');
 
-  parseUtf8  Vq(address, $address),  $size, $fail, $parse;
+  parseUtf8  Vq(address, $address),  $size, $fail, $parse;                      # Parse
 
-  ok Assemble(debug => 1, eq => <<END);
+  Assemble(debug => 0, eq => $expected);
+ }
+
+ok T(q(vnv), <<END);
+ParseUtf8
 After conversion from utf8 to utf32
 Output Length: 0000 0000 0000 0024
 0001 D5EE 0000 000A
@@ -2270,7 +2275,52 @@ New: Term infix term
     r8: 0000 0001 0000 0008
 parse: 0000 0000 0000 0009
 END
- }
+
+
+#latest:
+ok T(q(vnvs), <<END);
+ParseUtf8
+After conversion from utf8 to utf32
+Output Length: 0000 0000 0000 0034
+0001 D5EE 0000 000A  0001 D5EF 0000 0020  0000 0020 0000 0020
+After classification into alphabet ranges
+0600 001A 0200 000A  0600 001B 0200 0020  0200 0020 0200 0020
+After classification into brackets
+0600 001A 0200 000A  0600 001B 0200 0020  0200 0020 0200 0020
+After bracket matching
+0600 001A 0200 000A  0600 001B 0200 0020  0200 0020 0200 0020
+After white space classification
+0600 001A 0B00 000A  0600 001B 0B00 0020  0B00 0020 0B00 0020
+After classifying new lines
+0600 001A 0C00 000A  0600 001B 0B00 0020  0B00 0020 0B00 0020
+Push Element:
+   r13: 0000 0000 0000 0006
+New: accept initial variable
+    r8: 0000 0000 0000 0006
+   r13: 0000 0001 0000 0008
+accept s
+Push Element:
+   r13: 0000 0001 0000 0008
+   r13: 0000 0002 0000 0006
+accept v
+Push Element:
+   r13: 0000 0002 0000 0006
+New: Variable
+    r8: 0000 0002 0000 0006
+   r13: 0000 0003 0000 000B
+   r13: 0000 0004 0000 000B
+   r13: 0000 0005 0000 000B
+   r13: 0000 0006 0000 000B
+Reduce 3:
+    r8: 0000 0000 0000 0009
+    r9: 0000 0001 0000 0008
+   r10: 0000 0000 0000 0009
+New: Term infix term
+    r8: 0000 0000 0000 0009
+    r8: 0000 0000 0000 0009
+    r8: 0000 0001 0000 0008
+parse: 0000 0000 0000 0009
+END
 
 unlink $_ for qw(hash print2 sde-log.txt sde-ptr-check.out.txt z.txt);          # Remove incidental files
 
