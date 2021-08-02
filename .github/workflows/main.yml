@@ -1,4 +1,4 @@
-# Test UnisynParse 2021-08-02 at 21:35:10
+# Test UnisynParse 2021-08-02 at 22:13:08
 
 name: Test
 
@@ -14,29 +14,9 @@ jobs:
       with:
         ref: 'main'
 
-    - name: Install YAML
-      run: |
-        sudo cpan install -T YAML
-
-    - name: Install Module::Build
-      run: |
-        sudo cpan install -T Module::Build
-
     - name: Install Data::Table::Text
       run: |
-        sudo cpan install -T Data::Table::Text
-
-    - name: Install  GitHub::Crud
-      run: |
-        sudo cpan install -T GitHub::Crud
-
-    - name: Install Test::Most
-      run: |
-        sudo cpan install -T Test::Most
-
-    - name: Install Nasm::X86
-      run: |
-        sudo cpan install -T Nasm::X86
+        sudo cpan install -T Data::Table::Text GitHub::Crud Test::Most Nasm::X86
 
     - name: Install Nasm
       run: |
