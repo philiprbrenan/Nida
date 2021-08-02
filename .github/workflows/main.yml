@@ -1,4 +1,4 @@
-# Test UnisynParse 2021-08-02 at 21:30:46
+# Test UnisynParse 2021-08-02 at 21:35:10
 
 name: Test
 
@@ -17,6 +17,10 @@ jobs:
     - name: Install YAML
       run: |
         sudo cpan install -T YAML
+
+    - name: Install Module::Build
+      run: |
+        sudo cpan install -T Module::Build
 
     - name: Install Data::Table::Text
       run: |
