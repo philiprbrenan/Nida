@@ -327,17 +327,17 @@ do {
                                             next   => "bpv",
                                             short  => "assign",
                                           }, "Tree::Term::LexicalCode"),
-                                     b => bless({
-                                            letter => "b",
-                                            name   => "opening parenthesis",
-                                            next   => "bBpsv",
-                                            short  => "OpenBracket",
-                                          }, "Tree::Term::LexicalCode"),
                                      B => bless({
                                             letter => "B",
                                             name   => "closing parenthesis",
                                             next   => "aBdqs",
                                             short  => "CloseBracket",
+                                          }, "Tree::Term::LexicalCode"),
+                                     b => bless({
+                                            letter => "b",
+                                            name   => "opening parenthesis",
+                                            next   => "bBpsv",
+                                            short  => "OpenBracket",
                                           }, "Tree::Term::LexicalCode"),
                                      d => bless({ letter => "d", name => "dyadic operator", next => "bpv", short => "dyad" }, "Tree::Term::LexicalCode"),
                                      p => bless({ letter => "p", name => "prefix operator", next => "bpv", short => "prefix" }, "Tree::Term::LexicalCode"),
