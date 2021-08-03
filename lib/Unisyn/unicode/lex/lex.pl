@@ -14,18 +14,10 @@ use feature qw(say state current_sub);
 use utf8;
 
 my $home    = currentDirectory;                                                 # Home folder
+my $parse   = q(/home/phil/perl/cpan/UnisynParse/lib/Unisyn/Parse.pm);          # Parse file
 my $unicode = q(https://www.unicode.org/Public/UCD/latest/ucd/UnicodeData.txt); # Unicode specification
 my $data    = fpe $home, qw(unicode txt);                                       # Local copy of unicode
 my $lexicalsFile = fpe $home, qw(lex data);                                     # Dump of lexicals
-
-=pod
-
-Space processing - remove leading and trailing spaces
-New line as semi colon when new line occurs after a variable
-Alphabet compression so we can make better use of Tree:Multi
-Text generation routine let us write some pretend code to parse
-
-=cut
 
 sub LexicalConstant($$$;$)                                                      # Lexical constants as opposed to derived values
  {my ($name, $number, $letter, $like) = @_;                                     # Name of the lexical item, numeric code, character code, character code as used Tree::Term, a specialized instance of this Tree::Term which is never the less lexically identical to the Tree::Term
@@ -465,6 +457,17 @@ vaa N S S S vbb S S S
 END
 
 say STDERR owf $lexicalsFile, dump($Tables);                                    # Write results
+
+if (1)                                                                          # Update Parse.pm
+ {my $S = q(DDDD);                                                              # Data body
+  my $s = readFile $parse;
+  my $d = dump $Tables;
+     $s =~ s(\n#d\n.*?#-) (\n#d\nsub lexicalData \{$S\}\n\n#-)gs;
+  my $i = index($s, $S);
+  $i == -1 and confess;
+  $s = substr($s, 0, $i) . $d . substr($s, $i+length($S));
+  owf($parse, $s);
+ }
 
 __DATA__
 CIRCLED LATIN LETTER  : ⒶⒷⒸⒹⒺⒻⒼⒽⒾⒿⓀⓁⓂⓃⓄⓅⓆⓇⓈⓉⓊⓋⓌⓍⓎⓏⓐⓑⓒⓓⓔⓕⓖⓗⓘⓙⓚⓛⓜⓝⓞⓟⓠⓡⓢⓣⓤⓥⓦⓧⓨⓩ
