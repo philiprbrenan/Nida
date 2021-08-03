@@ -50,18 +50,18 @@ our $lastSet          = $$Lex{structure}{last};                                 
 our $asciiNewLine     = ord("\n");                                              # New line in ascii
 our $asciiSpace       = ord(' ');                                               # Space in ascii
 
-sub getAlpha($$$)                                                               # Load the position of a lexical item in its alphabet from the current character
+sub getAlpha($$$)                                                               #P Load the position of a lexical item in its alphabet from the current character
  {my ($register, $address, $index) = @_;                                        # Register to load, address of start of string, index into string
   Mov $register, "[$address+$indexScale*$index]";                               # Load lexical code
  }
 
-sub getLexicalCode($$$)                                                         # Load the lexical code of the current character in memory into the specified register.
+sub getLexicalCode($$$)                                                         #P Load the lexical code of the current character in memory into the specified register.
  {my ($register, $address, $index) = @_;                                        # Register to load, address of start of string, index into string
   Mov $register, "[$address+$indexScale*$index+$lexCodeOffset]";                # Load lexical code
  }
 
-sub putLexicalCode($$$$)                                                        # Put the specified lexical code into the current character in memory.
- {my ($register, $address, $index, $code) = @_;                                 # Register used to laod code, address of string, index into string, code to put
+sub putLexicalCode($$$$)                                                        #P Put the specified lexical code into the current character in memory.
+ {my ($register, $address, $index, $code) = @_;                                 # Register used to load code, address of string, index into string, code to put
   defined($code) or confess;
   Mov $register, $code;
   Mov "[$address+$indexScale*$index+$lexCodeOffset]", $register;                # Save lexical code
@@ -74,7 +74,7 @@ sub loadCurrentChar()                                                           
   Shl $element, $indexScale * $bitsPerByte;                                     # Save the index of the character in the upper half of the register so that we know where the character came from.
   getLexicalCode $r, $start, $index;                                            # Load lexical classification as lowest byte
 
-  Cmp $r, $$Lex{bracketsBase};                                                  # Brackets , due to their numerosity, start after 0x10 with open even and close odd
+  Cmp $r, $$Lex{bracketsBase};                                                  # Brackets , due to their frequency, start after 0x10 with open even and close odd
   IfGe                                                                          # Brackets
    {And $r, 1                                                                   # 0 - open, 1 - close
    }
@@ -117,7 +117,7 @@ sub pushEmpty()                                                                 
    }
  }
 
-sub lexicalNameFromLetter($)                                                    # Lexical name for a lexical item described by its letter
+sub lexicalNameFromLetter($)                                                    #P Lexical name for a lexical item described by its letter
  {my ($l) = @_;                                                                 # Letter of the lexical item
   my %l = $Lex->{treeTermLexicals}->%*;
   my $n = $l{$l};
@@ -125,7 +125,7 @@ sub lexicalNameFromLetter($)                                                    
   $n->{short}
  }
 
-sub lexicalNumberFromLetter($)                                                  # Lexical number for a lexical item described by its letter
+sub lexicalNumberFromLetter($)                                                  #P Lexical number for a lexical item described by its letter
  {my ($l) = @_;                                                                 # Letter of the lexical item
   my $n = lexicalNameFromLetter $l;
   my $N = $Lex->{lexicals}{$n}{number};
@@ -133,7 +133,7 @@ sub lexicalNumberFromLetter($)                                                  
   $N
  }
 
-sub new($$)                                                                     # Create a new term
+sub new($$)                                                                     #P Create a new term
  {my ($depth, $description) = @_;                                               # Stack depth to be converted, text reason why we are creating a new term
   PrintOutStringNL "New: $description" if $debug;
   for my $i(1..$depth)
@@ -144,7 +144,7 @@ sub new($$)                                                                     
   Push $w1;                                                                     # Place simulated term on stack
  }
 
-sub error($)                                                                    # Die
+sub error($)                                                                    #P Die
  {my ($message) = @_;                                                           # Error message
   PrintOutStringNL "Error: $message";
   PrintOutString "Element: ";
@@ -154,7 +154,7 @@ sub error($)                                                                    
   Exit(0);
  }
 
-sub testSet($$)                                                                 # Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
+sub testSet($$)                                                                 #P Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
  {my ($set, $register) = @_;                                                    # Set of lexical letters, Register to test
   my @n = map {sprintf("0x%x", lexicalNumberFromLetter $_)} split //, $set;     # Each lexical item by number from letter
   my $end = Label;
@@ -166,7 +166,7 @@ sub testSet($$)                                                                 
   SetLabel $end;
  }
 
-sub checkSet($)                                                                 # Check that one of a set of items is on the top of the stack or complain if it is not
+sub checkSet($)                                                                 #P Check that one of a set of items is on the top of the stack or complain if it is not
  {my ($set) = @_;                                                               # Set of lexical letters
   my @n =  map {lexicalNumberFromLetter $_} split //, $set;
   my $end = Label;
@@ -180,7 +180,7 @@ sub checkSet($)                                                                 
   SetLabel $end;
  }
 
-sub reduce($)                                                                   # Convert the longest possible expression on top of the stack into a term  at the specified priority
+sub reduce($)                                                                   #P Convert the longest possible expression on top of the stack into a term  at the specified priority
  {my ($priority) = @_;                                                          # Priority of the operators to reduce
   $priority =~ m(\A(1|3)\Z);                                                    # 1 - all operators, 2 - priority 2 operators
   my ($success, $end) = map {Label} 1..2;                                       # Exit points
@@ -201,7 +201,7 @@ sub reduce($)                                                                   
     IfEq
      {testSet("t",  $r);
       IfEq
-       {testSet($priority == 1 ? "ads" : 'd', $d);                              # Reduce all operators or just reduce dyads
+       {testSet($priority == 1 ? "ads" : 'd', $d);                              # Reduce all operators or just reduce infix priority 3 operators
         IfEq
          {Add rsp, 3 * $ses;                                                    # Reorder into polish notation
           Push $_ for $d, $l, $r;
@@ -281,7 +281,7 @@ sub reduce($)                                                                   
 
 sub reduceMultiple($)                                                           #P Reduce existing operators on the stack
  {my ($priority) = @_;                                                          # Priority of the operators to reduce
-  Vq('count',99)->for(sub                                                       # An improbably high but finit number of reductions
+  Vq('count',99)->for(sub                                                       # An improbably high but finite number of reductions
    {my ($index, $start, $next, $end) = @_;                                      # Execute body
     reduce($priority);
     Jne $end;                                                                   # Keep going as long as reductions are possible
@@ -363,7 +363,7 @@ sub accept_v                                                                    
     });
   }
 
-sub parseExpressionCode()                                                       #P Parse the string of classified lexicals addressed by register $start of length $length.  The resulting parse tree (if any) is returned in r15.
+sub parseExpressionCode()                                                       #P Parse the string of classified lexical items addressed by register $start of length $length.  The resulting parse tree (if any) is returned in r15.
  {my $end = Label;
   my $eb  = $element."b";                                                       # Contains a byte from the item being parsed
 
@@ -408,14 +408,14 @@ END
 
     Cmp $eb, 1;                                                                 # Brackets are singular but everything else can potential be a plurality
     IfGt
-     {Cmp $prevChar."b", $eb;                                                   # Compare with previous element known not to be whitespace or a bracket
+     {Cmp $prevChar."b", $eb;                                                   # Compare with previous element known not to be white space or a bracket
       Je $next
      };
     Mov $prevChar, $element;                                                    # Save element to previous element now we know we are on a different element
 
     for my $l(sort keys $Lex->{lexicals}->%*)                                   # Each possible lexical item after classification
      {my $x = $Lex->{lexicals}{$l}{letter};
-      next unless $x;                                                           # Skip chaarcters that do noit have a letter defined for Tree::Term because the lexical items needed to layout a file of lexic al items are folded down to the actual lexicals required to represent the language independent of the textual layout with whitespace.
+      next unless $x;                                                           # Skip characters that do not have a letter defined for Tree::Term because the lexical items needed to layout a file of lexical items are folded down to the actual lexical items required to represent the language independent of the textual layout with white space.
 
       my $n = $Lex->{lexicals}{$l}{number};
       Comment "Compare to $n for $l";
@@ -457,7 +457,7 @@ END
   SetLabel $end;
  } # parseExpressionCode
 
-sub parseExpression(@)                                                          # Create a parser for an expression described by variables
+sub parseExpression(@)                                                          #P Create a parser for an expression described by variables
  {my (@parameters) = @_;                                                        # Parameters describing expression
 
   my $s = Subroutine
@@ -480,7 +480,7 @@ sub parseExpression(@)                                                          
   $s->call(@parameters);
  } # parse
 
-sub MatchBrackets(@)                                                            # Replace the low three bytes of a utf32 bracket character with 24 bits of offset to the matching opening or closing bracket. Opening brackets have even codes from 0x10 to 0x4e while the corresponding closing bracket has a code one higher.
+sub MatchBrackets(@)                                                            #P Replace the low three bytes of a utf32 bracket character with 24 bits of offset to the matching opening or closing bracket. Opening brackets have even codes from 0x10 to 0x4e while the corresponding closing bracket has a code one higher.
  {my (@parameters) = @_;                                                        # Parameters
   @_ >= 1 or confess;
 
@@ -550,7 +550,7 @@ sub MatchBrackets(@)                                                            
   $s->call(@parameters);
  } # MatchBrackets
 
-sub ClassifyNewLines(@)                                                         #P Scan input string looking for opportunitiesd to convert new lines into semi colons
+sub ClassifyNewLines(@)                                                         #P Scan input string looking for opportunities to convert new lines into semi colons
  {my (@parameters) = @_;                                                        # Parameters
   @_ >= 1 or confess;
 
@@ -644,7 +644,7 @@ sub ClassifyNewLines(@)                                                         
   $s->call(@parameters);
  } # ClassifyNewLines
 
-sub ClassifyWhiteSpace(@)                                                       #P Classify white space per: lib/Unisyn/whiteSpace/whiteSpaceClassification.pl
+sub ClassifyWhiteSpace(@)                                                       #P Classify white space per: "lib/Unisyn/whiteSpace/whiteSpaceClassification.pl"
  {my (@parameters) = @_;                                                        # Parameters
   @_ >= 1 or confess;
 
@@ -781,7 +781,7 @@ sub ClassifyWhiteSpace(@)                                                       
           Cmp $cb, $asciiSpace; Je $end;                                        # Skip 's'
 
           Cmp $cb, $asciiNewLine;
-          IfEq                                                                  # New lines prevent 's' from preceeding 'a'
+          IfEq                                                                  # New lines prevent 's' from preceding 'a'
            {Mov $s, -1;
             Jmp $end
            };
@@ -1284,7 +1284,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 
 =head1 Name
 
-Nasm::X86 - Generate X86 assembler code using Perl as a macro pre-processor.
+Unisyn::Parse - Parse a Unisyn expression.
 
 =head1 Synopsis
 
@@ -1292,7 +1292,7 @@ Parse a Unisyn expression.
 
 =head1 Description
 
-Generate X86 assembler code using Perl as a macro pre-processor.
+Parse a Unisyn expression.
 
 
 Version "20210720".
@@ -1307,297 +1307,55 @@ module.  For an alphabetic listing of all methods by name see L<Index|/Index>.
 
 Parse Unisyn expressions
 
-=head2 ClassifyNewLines(@parameters)
+=head2 parseUtf8(@parameters)
 
-A new line acts a semi colon if it appears immediately after a variable.
-
-     Parameter    Description
-  1  @parameters  Parameters
-
-=head2 ClassifyWhiteSpace(@parameters)
-
-Classify white space per: lib/Unisyn/whiteSpace/whiteSpaceClassification.pl
+Parse a unisyn expression encoded as utf8
 
      Parameter    Description
   1  @parameters  Parameters
 
-=head2 lexicalNameFromLetter($l)
-
-Lexical name for a lexical item described by its letter
-
-     Parameter  Description
-  1  $l         Letter of the lexical item
-
 B<Example:>
 
 
+  
+    parseUtf8  Vq(address, $address),  $size, $fail, $parse;                        # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-    is_deeply lexicalNameFromLetter('a'), q(assign);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
-
-    is_deeply lexicalNumberFromLetter('a'), $assign;
-
-
-=head2 lexicalNumberFromLetter($l)
-
-Lexical number for a lexical item described by its letter
-
-     Parameter  Description
-  1  $l         Letter of the lexical item
-
-B<Example:>
-
-
-    is_deeply lexicalNameFromLetter('a'), q(assign);
-
-    is_deeply lexicalNumberFromLetter('a'), $assign;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
-
-
-
-=head2 new($depth, $description)
-
-Create a new term
-
-     Parameter     Description
-  1  $depth        Stack depth to be converted
-  2  $description  Text reason why we are creating a new term
-
-B<Example:>
-
-
-    Mov $index,  1;
-    Mov rax,-1; Push rax;
-    Mov rax, 3; Push rax;
-    Mov rax, 2; Push rax;
-    Mov rax, 1; Push rax;
-
-    new 3, 'test';  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
-
-    Pop rax;  PrintOutRegisterInHex rax;
-    Pop rax;  PrintOutRegisterInHex rax;
-    ok Assemble(debug => 0, eq => <<END);
-  New: test
-      r8: 0000 0000 0000 0001
-      r8: 0000 0000 0000 0002
-      r8: 0000 0000 0000 0003
-     rax: 0000 0000 0000 0009
-     rax: FFFF FFFF FFFF FFFF
-  END
-
-
-=head2 error($message)
-
-Die
-
-     Parameter  Description
-  1  $message   Error message
-
-B<Example:>
-
-
-
-    error "aaa bbbb";  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
-
-    ok Assemble(debug => 0, eq => <<END);
-  Error: aaa bbbb
-  Element:    r13: 0000 0000 0000 0000
-  Index  :    r12: 0000 0000 0000 0000
-  END
-
-
-=head2 testSet($set, $register)
-
-Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
-
-     Parameter  Description
-  1  $set       Set of lexical letters
-  2  $register  Register to test
-
-B<Example:>
-
-
-    Mov r15,  -1;
-    Mov r15b, $term;
-
-    testSet("ast", r15);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
-
-    PrintOutZF;
-
-    testSet("as",  r15);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
-
-    PrintOutZF;
-    ok Assemble(debug => 0, eq => <<END);
-  ZF=1
-  ZF=0
-  END
-
-
-=head2 checkSet($set)
-
-Check that one of a set of items is on the top of the stack or complain if it is not
-
-     Parameter  Description
-  1  $set       Set of lexical letters
-
-B<Example:>
-
-
-    Mov r15,  -1;
-    Mov r15b, $term;
-    Push r15;
-
-    checkSet("ast");  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
-
-    PrintOutZF;
-
-    checkSet("as");  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
-
-    PrintOutZF;
-    ok Assemble(debug => 0, eq => <<END);
-  ZF=1
-  Error: Expected one of: 'as' on the stack
-  Element:    r13: 0000 0000 0000 0000
-  Index  :    r12: 0000 0000 0000 0000
-  END
-
-
-=head2 reduce($priority)
-
-Convert the longest possible expression on top of the stack into a term  at the specified priority
-
-     Parameter  Description
-  1  $priority  Priority of the operators to reduce
-
-B<Example:>
-
-
-    Mov r15,    -1;   Push r15;
-    Mov r15, $term;   Push r15;
-    Mov r15, $assign; Push r15;
-    Mov r15, $term;   Push r15;
-
-    reduce 1;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
-
-    Pop r15; PrintOutRegisterInHex r15;
-    Pop r14; PrintOutRegisterInHex r14;
-    ok Assemble(debug => 0, eq => <<END);
-  Reduce 3:
-      r8: 0000 0000 0000 0009
-      r9: 0000 0000 0000 0005
-     r10: 0000 0000 0000 0009
-  New: Term infix term
-      r8: 0000 0000 0000 0009
-      r8: 0000 0000 0000 0009
-      r8: 0000 0000 0000 0005
-     r15: 0000 0000 0000 0009
-     r14: FFFF FFFF FFFF FFFF
-  END
-
-
-=head2 parseExpression(@parameters)
-
-Create a parser for an expression described by variables
-
-     Parameter    Description
-  1  @parameters  Parameters describing expression
-
-B<Example:>
-
-
-    my @p = my (  $out,    $size,   $opens,      $fail) =                         # Variables
-               (Vq(out), Vq(size), Vq(opens), Vq('fail'));
-
-    my $source = Rutf8 $$Lex{sampleText}{s1};                                     # String to be parsed in utf8
-    my $sourceLength = StringLength Vq(string, $source);
-       $sourceLength->outNL("Input  Length: ");
-
-    ConvertUtf8ToUtf32 Vq(u8,$source), size8 => $sourceLength,                    # Convert to utf32
-      (my $source32       = Vq(u32)),
-      (my $sourceSize32   = Vq(size32)),
-      (my $sourceLength32 = Vq(count));
-
-    $sourceSize32   ->outNL("Output Length: ");                                   # Write output length
-
-    PrintOutStringNL "After conversion from utf8 to utf32";
-    PrintUtf32($sourceLength32, $source32);                                       # Print utf32
-
-    Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{lexicalLow} ->@*)."]";                # Each double is [31::24] Classification, [21::0] Utf32 start character
-    Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{lexicalHigh}->@*)."]";                # Each double is [31::24] Range offset,   [21::0] Utf32 end character
-
-    ClassifyWithInRangeAndSaveOffset address=>$source32, size=>$sourceLength32;   # Alphabetic classification
-    PrintOutStringNL "After classification into alphabet ranges";
-    PrintUtf32($sourceLength32, $source32);                                       # Print classified utf32
-
-    Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{bracketsLow} ->@*)."]";               # Each double is [31::24] Classification, [21::0] Utf32 start character
-    Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{bracketsHigh}->@*)."]";               # Each double is [31::24] Range offset,   [21::0] Utf32 end character
-
-    ClassifyWithInRange address=>$source32, size=>$sourceLength32;                # Bracket matching
-    PrintOutStringNL "After classification into brackets";
-    PrintUtf32($sourceLength32, $source32);                                       # Print classified brackets
-
-    MatchBrackets address=>$source32, size=>$sourceLength32, $opens, $fail;       # Match brackets
-    PrintOutStringNL "After bracket matching";
-    PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
-
-    ClassifyWhiteSpace address=>$source32, size=>$sourceLength32;                 # Classify white space
-  #  PrintOutStringNL "After classifying white space";
-    PrintUtf32($sourceLength32, $source32);                                       # Print matched brackets
-
-
-    parseExpression source=>$source32, size=>$sourceLength32, my $parse = Vq(parse);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
-
-    $parse->outNL();
-
-    ok Assemble(debug => 0, eq => <<END);
-  Input  Length: 0000 0000 0000 0010
-  Output Length: 0000 0000 0000 0040
-  After conversion from utf8 to utf32
-  0001 D5EE 0001 D44E  0000 000A 0000 0020  0000 0020 0000 0041  0000 000A 0000 0020  0000 0020 0000 0020
-  After classification into alphabet ranges
-  0600 001A 0500 001A  0200 000A 0200 0020  0200 0020 0200 0041  0200 000A 0200 0020  0200 0020 0200 0020
-  After classification into brackets
-  0600 001A 0500 001A  0200 000A 0200 0020  0200 0020 0200 0041  0200 000A 0200 0020  0200 0020 0200 0020
-  After bracket matching
-  0600 001A 0500 001A  0200 000A 0200 0020  0200 0020 0200 0041  0200 000A 0200 0020  0200 0020 0200 0020
-  0600 001A 0500 001A  0B00 000A 0200 0020  0200 0020 0200 0041  0200 000A 0B00 0020  0B00 0020 0B00 0020
-  Push Element:
-     r13: 0000 0000 0000 0006
-  New: accept initial variable
-      r8: 0000 0000 0000 0006
-     r13: 0000 0001 0000 0005
-  accept a
-  Push Element:
-     r13: 0000 0001 0000 0005
-     r13: 0000 0002 0000 000B
-     r13: 0000 0003 0000 0006
-  accept v
-  Push Element:
-     r13: 0000 0003 0000 0006
-  New: Variable
-      r8: 0000 0003 0000 0006
-     r13: 0000 0004 0000 0006
-     r13: 0000 0005 0000 0006
-     r13: 0000 0006 0000 0006
-     r13: 0000 0007 0000 000B
-     r13: 0000 0008 0000 000B
-     r13: 0000 0009 0000 000B
-  Reduce 3:
-      r8: 0000 0000 0000 0009
-      r9: 0000 0001 0000 0005
-     r10: 0000 0000 0000 0009
-  New: Term infix term
-      r8: 0000 0000 0000 0009
-      r8: 0000 0000 0000 0009
-      r8: 0000 0001 0000 0005
-  parse: 0000 0000 0000 0009
-  END
-
+  
 
 
 =head1 Private Methods
 
+=head2 getAlpha($register, $address, $index)
+
+Load the position of a lexical item in its alphabet from the current character
+
+     Parameter  Description
+  1  $register  Register to load
+  2  $address   Address of start of string
+  3  $index     Index into string
+
+=head2 getLexicalCode($register, $address, $index)
+
+Load the lexical code of the current character in memory into the specified register.
+
+     Parameter  Description
+  1  $register  Register to load
+  2  $address   Address of start of string
+  3  $index     Index into string
+
+=head2 putLexicalCode($register, $address, $index, $code)
+
+Put the specified lexical code into the current character in memory.
+
+     Parameter  Description
+  1  $register  Register used to load code
+  2  $address   Address of string
+  3  $index     Index into string
+  4  $code      Code to put
+
 =head2 loadCurrentChar()
 
-Load the details of the character currently being processed
+Load the details of the character currently being processed so that we have the index of the character in the upper half of the current character and the lexical type of the character in the lowest byte
 
 
 =head2 checkStackHas($depth)
@@ -1616,14 +1374,14 @@ B<Example:>
              Rb(reverse $variable,         0, 0, 27),                             # Variable 'a'
              Rb(reverse $NewLineSemiColon, 0, 0, 0),                              # New line semicolon
              Rb(reverse $semiColon,        0, 0, 0));                             # Semi colon
-
+  
     for my $o(@o)                                                                 # Try converting each input element
      {Mov $start, $o;
       Mov $index, 0;
       loadCurrentChar;
       PrintOutRegisterInHex $element;
      }
-
+  
     ok Assemble(debug => 0, eq => <<END);
      r13: 0000 0000 0000 0000
      r13: 0000 0000 0000 0001
@@ -1632,37 +1390,37 @@ B<Example:>
      r13: 0000 0000 0000 0008
      r13: 0000 0000 0000 0008
   END
-
+  
     Push rbp;
     Mov rbp, rsp;
     Push rax;
     Push rax;
-
+  
     checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfEq {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
-
+  
     checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfGe {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
-
+  
     checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfGt {PrintOutStringNL "fail"} sub {PrintOutStringNL "ok"};
     Push rax;
-
+  
     checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfEq {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
-
+  
     checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfGe {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
-
+  
     checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     IfGt {PrintOutStringNL "fail"} sub {PrintOutStringNL "ok"};
-
+  
     ok Assemble(debug => 0, eq => <<END);
   ok
   ok
@@ -1671,7 +1429,7 @@ B<Example:>
   ok
   ok
   END
-
+  
 
 =head2 pushElement()
 
@@ -1687,7 +1445,7 @@ B<Example:>
 
 
     Mov $index, 1;
-
+  
     pushEmpty;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     Mov rax, "[rsp]";
@@ -1696,7 +1454,179 @@ B<Example:>
   Push Empty
      rax: 0000 0001 0000 000A
   END
+  
 
+=head2 lexicalNameFromLetter($l)
+
+Lexical name for a lexical item described by its letter
+
+     Parameter  Description
+  1  $l         Letter of the lexical item
+
+B<Example:>
+
+
+  
+    is_deeply lexicalNameFromLetter('a'), q(assign);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    is_deeply lexicalNumberFromLetter('a'), $assign;
+  
+
+=head2 lexicalNumberFromLetter($l)
+
+Lexical number for a lexical item described by its letter
+
+     Parameter  Description
+  1  $l         Letter of the lexical item
+
+B<Example:>
+
+
+    is_deeply lexicalNameFromLetter('a'), q(assign);
+  
+    is_deeply lexicalNumberFromLetter('a'), $assign;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+  
+
+=head2 new($depth, $description)
+
+Create a new term
+
+     Parameter     Description
+  1  $depth        Stack depth to be converted
+  2  $description  Text reason why we are creating a new term
+
+B<Example:>
+
+
+    Mov $index,  1;
+    Mov rax,-1; Push rax;
+    Mov rax, 3; Push rax;
+    Mov rax, 2; Push rax;
+    Mov rax, 1; Push rax;
+  
+    new 3, 'test';  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    Pop rax;  PrintOutRegisterInHex rax;
+    Pop rax;  PrintOutRegisterInHex rax;
+    ok Assemble(debug => 0, eq => <<END);
+  New: test
+      r8: 0000 0000 0000 0001
+      r8: 0000 0000 0000 0002
+      r8: 0000 0000 0000 0003
+     rax: 0000 0000 0000 0009
+     rax: FFFF FFFF FFFF FFFF
+  END
+  
+
+=head2 error($message)
+
+Die
+
+     Parameter  Description
+  1  $message   Error message
+
+B<Example:>
+
+
+  
+    error "aaa bbbb";  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    ok Assemble(debug => 0, eq => <<END);
+  Error: aaa bbbb
+  Element:    r13: 0000 0000 0000 0000
+  Index  :    r12: 0000 0000 0000 0000
+  END
+  
+
+=head2 testSet($set, $register)
+
+Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
+
+     Parameter  Description
+  1  $set       Set of lexical letters
+  2  $register  Register to test
+
+B<Example:>
+
+
+    Mov r15,  -1;
+    Mov r15b, $term;
+  
+    testSet("ast", r15);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    PrintOutZF;
+  
+    testSet("as",  r15);  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    PrintOutZF;
+    ok Assemble(debug => 0, eq => <<END);
+  ZF=1
+  ZF=0
+  END
+  
+
+=head2 checkSet($set)
+
+Check that one of a set of items is on the top of the stack or complain if it is not
+
+     Parameter  Description
+  1  $set       Set of lexical letters
+
+B<Example:>
+
+
+    Mov r15,  -1;
+    Mov r15b, $term;
+    Push r15;
+  
+    checkSet("ast");  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    PrintOutZF;
+  
+    checkSet("as");  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    PrintOutZF;
+    ok Assemble(debug => 0, eq => <<END);
+  ZF=1
+  Error: Expected one of: 'as' on the stack
+  Element:    r13: 0000 0000 0000 0000
+  Index  :    r12: 0000 0000 0000 0000
+  END
+  
+
+=head2 reduce($priority)
+
+Convert the longest possible expression on top of the stack into a term  at the specified priority
+
+     Parameter  Description
+  1  $priority  Priority of the operators to reduce
+
+B<Example:>
+
+
+    Mov r15,    -1;   Push r15;
+    Mov r15, $term;   Push r15;
+    Mov r15, $assign; Push r15;
+    Mov r15, $term;   Push r15;
+  
+    reduce 1;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+    Pop r15; PrintOutRegisterInHex r15;
+    Pop r14; PrintOutRegisterInHex r14;
+    ok Assemble(debug => 0, eq => <<END);
+  Reduce 3:
+      r8: 0000 0000 0000 0009
+      r9: 0000 0000 0000 0005
+     r10: 0000 0000 0000 0009
+  New: Term infix term
+      r8: 0000 0000 0000 0009
+      r8: 0000 0000 0000 0009
+      r8: 0000 0000 0000 0005
+     r15: 0000 0000 0000 0009
+     r14: FFFF FFFF FFFF FFFF
+  END
+  
 
 =head2 reduceMultiple($priority)
 
@@ -1710,7 +1640,7 @@ B<Example:>
 
     Mov r15,           -1;  Push r15;
     Mov r15, $OpenBracket;  Push r15;
-
+  
     reduceMultiple 1;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
     Pop r15; PrintOutRegisterInHex r15;
@@ -1722,7 +1652,7 @@ B<Example:>
      r15: 0000 0000 0000 0000
      r14: FFFF FFFF FFFF FFFF
   END
-
+  
 
 =head2 accept_a()
 
@@ -1766,8 +1696,206 @@ Variable
 
 =head2 parseExpressionCode()
 
-Parse the string of classified lexicals addressed by register $start of length $length.  The resulting parse tree (if any) is returned in r15.
+Parse the string of classified lexical items addressed by register $start of length $length.  The resulting parse tree (if any) is returned in r15.
 
+
+=head2 parseExpression(@parameters)
+
+Create a parser for an expression described by variables
+
+     Parameter    Description
+  1  @parameters  Parameters describing expression
+
+=head2 MatchBrackets(@parameters)
+
+Replace the low three bytes of a utf32 bracket character with 24 bits of offset to the matching opening or closing bracket. Opening brackets have even codes from 0x10 to 0x4e while the corresponding closing bracket has a code one higher.
+
+     Parameter    Description
+  1  @parameters  Parameters
+
+B<Example:>
+
+
+    my $l = $Lex->{sampleLexicals}{brackets};
+  
+    Mov $start,  Rd(@$l);
+    Mov $size,   scalar(@$l);
+  
+    parseExpressionCode;
+    PrintOutStringNL "Result:";
+    PrintOutRegisterInHex r15;
+    ok Assemble(debug => 0, eq => <<END);
+  Push Element:
+     r13: 0000 0000 0000 0006
+  New: accept initial variable
+      r8: 0000 0000 0000 0006
+     r13: 0000 0001 0000 0005
+  accept a
+  Push Element:
+     r13: 0000 0001 0000 0005
+     r13: 0000 0002 0000 0000
+  accept b
+  Push Element:
+     r13: 0000 0002 0000 0000
+     r13: 0000 0003 0000 0000
+  accept b
+  Push Element:
+     r13: 0000 0003 0000 0000
+     r13: 0000 0004 0000 0000
+  accept b
+  Push Element:
+     r13: 0000 0004 0000 0000
+     r13: 0000 0005 0000 0006
+  accept v
+  Push Element:
+     r13: 0000 0005 0000 0006
+  New: Variable
+      r8: 0000 0005 0000 0006
+     r13: 0000 0006 0000 0001
+  accept B
+  Reduce 3:
+      r8: 0000 0003 0000 0000
+      r9: 0000 0004 0000 0000
+     r10: 0000 0000 0000 0009
+  Reduce 2:
+      r8: 0000 0000 0000 0030
+      r9: 0000 0004 0000 0000
+  Push Element:
+     r13: 0000 0006 0000 0001
+  Reduce 3:
+      r8: 0000 0004 0000 0000
+      r9: 0000 0000 0000 0009
+     r10: 0000 0006 0000 0001
+  Reduce by ( term )
+  Reduce 3:
+      r8: 0000 0002 0000 0000
+      r9: 0000 0003 0000 0000
+     r10: 0000 0000 0000 0009
+  Reduce 2:
+      r8: 0000 0000 0000 0028
+      r9: 0000 0003 0000 0000
+     r13: 0000 0007 0000 0001
+  accept B
+  Reduce 3:
+      r8: 0000 0002 0000 0000
+      r9: 0000 0003 0000 0000
+     r10: 0000 0000 0000 0009
+  Reduce 2:
+      r8: 0000 0000 0000 0028
+      r9: 0000 0003 0000 0000
+  Push Element:
+     r13: 0000 0007 0000 0001
+  Reduce 3:
+      r8: 0000 0003 0000 0000
+      r9: 0000 0000 0000 0009
+     r10: 0000 0007 0000 0001
+  Reduce by ( term )
+  Reduce 3:
+      r8: 0000 0001 0000 0005
+      r9: 0000 0002 0000 0000
+     r10: 0000 0000 0000 0009
+  Reduce 2:
+      r8: 0000 0000 0000 0020
+      r9: 0000 0002 0000 0000
+     r13: 0000 0008 0000 0003
+  accept d
+  Push Element:
+     r13: 0000 0008 0000 0003
+     r13: 0000 0009 0000 0000
+  accept b
+  Push Element:
+     r13: 0000 0009 0000 0000
+     r13: 0000 000A 0000 0006
+  accept v
+  Push Element:
+     r13: 0000 000A 0000 0006
+  New: Variable
+      r8: 0000 000A 0000 0006
+     r13: 0000 000B 0000 0001
+  accept B
+  Reduce 3:
+      r8: 0000 0008 0000 0003
+      r9: 0000 0009 0000 0000
+     r10: 0000 0000 0000 0009
+  Reduce 2:
+      r8: 0000 0000 0000 0038
+      r9: 0000 0009 0000 0000
+  Push Element:
+     r13: 0000 000B 0000 0001
+  Reduce 3:
+      r8: 0000 0009 0000 0000
+      r9: 0000 0000 0000 0009
+     r10: 0000 000B 0000 0001
+  Reduce by ( term )
+  Reduce 3:
+      r8: 0000 0000 0000 0009
+      r9: 0000 0008 0000 0003
+     r10: 0000 0000 0000 0009
+  New: Term infix term
+      r8: 0000 0000 0000 0009
+      r8: 0000 0000 0000 0009
+      r8: 0000 0008 0000 0003
+  Reduce 3:
+      r8: 0000 0001 0000 0005
+      r9: 0000 0002 0000 0000
+     r10: 0000 0000 0000 0009
+  Reduce 2:
+      r8: 0000 0000 0000 0020
+      r9: 0000 0002 0000 0000
+     r13: 0000 000C 0000 0001
+  accept B
+  Reduce 3:
+      r8: 0000 0001 0000 0005
+      r9: 0000 0002 0000 0000
+     r10: 0000 0000 0000 0009
+  Reduce 2:
+      r8: 0000 0000 0000 0020
+      r9: 0000 0002 0000 0000
+  Push Element:
+     r13: 0000 000C 0000 0001
+  Reduce 3:
+      r8: 0000 0002 0000 0000
+      r9: 0000 0000 0000 0009
+     r10: 0000 000C 0000 0001
+  Reduce by ( term )
+  Reduce 3:
+      r8: 0000 0000 0000 0009
+      r9: 0000 0001 0000 0005
+     r10: 0000 0000 0000 0009
+  New: Term infix term
+      r8: 0000 0000 0000 0009
+      r8: 0000 0000 0000 0009
+      r8: 0000 0001 0000 0005
+     r13: 0000 000D 0000 0008
+  accept s
+  Push Element:
+     r13: 0000 000D 0000 0008
+  Result:
+     r15: 0000 0000 0000 0009
+  END
+  
+
+=head2 ClassifyNewLines(@parameters)
+
+Scan input string looking for opportunities to convert new lines into semi colons
+
+     Parameter    Description
+  1  @parameters  Parameters
+
+=head2 ClassifyWhiteSpace(@parameters)
+
+Classify white space per: "lib/Unisyn/whiteSpace/whiteSpaceClassification.pl"
+
+     Parameter    Description
+  1  @parameters  Parameters
+
+=head2 T($key, $expected)
+
+Test a parse
+
+     Parameter  Description
+  1  $key       Key of text to be parsed
+  2  $expected  Expected result
 
 
 =head1 Index
@@ -1793,33 +1921,45 @@ Parse the string of classified lexicals addressed by register $start of length $
 
 10 L<checkStackHas|/checkStackHas> - Check that we have at least the specified number of elements on the stack
 
-11 L<ClassifyNewLines|/ClassifyNewLines> - A new line acts a semi colon if it appears immediately after a variable.
+11 L<ClassifyNewLines|/ClassifyNewLines> - Scan input string looking for opportunities to convert new lines into semi colons
 
-12 L<ClassifyWhiteSpace|/ClassifyWhiteSpace> - Classify white space per: lib/Unisyn/whiteSpace/whiteSpaceClassification.
+12 L<ClassifyWhiteSpace|/ClassifyWhiteSpace> - Classify white space per: "lib/Unisyn/whiteSpace/whiteSpaceClassification.
 
 13 L<error|/error> - Die
 
-14 L<lexicalNameFromLetter|/lexicalNameFromLetter> - Lexical name for a lexical item described by its letter
+14 L<getAlpha|/getAlpha> - Load the position of a lexical item in its alphabet from the current character
 
-15 L<lexicalNumberFromLetter|/lexicalNumberFromLetter> - Lexical number for a lexical item described by its letter
+15 L<getLexicalCode|/getLexicalCode> - Load the lexical code of the current character in memory into the specified register.
 
-16 L<loadCurrentChar|/loadCurrentChar> - Load the details of the character currently being processed
+16 L<lexicalNameFromLetter|/lexicalNameFromLetter> - Lexical name for a lexical item described by its letter
 
-17 L<new|/new> - Create a new term
+17 L<lexicalNumberFromLetter|/lexicalNumberFromLetter> - Lexical number for a lexical item described by its letter
 
-18 L<parseExpression|/parseExpression> - Create a parser for an expression described by variables
+18 L<loadCurrentChar|/loadCurrentChar> - Load the details of the character currently being processed so that we have the index of the character in the upper half of the current character and the lexical type of the character in the lowest byte
 
-19 L<parseExpressionCode|/parseExpressionCode> - Parse the string of classified lexicals addressed by register $start of length $length.
+19 L<MatchBrackets|/MatchBrackets> - Replace the low three bytes of a utf32 bracket character with 24 bits of offset to the matching opening or closing bracket.
 
-20 L<pushElement|/pushElement> - Push the current element on to the stack
+20 L<new|/new> - Create a new term
 
-21 L<pushEmpty|/pushEmpty> - Push the empty element on to the stack
+21 L<parseExpression|/parseExpression> - Create a parser for an expression described by variables
 
-22 L<reduce|/reduce> - Convert the longest possible expression on top of the stack into a term  at the specified priority
+22 L<parseExpressionCode|/parseExpressionCode> - Parse the string of classified lexical items addressed by register $start of length $length.
 
-23 L<reduceMultiple|/reduceMultiple> - Reduce existing operators on the stack
+23 L<parseUtf8|/parseUtf8> - Parse a unisyn expression encoded as utf8
 
-24 L<testSet|/testSet> - Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
+24 L<pushElement|/pushElement> - Push the current element on to the stack
+
+25 L<pushEmpty|/pushEmpty> - Push the empty element on to the stack
+
+26 L<putLexicalCode|/putLexicalCode> - Put the specified lexical code into the current character in memory.
+
+27 L<reduce|/reduce> - Convert the longest possible expression on top of the stack into a term  at the specified priority
+
+28 L<reduceMultiple|/reduceMultiple> - Reduce existing operators on the stack
+
+29 L<T|/T> - Test a parse
+
+30 L<testSet|/testSet> - Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
 
 =head1 Installation
 
@@ -1888,16 +2028,16 @@ my $startTime = time;                                                           
 
 eval {goto latest} if !caller(0) and -e "/home/phil";                           # Go to latest test if specified
 
-sub T($$)                                                                       # Test a parse
+sub T($$)                                                                       #P Test a parse
  {my ($key, $expected) = @_;                                                    # Key of text to be parsed, expected result
   my $source  = $$Lex{sampleText}{$key};                                        # String to be parsed in utf8
   defined $source or confess;
   my $address = Rutf8 $source;
   my $size    = StringLength Vq(string, $address);
-  my $fail  = Vq('fail');
-  my $parse = Vq('parse');
+  my $fail    = Vq('fail');
+  my $parse   = Vq('parse');
 
-  parseUtf8  Vq(address, $address),  $size, $fail, $parse;                      # Parse
+  parseUtf8  Vq(address, $address),  $size, $fail, $parse;                      #TparseUtf8
 
   Assemble(debug => 0, eq => $expected);
  }
@@ -2197,7 +2337,7 @@ END
  }
 
 #latest:;
-if (1) {
+if (1) {                                                                        #TMatchBrackets
   my $l = $Lex->{sampleLexicals}{brackets};
 
   Mov $start,  Rd(@$l);
