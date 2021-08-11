@@ -2953,7 +2953,7 @@ New: Term infix term
 parse: 0000 0198 0000 0009
 END
 
-#latest:
+latest:
 ok T(q(brackets), <<END);
 ParseUtf8
 After conversion from utf8 to utf32
