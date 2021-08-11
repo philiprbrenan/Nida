@@ -19,6 +19,7 @@ my $develop = -e q(/home/phil/);                                                
 #D1 Parse                                                                       # Parse Unisyn expressions
 
 our $Lex = &lexicalData;                                                        # Lexical table definitions
+our $tree;                                                                      # Parse tree
 
 our $debug            = 0;                                                      # Include debug code if true
 
@@ -136,15 +137,54 @@ sub lexicalNumberFromLetter($)                                                  
   $N
  }
 
-sub new($$)                                                                     #P Create a new term
+sub new2($$)                                                                    #P Create a new term and put it on the stack
  {my ($depth, $description) = @_;                                               # Stack depth to be converted, text reason why we are creating a new term
   PrintOutStringNL "New: $description" if $debug;
+
+  my $t = $tree->bs->CreateBlockMultiWayTree;
+  my $d = V(data);
+  $t->insert(V(key, 0), V(data, $term));                                        # Create a term
+  $t->insert(V(key, 1), V(data, $depth));                                       # The number of elements in the term
+
   for my $i(1..$depth)
    {Pop $w1;
     PrintOutRegisterInHex $w1 if $debug;
+    $d->getReg($w1);
+    $t->insert(V(key, 2 * $i    ), $d);                                         # The lexical type - which actually only takes 4 bits so this could be improved on.
+
+    Mov $w2, $w1;
+    Shr $w2, 32;                                                                # Offset in source
+    $d->getReg($w2);                                                            # Offset in source in lower dword
+    Cmp $w1."b", $term;                                                         # Check whether the lexical item on the stack is a term
+    IfEq
+    Then
+     {$t->insertTree(V(key, 2 * $i + 1), $d);                                   # A reference to another term
+     },
+    Else
+     {$t->insert    (V(key, 2 * $i + 1), $d);                                   # Offset in source
+     }
    }
-  Mov $w1, $term;                                                               # Term
+  $t->first->setReg($w1);                                                       # Term
+  Shl $w1, 32;                                                                  # Push offset to tree into the upper dword
+  Or  $w1."b", $term;                                                           # Mark as a term tree
   Push $w1;                                                                     # Place simulated term on stack
+ }
+
+sub new($$)                                                                     #P Create a new term
+ {my ($depth, $description) = @_;                                               # Stack depth to be converted, text reason why we are creating a new term
+  PrintOutStringNL "New: $description" if $debug;
+
+  if ($tree and $tree->bs)                                                      # Parse tree available
+   {new2($depth, $description);
+   }
+  else                                                                          # Testing without building full parse tree
+   {for my $i(1..$depth)
+     {Pop $w1;
+      PrintOutRegisterInHex $w1 if $debug;
+     }
+    Mov $w1, $term;                                                             # Term
+    Push $w1;                                                                   # Place simulated term on stack
+   }
  }
 
 sub error($)                                                                    #P Die
@@ -395,6 +435,9 @@ sub parseExpressionCode()                                                       
  {my $end = Label;
   my $eb  = $element."b";                                                       # Contains a byte from the item being parsed
 
+  my $b = CreateByteString;                                                     # Byte string to hold parse tree
+  $tree = $b->CreateBlockMultiWayTree;                                          # Root of parse tree
+
   Cmp $size, 0;                                                                 # Check for empty expression
   Je $end;
 
@@ -497,16 +540,16 @@ sub parseExpression(@)                                                          
  {my (@parameters) = @_;                                                        # Parameters describing expression
 
   my $s = Subroutine
-   {my ($parameters) = @_;                                                      # Parameters
+   {my ($p) = @_;                                                               # Parameters
     PushR my @save = map {"r$_"} 8..15;
-    $$parameters{source}->setReg($start);                                       # Start of expression string after it has been classified
-    $$parameters{size}  ->setReg($size);                                        # Number of characters in the expression
+    $$p{source}->setReg($start);                                                # Start of expression string after it has been classified
+    $$p{size}  ->setReg($size);                                                 # Number of characters in the expression
 
     Push rbp; Mov rbp, rsp;                                                     # New frame
 
     parseExpressionCode;
 
-    $$parameters{parse}->getReg(r15);                                           # Number of characters in the expression
+    $$p{parse}->getReg(r15);                                                    # Number of characters in the expression
 
     Mov rsp, rbp; Pop rbp;
                                                                                 # Remove new frame
@@ -2341,6 +2384,14 @@ New: Prefixed variable
 END
  }
 
+sub printParseTree                                                              # Print the parse tree addressed  by r15
+ {my ($reg) = @_;                                                               # Parameters
+  Mov r14, r15;
+  Shr r14, 32;
+  $tree->first->getReg(r14);
+  $tree->print;
+ }
+
 #latest:;
 if (1) {
   my $l = $Lex->{sampleLexicals}{v};
@@ -2349,13 +2400,22 @@ if (1) {
   parseExpressionCode;
   PrintOutStringNL "Result:";
   PrintOutRegisterInHex r15;
+
+  printParseTree;
+
   ok Assemble(debug => 0, eq => <<END);
 Push Element:
    r13: 0000 0000 0000 0006
 New: accept initial variable
+New: accept initial variable
     r8: 0000 0000 0000 0006
 Result:
-   r15: 0000 0000 0000 0009
+   r15: 0000 0098 0000 0009
+Tree at:    r15: 0000 0000 0000 0098
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0006 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 0000 depth: 0000 0000 0000 0001
 END
  }
 
@@ -2368,9 +2428,13 @@ if (1) {
   parseExpressionCode;
   PrintOutStringNL "Result:";
   PrintOutRegisterInHex r15;
+
+  printParseTree;
+
   ok Assemble(debug => 0, eq => <<END);
 Push Element:
    r13: 0000 0000 0000 0006
+New: accept initial variable
 New: accept initial variable
     r8: 0000 0000 0000 0006
    r13: 0000 0001 0000 0005
@@ -2382,17 +2446,38 @@ accept v
 Push Element:
    r13: 0000 0002 0000 0006
 New: Variable
+New: Variable
     r8: 0000 0002 0000 0006
 Reduce 3:
-    r8: 0000 0000 0000 0009
+    r8: 0000 0098 0000 0009
     r9: 0000 0001 0000 0005
-   r10: 0000 0000 0000 0009
+   r10: 0000 0118 0000 0009
 New: Term infix term
-    r8: 0000 0000 0000 0009
-    r8: 0000 0000 0000 0009
+New: Term infix term
+    r8: 0000 0118 0000 0009
+    r8: 0000 0098 0000 0009
     r8: 0000 0001 0000 0005
 Result:
-   r15: 0000 0000 0000 0009
+   r15: 0000 0198 0000 0009
+Tree at:    r15: 0000 0000 0000 0198
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0003 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 0118 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0004 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0005 data: 0000 0000 0000 0098 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0006 data: 0000 0000 0000 0005 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0007 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+Tree at:    r15: 0000 0000 0000 0098
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0006 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 0000 depth: 0000 0000 0000 0001
+Tree at:    r15: 0000 0000 0000 0118
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0006 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 0002 depth: 0000 0000 0000 0001
 END
  }
 
@@ -2406,9 +2491,13 @@ if (1) {                                                                        
   parseExpressionCode;
   PrintOutStringNL "Result:";
   PrintOutRegisterInHex r15;
+
+  printParseTree;
+
   ok Assemble(debug => 0, eq => <<END);
 Push Element:
    r13: 0000 0000 0000 0006
+New: accept initial variable
 New: accept initial variable
     r8: 0000 0000 0000 0006
    r13: 0000 0001 0000 0005
@@ -2432,13 +2521,14 @@ accept v
 Push Element:
    r13: 0000 0005 0000 0006
 New: Variable
+New: Variable
     r8: 0000 0005 0000 0006
    r13: 0000 0006 0000 0001
 accept B
 Reduce 3:
     r8: 0000 0003 0000 0000
     r9: 0000 0004 0000 0000
-   r10: 0000 0000 0000 0009
+   r10: 0000 0118 0000 0009
 Reduce 2:
     r8: 0000 0000 0000 0030
     r9: 0000 0004 0000 0000
@@ -2446,18 +2536,20 @@ Push Element:
    r13: 0000 0006 0000 0001
 Reduce 3:
     r8: 0000 0004 0000 0000
-    r9: 0000 0000 0000 0009
+    r9: 0000 0118 0000 0009
    r10: 0000 0006 0000 0001
 New: Bracketed term
-    r8: 0000 0000 0000 0009
+New: Bracketed term
+    r8: 0000 0118 0000 0009
 New: Brackets for term
-    r8: 0000 0000 0000 0009
+New: Brackets for term
+    r8: 0000 0198 0000 0009
     r8: 0000 0004 0000 0000
 Reduce by ( term )
 Reduce 3:
     r8: 0000 0002 0000 0000
     r9: 0000 0003 0000 0000
-   r10: 0000 0000 0000 0009
+   r10: 0000 0218 0000 0009
 Reduce 2:
     r8: 0000 0000 0000 0028
     r9: 0000 0003 0000 0000
@@ -2466,7 +2558,7 @@ accept B
 Reduce 3:
     r8: 0000 0002 0000 0000
     r9: 0000 0003 0000 0000
-   r10: 0000 0000 0000 0009
+   r10: 0000 0218 0000 0009
 Reduce 2:
     r8: 0000 0000 0000 0028
     r9: 0000 0003 0000 0000
@@ -2474,18 +2566,20 @@ Push Element:
    r13: 0000 0007 0000 0001
 Reduce 3:
     r8: 0000 0003 0000 0000
-    r9: 0000 0000 0000 0009
+    r9: 0000 0218 0000 0009
    r10: 0000 0007 0000 0001
 New: Bracketed term
-    r8: 0000 0000 0000 0009
+New: Bracketed term
+    r8: 0000 0218 0000 0009
 New: Brackets for term
-    r8: 0000 0000 0000 0009
+New: Brackets for term
+    r8: 0000 0298 0000 0009
     r8: 0000 0003 0000 0000
 Reduce by ( term )
 Reduce 3:
     r8: 0000 0001 0000 0005
     r9: 0000 0002 0000 0000
-   r10: 0000 0000 0000 0009
+   r10: 0000 0318 0000 0009
 Reduce 2:
     r8: 0000 0000 0000 0020
     r9: 0000 0002 0000 0000
@@ -2502,13 +2596,14 @@ accept v
 Push Element:
    r13: 0000 000A 0000 0006
 New: Variable
+New: Variable
     r8: 0000 000A 0000 0006
    r13: 0000 000B 0000 0001
 accept B
 Reduce 3:
     r8: 0000 0008 0000 0003
     r9: 0000 0009 0000 0000
-   r10: 0000 0000 0000 0009
+   r10: 0000 0398 0000 0009
 Reduce 2:
     r8: 0000 0000 0000 0038
     r9: 0000 0009 0000 0000
@@ -2516,26 +2611,29 @@ Push Element:
    r13: 0000 000B 0000 0001
 Reduce 3:
     r8: 0000 0009 0000 0000
-    r9: 0000 0000 0000 0009
+    r9: 0000 0398 0000 0009
    r10: 0000 000B 0000 0001
 New: Bracketed term
-    r8: 0000 0000 0000 0009
+New: Bracketed term
+    r8: 0000 0398 0000 0009
 New: Brackets for term
-    r8: 0000 0000 0000 0009
+New: Brackets for term
+    r8: 0000 0418 0000 0009
     r8: 0000 0009 0000 0000
 Reduce by ( term )
 Reduce 3:
-    r8: 0000 0000 0000 0009
+    r8: 0000 0318 0000 0009
     r9: 0000 0008 0000 0003
-   r10: 0000 0000 0000 0009
+   r10: 0000 0498 0000 0009
 New: Term infix term
-    r8: 0000 0000 0000 0009
-    r8: 0000 0000 0000 0009
+New: Term infix term
+    r8: 0000 0498 0000 0009
+    r8: 0000 0318 0000 0009
     r8: 0000 0008 0000 0003
 Reduce 3:
     r8: 0000 0001 0000 0005
     r9: 0000 0002 0000 0000
-   r10: 0000 0000 0000 0009
+   r10: 0000 0518 0000 0009
 Reduce 2:
     r8: 0000 0000 0000 0020
     r9: 0000 0002 0000 0000
@@ -2544,7 +2642,7 @@ accept B
 Reduce 3:
     r8: 0000 0001 0000 0005
     r9: 0000 0002 0000 0000
-   r10: 0000 0000 0000 0009
+   r10: 0000 0518 0000 0009
 Reduce 2:
     r8: 0000 0000 0000 0020
     r9: 0000 0002 0000 0000
@@ -2552,28 +2650,112 @@ Push Element:
    r13: 0000 000C 0000 0001
 Reduce 3:
     r8: 0000 0002 0000 0000
-    r9: 0000 0000 0000 0009
+    r9: 0000 0518 0000 0009
    r10: 0000 000C 0000 0001
 New: Bracketed term
-    r8: 0000 0000 0000 0009
+New: Bracketed term
+    r8: 0000 0518 0000 0009
 New: Brackets for term
-    r8: 0000 0000 0000 0009
+New: Brackets for term
+    r8: 0000 0598 0000 0009
     r8: 0000 0002 0000 0000
 Reduce by ( term )
 Reduce 3:
-    r8: 0000 0000 0000 0009
+    r8: 0000 0098 0000 0009
     r9: 0000 0001 0000 0005
-   r10: 0000 0000 0000 0009
+   r10: 0000 0618 0000 0009
 New: Term infix term
-    r8: 0000 0000 0000 0009
-    r8: 0000 0000 0000 0009
+New: Term infix term
+    r8: 0000 0618 0000 0009
+    r8: 0000 0098 0000 0009
     r8: 0000 0001 0000 0005
    r13: 0000 000D 0000 0008
 accept s
 Push Element:
    r13: 0000 000D 0000 0008
 Result:
-   r15: 0000 0000 0000 0009
+   r15: 0000 0698 0000 0009
+Tree at:    r15: 0000 0000 0000 0698
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0003 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 0618 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0004 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0005 data: 0000 0000 0000 0098 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0006 data: 0000 0000 0000 0005 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0007 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+Tree at:    r15: 0000 0000 0000 0098
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0006 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 0000 depth: 0000 0000 0000 0001
+Tree at:    r15: 0000 0000 0000 0618
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0002 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 0598 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0004 data: 0000 0000 0000 0000 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0005 data: 0000 0000 0000 0002 depth: 0000 0000 0000 0001
+Tree at:    r15: 0000 0000 0000 0598
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 0518 depth: 0000 0000 0000 0001
+Tree at:    r15: 0000 0000 0000 0518
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0003 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 0498 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0004 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0005 data: 0000 0000 0000 0318 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0006 data: 0000 0000 0000 0003 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0007 data: 0000 0000 0000 0008 depth: 0000 0000 0000 0001
+Tree at:    r15: 0000 0000 0000 0318
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0002 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 0298 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0004 data: 0000 0000 0000 0000 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0005 data: 0000 0000 0000 0003 depth: 0000 0000 0000 0001
+Tree at:    r15: 0000 0000 0000 0298
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 0218 depth: 0000 0000 0000 0001
+Tree at:    r15: 0000 0000 0000 0218
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0002 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 0198 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0004 data: 0000 0000 0000 0000 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0005 data: 0000 0000 0000 0004 depth: 0000 0000 0000 0001
+Tree at:    r15: 0000 0000 0000 0198
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 0118 depth: 0000 0000 0000 0001
+Tree at:    r15: 0000 0000 0000 0118
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0006 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 0005 depth: 0000 0000 0000 0001
+Tree at:    r15: 0000 0000 0000 0498
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0002 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 0418 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0004 data: 0000 0000 0000 0000 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0005 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+Tree at:    r15: 0000 0000 0000 0418
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 0398 depth: 0000 0000 0000 0001
+Tree at:    r15: 0000 0000 0000 0398
+key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0002 data: 0000 0000 0000 0006 depth: 0000 0000 0000 0001
+key: 0000 0000 0000 0003 data: 0000 0000 0000 000A depth: 0000 0000 0000 0001
 END
  }
 
@@ -2596,6 +2778,7 @@ After classifying new lines
 Push Element:
    r13: 0000 0000 0000 0006
 New: accept initial variable
+New: accept initial variable
     r8: 0000 0000 0000 0006
    r13: 0000 0001 0000 0005
 accept a
@@ -2607,6 +2790,7 @@ accept v
 Push Element:
    r13: 0000 0003 0000 0006
 New: Variable
+New: Variable
     r8: 0000 0003 0000 0006
    r13: 0000 0004 0000 0006
    r13: 0000 0005 0000 0006
@@ -2615,14 +2799,15 @@ New: Variable
    r13: 0000 0008 0000 000B
    r13: 0000 0009 0000 000B
 Reduce 3:
-    r8: 0000 0000 0000 0009
+    r8: 0000 0098 0000 0009
     r9: 0000 0001 0000 0005
-   r10: 0000 0000 0000 0009
+   r10: 0000 0118 0000 0009
 New: Term infix term
-    r8: 0000 0000 0000 0009
-    r8: 0000 0000 0000 0009
+New: Term infix term
+    r8: 0000 0118 0000 0009
+    r8: 0000 0098 0000 0009
     r8: 0000 0001 0000 0005
-parse: 0000 0000 0000 0009
+parse: 0000 0198 0000 0009
 END
 
 ok T(q(vnv), <<END);
@@ -2643,6 +2828,7 @@ After classifying new lines
 Push Element:
    r13: 0000 0000 0000 0006
 New: accept initial variable
+New: accept initial variable
     r8: 0000 0000 0000 0006
    r13: 0000 0001 0000 0008
 accept s
@@ -2653,16 +2839,18 @@ accept v
 Push Element:
    r13: 0000 0002 0000 0006
 New: Variable
+New: Variable
     r8: 0000 0002 0000 0006
 Reduce 3:
-    r8: 0000 0000 0000 0009
+    r8: 0000 0098 0000 0009
     r9: 0000 0001 0000 0008
-   r10: 0000 0000 0000 0009
+   r10: 0000 0118 0000 0009
 New: Term infix term
-    r8: 0000 0000 0000 0009
-    r8: 0000 0000 0000 0009
+New: Term infix term
+    r8: 0000 0118 0000 0009
+    r8: 0000 0098 0000 0009
     r8: 0000 0001 0000 0008
-parse: 0000 0000 0000 0009
+parse: 0000 0198 0000 0009
 END
 
 #latest:
@@ -2684,6 +2872,7 @@ After classifying new lines
 Push Element:
    r13: 0000 0000 0000 0006
 New: accept initial variable
+New: accept initial variable
     r8: 0000 0000 0000 0006
    r13: 0000 0001 0000 0008
 accept s
@@ -2694,20 +2883,22 @@ accept v
 Push Element:
    r13: 0000 0002 0000 0006
 New: Variable
+New: Variable
     r8: 0000 0002 0000 0006
    r13: 0000 0003 0000 000B
    r13: 0000 0004 0000 000B
    r13: 0000 0005 0000 000B
    r13: 0000 0006 0000 000B
 Reduce 3:
-    r8: 0000 0000 0000 0009
+    r8: 0000 0098 0000 0009
     r9: 0000 0001 0000 0008
-   r10: 0000 0000 0000 0009
+   r10: 0000 0118 0000 0009
 New: Term infix term
-    r8: 0000 0000 0000 0009
-    r8: 0000 0000 0000 0009
+New: Term infix term
+    r8: 0000 0118 0000 0009
+    r8: 0000 0098 0000 0009
     r8: 0000 0001 0000 0008
-parse: 0000 0000 0000 0009
+parse: 0000 0198 0000 0009
 END
 
 #latest:
@@ -2729,6 +2920,7 @@ After classifying new lines
 Push Element:
    r13: 0000 0000 0000 0006
 New: accept initial variable
+New: accept initial variable
     r8: 0000 0000 0000 0006
    r13: 0000 0001 0000 0006
    r13: 0000 0002 0000 0008
@@ -2743,20 +2935,22 @@ accept v
 Push Element:
    r13: 0000 0006 0000 0006
 New: Variable
+New: Variable
     r8: 0000 0006 0000 0006
    r13: 0000 0007 0000 0006
    r13: 0000 0008 0000 000B
    r13: 0000 0009 0000 000B
    r13: 0000 000A 0000 000B
 Reduce 3:
-    r8: 0000 0000 0000 0009
+    r8: 0000 0098 0000 0009
     r9: 0000 0002 0000 0008
-   r10: 0000 0000 0000 0009
+   r10: 0000 0118 0000 0009
 New: Term infix term
-    r8: 0000 0000 0000 0009
-    r8: 0000 0000 0000 0009
+New: Term infix term
+    r8: 0000 0118 0000 0009
+    r8: 0000 0098 0000 0009
     r8: 0000 0002 0000 0008
-parse: 0000 0000 0000 0009
+parse: 0000 0198 0000 0009
 END
 
 #latest:
@@ -2783,6 +2977,7 @@ After classifying new lines
 0300 002E 0300 002C  1800 0015 0600 002C  0600 001C 1900 0012  1300 0007 0800 0000
 Push Element:
    r13: 0000 0000 0000 0006
+New: accept initial variable
 New: accept initial variable
     r8: 0000 0000 0000 0006
    r13: 0000 0001 0000 0005
@@ -2811,6 +3006,7 @@ accept v
 Push Element:
    r13: 0000 000A 0000 0006
 New: Variable
+New: Variable
     r8: 0000 000A 0000 0006
    r13: 0000 000B 0000 0006
    r13: 0000 000C 0000 0001
@@ -2818,7 +3014,7 @@ accept B
 Reduce 3:
     r8: 0000 0008 0000 0000
     r9: 0000 0009 0000 0000
-   r10: 0000 0000 0000 0009
+   r10: 0000 0118 0000 0009
 Reduce 2:
     r8: 0000 0000 0000 0030
     r9: 0000 0009 0000 0000
@@ -2826,18 +3022,20 @@ Push Element:
    r13: 0000 000C 0000 0001
 Reduce 3:
     r8: 0000 0009 0000 0000
-    r9: 0000 0000 0000 0009
+    r9: 0000 0118 0000 0009
    r10: 0000 000C 0000 0001
 New: Bracketed term
-    r8: 0000 0000 0000 0009
+New: Bracketed term
+    r8: 0000 0118 0000 0009
 New: Brackets for term
-    r8: 0000 0000 0000 0009
+New: Brackets for term
+    r8: 0000 0198 0000 0009
     r8: 0000 0009 0000 0000
 Reduce by ( term )
 Reduce 3:
     r8: 0000 0007 0000 0000
     r9: 0000 0008 0000 0000
-   r10: 0000 0000 0000 0009
+   r10: 0000 0218 0000 0009
 Reduce 2:
     r8: 0000 0000 0000 0028
     r9: 0000 0008 0000 0000
@@ -2846,7 +3044,7 @@ accept B
 Reduce 3:
     r8: 0000 0007 0000 0000
     r9: 0000 0008 0000 0000
-   r10: 0000 0000 0000 0009
+   r10: 0000 0218 0000 0009
 Reduce 2:
     r8: 0000 0000 0000 0028
     r9: 0000 0008 0000 0000
@@ -2854,18 +3052,20 @@ Push Element:
    r13: 0000 000D 0000 0001
 Reduce 3:
     r8: 0000 0008 0000 0000
-    r9: 0000 0000 0000 0009
+    r9: 0000 0218 0000 0009
    r10: 0000 000D 0000 0001
 New: Bracketed term
-    r8: 0000 0000 0000 0009
+New: Bracketed term
+    r8: 0000 0218 0000 0009
 New: Brackets for term
-    r8: 0000 0000 0000 0009
+New: Brackets for term
+    r8: 0000 0298 0000 0009
     r8: 0000 0008 0000 0000
 Reduce by ( term )
 Reduce 3:
     r8: 0000 0001 0000 0005
     r9: 0000 0007 0000 0000
-   r10: 0000 0000 0000 0009
+   r10: 0000 0318 0000 0009
 Reduce 2:
     r8: 0000 0000 0000 0020
     r9: 0000 0007 0000 0000
@@ -2885,6 +3085,7 @@ accept v
 Push Element:
    r13: 0000 0013 0000 0006
 New: Variable
+New: Variable
     r8: 0000 0013 0000 0006
    r13: 0000 0014 0000 0006
    r13: 0000 0015 0000 0001
@@ -2892,7 +3093,7 @@ accept B
 Reduce 3:
     r8: 0000 000E 0000 0003
     r9: 0000 0012 0000 0000
-   r10: 0000 0000 0000 0009
+   r10: 0000 0398 0000 0009
 Reduce 2:
     r8: 0000 0000 0000 0038
     r9: 0000 0012 0000 0000
@@ -2900,26 +3101,29 @@ Push Element:
    r13: 0000 0015 0000 0001
 Reduce 3:
     r8: 0000 0012 0000 0000
-    r9: 0000 0000 0000 0009
+    r9: 0000 0398 0000 0009
    r10: 0000 0015 0000 0001
 New: Bracketed term
-    r8: 0000 0000 0000 0009
+New: Bracketed term
+    r8: 0000 0398 0000 0009
 New: Brackets for term
-    r8: 0000 0000 0000 0009
+New: Brackets for term
+    r8: 0000 0418 0000 0009
     r8: 0000 0012 0000 0000
 Reduce by ( term )
 Reduce 3:
-    r8: 0000 0000 0000 0009
+    r8: 0000 0318 0000 0009
     r9: 0000 000E 0000 0003
-   r10: 0000 0000 0000 0009
+   r10: 0000 0498 0000 0009
 New: Term infix term
-    r8: 0000 0000 0000 0009
-    r8: 0000 0000 0000 0009
+New: Term infix term
+    r8: 0000 0498 0000 0009
+    r8: 0000 0318 0000 0009
     r8: 0000 000E 0000 0003
 Reduce 3:
     r8: 0000 0001 0000 0005
     r9: 0000 0007 0000 0000
-   r10: 0000 0000 0000 0009
+   r10: 0000 0518 0000 0009
 Reduce 2:
     r8: 0000 0000 0000 0020
     r9: 0000 0007 0000 0000
@@ -2928,7 +3132,7 @@ accept B
 Reduce 3:
     r8: 0000 0001 0000 0005
     r9: 0000 0007 0000 0000
-   r10: 0000 0000 0000 0009
+   r10: 0000 0518 0000 0009
 Reduce 2:
     r8: 0000 0000 0000 0020
     r9: 0000 0007 0000 0000
@@ -2936,27 +3140,30 @@ Push Element:
    r13: 0000 0016 0000 0001
 Reduce 3:
     r8: 0000 0007 0000 0000
-    r9: 0000 0000 0000 0009
+    r9: 0000 0518 0000 0009
    r10: 0000 0016 0000 0001
 New: Bracketed term
-    r8: 0000 0000 0000 0009
+New: Bracketed term
+    r8: 0000 0518 0000 0009
 New: Brackets for term
-    r8: 0000 0000 0000 0009
+New: Brackets for term
+    r8: 0000 0598 0000 0009
     r8: 0000 0007 0000 0000
 Reduce by ( term )
 Reduce 3:
-    r8: 0000 0000 0000 0009
+    r8: 0000 0098 0000 0009
     r9: 0000 0001 0000 0005
-   r10: 0000 0000 0000 0009
+   r10: 0000 0618 0000 0009
 New: Term infix term
-    r8: 0000 0000 0000 0009
-    r8: 0000 0000 0000 0009
+New: Term infix term
+    r8: 0000 0618 0000 0009
+    r8: 0000 0098 0000 0009
     r8: 0000 0001 0000 0005
    r13: 0000 0017 0000 0008
 accept s
 Push Element:
    r13: 0000 0017 0000 0008
-parse: 0000 0000 0000 0009
+parse: 0000 0698 0000 0009
 END
 
 #latest:
