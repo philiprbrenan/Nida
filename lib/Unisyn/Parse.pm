@@ -2142,7 +2142,7 @@ sub T($$)                                                                       
 
   parseUtf8  V(address, $address),  $size, $fail, $parse;                       #TparseUtf8
 
-  Assemble(debug => 0, eq => $expected);
+  Assemble(debug => 0, eq => $expected, countComments=>10);
  }
 
 if (1) {                                                                        # Double words get expanded to quads
