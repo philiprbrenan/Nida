@@ -6,7 +6,7 @@
 # podDocumentation
 # Finished in 9.73s, bytes assembled: 2878312
 package Unisyn::Parse;
-our $VERSION = "20210720";
+our $VERSION = "20210810";
 use warnings FATAL => qw(all);
 use strict;
 use Carp qw(confess cluck);
@@ -25,7 +25,7 @@ our $tree;                                                                      
 our $debug            = 0;                                                      # Include debug code if true
 
 our $ses              = RegisterSize rax;                                       # Size of an element on the stack
-our ($w1, $w2, $w3, $w4) = (r8, r9, r10, r11);                                  # Work registers
+our ($w1, $w2, $w3)   = (r8, r9, r10);                                          # Work registers
 our $prevChar         = r11;                                                    # The previous character parsed
 our $index            = r12;                                                    # Index of current element
 our $element          = r13;                                                    # Contains the item being parsed
@@ -1389,7 +1389,7 @@ Parse a Unisyn expression.
 Parse a Unisyn expression.
 
 
-Version "20210720".
+Version "20210810".
 
 
 The following sections describe the methods in each functional area of this
@@ -1412,8 +1412,78 @@ B<Example:>
 
 
 
-    parseUtf8  Vq(address, $address),  $size, $fail, $parse;                        # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    parseUtf8  V(address, $address),  $size, $fail, $parse;                         # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
+
+
+=head2 printParseTree()
+
+Print the parse tree addressed  by r15
+
+
+B<Example:>
+
+
+    my $l = $Lex->{sampleLexicals}{vav};
+    Mov $start,  Rd(@$l);
+    Mov $size,   scalar(@$l);
+
+    parseExpressionCode;
+    PrintOutStringNL "Result:";
+    PrintOutRegisterInHex r15;
+
+
+    printParseTree;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+
+    ok Assemble(debug => 0, eq => <<END);
+  Push Element:
+     r13: 0000 0000 0000 0006
+  New: accept initial variable
+  New: accept initial variable
+      r8: 0000 0000 0000 0006
+     r13: 0000 0001 0000 0005
+  accept a
+  Push Element:
+     r13: 0000 0001 0000 0005
+     r13: 0000 0002 0000 0006
+  accept v
+  Push Element:
+     r13: 0000 0002 0000 0006
+  New: Variable
+  New: Variable
+      r8: 0000 0002 0000 0006
+  Reduce 3:
+      r8: 0000 0098 0000 0009
+      r9: 0000 0001 0000 0005
+     r10: 0000 0118 0000 0009
+  New: Term infix term
+  New: Term infix term
+      r8: 0000 0118 0000 0009
+      r8: 0000 0098 0000 0009
+      r8: 0000 0001 0000 0005
+  Result:
+     r15: 0000 0198 0000 0009
+  Tree at:    r15: 0000 0000 0000 0198
+  key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0001 data: 0000 0000 0000 0003 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0003 data: 0000 0000 0000 0118 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0004 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0005 data: 0000 0000 0000 0098 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0006 data: 0000 0000 0000 0005 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0007 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+  Tree at:    r15: 0000 0000 0000 0098
+  key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0002 data: 0000 0000 0000 0006 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0003 data: 0000 0000 0000 0000 depth: 0000 0000 0000 0001
+  Tree at:    r15: 0000 0000 0000 0118
+  key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0002 data: 0000 0000 0000 0006 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0003 data: 0000 0000 0000 0002 depth: 0000 0000 0000 0001
+  END
 
 
 
@@ -1492,29 +1562,24 @@ B<Example:>
 
     checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-    IfEq {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
 
-    checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    IfEq Then {PrintOutStringNL "ok"},   Else {PrintOutStringNL "fail"}; checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-    IfGe {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
 
-    checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    IfGe Then {PrintOutStringNL "ok"},   Else {PrintOutStringNL "fail"}; checkStackHas 2;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-    IfGt {PrintOutStringNL "fail"} sub {PrintOutStringNL "ok"};
-    Push rax;
+    IfGt Then {PrintOutStringNL "fail"}, Else {PrintOutStringNL "ok"};
 
-    checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    Push rax;                                                            checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-    IfEq {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
 
-    checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-    IfGe {PrintOutStringNL "ok"} sub {PrintOutStringNL "fail"};
+    IfEq Then {PrintOutStringNL "ok"},   Else {PrintOutStringNL "fail"}; checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-    checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-    IfGt {PrintOutStringNL "fail"} sub {PrintOutStringNL "ok"};
+    IfGe Then {PrintOutStringNL "ok"},   Else {PrintOutStringNL "fail"}; checkStackHas 3;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
+    IfGt Then {PrintOutStringNL "fail"}, Else {PrintOutStringNL "ok"};
     ok Assemble(debug => 0, eq => <<END);
   ok
   ok
@@ -1581,6 +1646,14 @@ B<Example:>
     is_deeply lexicalNumberFromLetter('a'), $assign;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
 
+
+=head2 new2($depth, $description)
+
+Create a new term and put it on the stack
+
+     Parameter     Description
+  1  $depth        Stack depth to be converted
+  2  $description  Text reason why we are creating a new term
 
 =head2 new($depth, $description)
 
@@ -1818,9 +1891,13 @@ B<Example:>
     parseExpressionCode;
     PrintOutStringNL "Result:";
     PrintOutRegisterInHex r15;
+
+    printParseTree;
+
     ok Assemble(debug => 0, eq => <<END);
   Push Element:
      r13: 0000 0000 0000 0006
+  New: accept initial variable
   New: accept initial variable
       r8: 0000 0000 0000 0006
      r13: 0000 0001 0000 0005
@@ -1844,13 +1921,14 @@ B<Example:>
   Push Element:
      r13: 0000 0005 0000 0006
   New: Variable
+  New: Variable
       r8: 0000 0005 0000 0006
      r13: 0000 0006 0000 0001
   accept B
   Reduce 3:
       r8: 0000 0003 0000 0000
       r9: 0000 0004 0000 0000
-     r10: 0000 0000 0000 0009
+     r10: 0000 0118 0000 0009
   Reduce 2:
       r8: 0000 0000 0000 0030
       r9: 0000 0004 0000 0000
@@ -1858,13 +1936,20 @@ B<Example:>
      r13: 0000 0006 0000 0001
   Reduce 3:
       r8: 0000 0004 0000 0000
-      r9: 0000 0000 0000 0009
+      r9: 0000 0118 0000 0009
      r10: 0000 0006 0000 0001
+  New: Bracketed term
+  New: Bracketed term
+      r8: 0000 0118 0000 0009
+  New: Brackets for term
+  New: Brackets for term
+      r8: 0000 0198 0000 0009
+      r8: 0000 0004 0000 0000
   Reduce by ( term )
   Reduce 3:
       r8: 0000 0002 0000 0000
       r9: 0000 0003 0000 0000
-     r10: 0000 0000 0000 0009
+     r10: 0000 0218 0000 0009
   Reduce 2:
       r8: 0000 0000 0000 0028
       r9: 0000 0003 0000 0000
@@ -1873,7 +1958,7 @@ B<Example:>
   Reduce 3:
       r8: 0000 0002 0000 0000
       r9: 0000 0003 0000 0000
-     r10: 0000 0000 0000 0009
+     r10: 0000 0218 0000 0009
   Reduce 2:
       r8: 0000 0000 0000 0028
       r9: 0000 0003 0000 0000
@@ -1881,13 +1966,20 @@ B<Example:>
      r13: 0000 0007 0000 0001
   Reduce 3:
       r8: 0000 0003 0000 0000
-      r9: 0000 0000 0000 0009
+      r9: 0000 0218 0000 0009
      r10: 0000 0007 0000 0001
+  New: Bracketed term
+  New: Bracketed term
+      r8: 0000 0218 0000 0009
+  New: Brackets for term
+  New: Brackets for term
+      r8: 0000 0298 0000 0009
+      r8: 0000 0003 0000 0000
   Reduce by ( term )
   Reduce 3:
       r8: 0000 0001 0000 0005
       r9: 0000 0002 0000 0000
-     r10: 0000 0000 0000 0009
+     r10: 0000 0318 0000 0009
   Reduce 2:
       r8: 0000 0000 0000 0020
       r9: 0000 0002 0000 0000
@@ -1904,13 +1996,14 @@ B<Example:>
   Push Element:
      r13: 0000 000A 0000 0006
   New: Variable
+  New: Variable
       r8: 0000 000A 0000 0006
      r13: 0000 000B 0000 0001
   accept B
   Reduce 3:
       r8: 0000 0008 0000 0003
       r9: 0000 0009 0000 0000
-     r10: 0000 0000 0000 0009
+     r10: 0000 0398 0000 0009
   Reduce 2:
       r8: 0000 0000 0000 0038
       r9: 0000 0009 0000 0000
@@ -1918,21 +2011,29 @@ B<Example:>
      r13: 0000 000B 0000 0001
   Reduce 3:
       r8: 0000 0009 0000 0000
-      r9: 0000 0000 0000 0009
+      r9: 0000 0398 0000 0009
      r10: 0000 000B 0000 0001
+  New: Bracketed term
+  New: Bracketed term
+      r8: 0000 0398 0000 0009
+  New: Brackets for term
+  New: Brackets for term
+      r8: 0000 0418 0000 0009
+      r8: 0000 0009 0000 0000
   Reduce by ( term )
   Reduce 3:
-      r8: 0000 0000 0000 0009
+      r8: 0000 0318 0000 0009
       r9: 0000 0008 0000 0003
-     r10: 0000 0000 0000 0009
+     r10: 0000 0498 0000 0009
   New: Term infix term
-      r8: 0000 0000 0000 0009
-      r8: 0000 0000 0000 0009
+  New: Term infix term
+      r8: 0000 0498 0000 0009
+      r8: 0000 0318 0000 0009
       r8: 0000 0008 0000 0003
   Reduce 3:
       r8: 0000 0001 0000 0005
       r9: 0000 0002 0000 0000
-     r10: 0000 0000 0000 0009
+     r10: 0000 0518 0000 0009
   Reduce 2:
       r8: 0000 0000 0000 0020
       r9: 0000 0002 0000 0000
@@ -1941,7 +2042,7 @@ B<Example:>
   Reduce 3:
       r8: 0000 0001 0000 0005
       r9: 0000 0002 0000 0000
-     r10: 0000 0000 0000 0009
+     r10: 0000 0518 0000 0009
   Reduce 2:
       r8: 0000 0000 0000 0020
       r9: 0000 0002 0000 0000
@@ -1949,23 +2050,112 @@ B<Example:>
      r13: 0000 000C 0000 0001
   Reduce 3:
       r8: 0000 0002 0000 0000
-      r9: 0000 0000 0000 0009
+      r9: 0000 0518 0000 0009
      r10: 0000 000C 0000 0001
+  New: Bracketed term
+  New: Bracketed term
+      r8: 0000 0518 0000 0009
+  New: Brackets for term
+  New: Brackets for term
+      r8: 0000 0598 0000 0009
+      r8: 0000 0002 0000 0000
   Reduce by ( term )
   Reduce 3:
-      r8: 0000 0000 0000 0009
+      r8: 0000 0098 0000 0009
       r9: 0000 0001 0000 0005
-     r10: 0000 0000 0000 0009
+     r10: 0000 0618 0000 0009
   New: Term infix term
-      r8: 0000 0000 0000 0009
-      r8: 0000 0000 0000 0009
+  New: Term infix term
+      r8: 0000 0618 0000 0009
+      r8: 0000 0098 0000 0009
       r8: 0000 0001 0000 0005
      r13: 0000 000D 0000 0008
   accept s
   Push Element:
      r13: 0000 000D 0000 0008
   Result:
-     r15: 0000 0000 0000 0009
+     r15: 0000 0698 0000 0009
+  Tree at:    r15: 0000 0000 0000 0698
+  key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0001 data: 0000 0000 0000 0003 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0003 data: 0000 0000 0000 0618 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0004 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0005 data: 0000 0000 0000 0098 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0006 data: 0000 0000 0000 0005 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0007 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+  Tree at:    r15: 0000 0000 0000 0098
+  key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0002 data: 0000 0000 0000 0006 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0003 data: 0000 0000 0000 0000 depth: 0000 0000 0000 0001
+  Tree at:    r15: 0000 0000 0000 0618
+  key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0001 data: 0000 0000 0000 0002 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0003 data: 0000 0000 0000 0598 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0004 data: 0000 0000 0000 0000 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0005 data: 0000 0000 0000 0002 depth: 0000 0000 0000 0001
+  Tree at:    r15: 0000 0000 0000 0598
+  key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0003 data: 0000 0000 0000 0518 depth: 0000 0000 0000 0001
+  Tree at:    r15: 0000 0000 0000 0518
+  key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0001 data: 0000 0000 0000 0003 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0003 data: 0000 0000 0000 0498 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0004 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0005 data: 0000 0000 0000 0318 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0006 data: 0000 0000 0000 0003 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0007 data: 0000 0000 0000 0008 depth: 0000 0000 0000 0001
+  Tree at:    r15: 0000 0000 0000 0318
+  key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0001 data: 0000 0000 0000 0002 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0003 data: 0000 0000 0000 0298 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0004 data: 0000 0000 0000 0000 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0005 data: 0000 0000 0000 0003 depth: 0000 0000 0000 0001
+  Tree at:    r15: 0000 0000 0000 0298
+  key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0003 data: 0000 0000 0000 0218 depth: 0000 0000 0000 0001
+  Tree at:    r15: 0000 0000 0000 0218
+  key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0001 data: 0000 0000 0000 0002 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0003 data: 0000 0000 0000 0198 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0004 data: 0000 0000 0000 0000 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0005 data: 0000 0000 0000 0004 depth: 0000 0000 0000 0001
+  Tree at:    r15: 0000 0000 0000 0198
+  key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0003 data: 0000 0000 0000 0118 depth: 0000 0000 0000 0001
+  Tree at:    r15: 0000 0000 0000 0118
+  key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0002 data: 0000 0000 0000 0006 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0003 data: 0000 0000 0000 0005 depth: 0000 0000 0000 0001
+  Tree at:    r15: 0000 0000 0000 0498
+  key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0001 data: 0000 0000 0000 0002 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0003 data: 0000 0000 0000 0418 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0004 data: 0000 0000 0000 0000 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0005 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  Tree at:    r15: 0000 0000 0000 0418
+  key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0002 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0003 data: 0000 0000 0000 0398 depth: 0000 0000 0000 0001
+  Tree at:    r15: 0000 0000 0000 0398
+  key: 0000 0000 0000 0000 data: 0000 0000 0000 0009 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0001 data: 0000 0000 0000 0001 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0002 data: 0000 0000 0000 0006 depth: 0000 0000 0000 0001
+  key: 0000 0000 0000 0003 data: 0000 0000 0000 000A depth: 0000 0000 0000 0001
   END
 
 
@@ -1983,13 +2173,14 @@ Classify white space per: "lib/Unisyn/whiteSpace/whiteSpaceClassification.pl"
      Parameter    Description
   1  @parameters  Parameters
 
-=head2 T($key, $expected)
+=head2 T($key, $expected, $countComments)
 
 Test a parse
 
-     Parameter  Description
-  1  $key       Key of text to be parsed
-  2  $expected  Expected result
+     Parameter       Description
+  1  $key            Key of text to be parsed
+  2  $expected       Expected result
+  3  $countComments  Optionally print most frequent comments to locate most generated code
 
 
 =head1 Index
@@ -2035,25 +2226,29 @@ Test a parse
 
 20 L<new|/new> - Create a new term
 
-21 L<parseExpression|/parseExpression> - Create a parser for an expression described by variables
+21 L<new2|/new2> - Create a new term and put it on the stack
 
-22 L<parseExpressionCode|/parseExpressionCode> - Parse the string of classified lexical items addressed by register $start of length $length.
+22 L<parseExpression|/parseExpression> - Create a parser for an expression described by variables
 
-23 L<parseUtf8|/parseUtf8> - Parse a unisyn expression encoded as utf8
+23 L<parseExpressionCode|/parseExpressionCode> - Parse the string of classified lexical items addressed by register $start of length $length.
 
-24 L<pushElement|/pushElement> - Push the current element on to the stack
+24 L<parseUtf8|/parseUtf8> - Parse a unisyn expression encoded as utf8
 
-25 L<pushEmpty|/pushEmpty> - Push the empty element on to the stack
+25 L<printParseTree|/printParseTree> - Print the parse tree addressed  by r15
 
-26 L<putLexicalCode|/putLexicalCode> - Put the specified lexical code into the current character in memory.
+26 L<pushElement|/pushElement> - Push the current element on to the stack
 
-27 L<reduce|/reduce> - Convert the longest possible expression on top of the stack into a term  at the specified priority
+27 L<pushEmpty|/pushEmpty> - Push the empty element on to the stack
 
-28 L<reduceMultiple|/reduceMultiple> - Reduce existing operators on the stack
+28 L<putLexicalCode|/putLexicalCode> - Put the specified lexical code into the current character in memory.
 
-29 L<T|/T> - Test a parse
+29 L<reduce|/reduce> - Convert the longest possible expression on top of the stack into a term  at the specified priority
 
-30 L<testSet|/testSet> - Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
+30 L<reduceMultiple|/reduceMultiple> - Reduce existing operators on the stack
+
+31 L<T|/T> - Test a parse
+
+32 L<testSet|/testSet> - Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
 
 =head1 Installation
 
@@ -2413,7 +2608,7 @@ END
  }
 
 #latest:;
-if (1) {
+if (1) {                                                                        #TprintParseTree
   my $l = $Lex->{sampleLexicals}{vav};
   Mov $start,  Rd(@$l);
   Mov $size,   scalar(@$l);
