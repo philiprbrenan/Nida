@@ -4,6 +4,7 @@
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2021
 #-------------------------------------------------------------------------------
 # podDocumentation
+# Finished in 10.34s, bytes assembled: 5971524
 package Unisyn::Parse;
 our $VERSION = "20210720";
 use warnings FATAL => qw(all);
@@ -203,11 +204,7 @@ sub testSet($$)                                                                 
   my $end = Label;
   for my $n(@n)
    {Cmp $register."b", $n;
-    IfEq
-    Then
-     {SetZF;
-      Jmp $end
-     };
+    Je $end
    }
   ClearZF;
   SetLabel $end;
@@ -220,11 +217,7 @@ sub checkSet($)                                                                 
 
   for my $n(@n)
    {Cmp "byte[rsp]", $n;
-    IfEq
-    Then
-     {SetZF;
-      Jmp $end
-     };
+    Je $end
    }
   error("Expected one of: '$set' on the stack");
   ClearZF;
@@ -2131,8 +2124,8 @@ eval {goto latest} if !caller(0) and -e "/home/phil";                           
 
 makeDieConfess;
 
-sub T($$)                                                                       #P Test a parse
- {my ($key, $expected) = @_;                                                    # Key of text to be parsed, expected result
+sub T($$;$)                                                                     #P Test a parse
+ {my ($key, $expected, $countComments) = @_;                                    # Key of text to be parsed, expected result, optionally print most frequent comments to locate most generated code
   my $source  = $$Lex{sampleText}{$key};                                        # String to be parsed in utf8
   defined $source or confess;
   my $address = Rutf8 $source;
@@ -2142,7 +2135,7 @@ sub T($$)                                                                       
 
   parseUtf8  V(address, $address),  $size, $fail, $parse;                       #TparseUtf8
 
-  Assemble(debug => 0, eq => $expected, countComments=>10);
+  Assemble(debug => 0, eq => $expected, countComments=>$countComments);
  }
 
 if (1) {                                                                        # Double words get expanded to quads
@@ -2953,8 +2946,8 @@ New: Term infix term
 parse: 0000 0198 0000 0009
 END
 
-latest:
-ok T(q(brackets), <<END);
+#latest:
+ok T(q(brackets), <<END, 10);
 ParseUtf8
 After conversion from utf8 to utf32
 Output Length: 0000 0000 0000 015C
@@ -3181,3 +3174,4 @@ ok 1 for 23..99;
 unlink $_ for qw(hash print2 sde-log.txt sde-ptr-check.out.txt z.txt);          # Remove incidental files
 
 lll "Finished:", time - $startTime;
+say STDERR sprintf("Finished in %.2fs, bytes assembled: %d ",  time - $startTime, Nasm::X86::totalBytesAssembled);
