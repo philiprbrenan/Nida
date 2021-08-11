@@ -4,7 +4,7 @@
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2021
 #-------------------------------------------------------------------------------
 # podDocumentation
-# Finished in 10.34s, bytes assembled: 5971524
+# Finished in 9.73s, bytes assembled: 2878312
 package Unisyn::Parse;
 our $VERSION = "20210720";
 use warnings FATAL => qw(all);
