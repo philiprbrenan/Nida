@@ -4,7 +4,7 @@
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2021
 #-------------------------------------------------------------------------------
 # podDocumentation
-# Finished in 9.73s, bytes assembled: 2878312
+# Finished in 9.30s, bytes assembled: 2805008
 package Unisyn::Parse;
 our $VERSION = "20210810";
 use warnings FATAL => qw(all);
@@ -138,11 +138,11 @@ sub lexicalNumberFromLetter($)                                                  
   $N
  }
 
-sub new2($$)                                                                    #P Create a new term and put it on the stack
+sub new2($$)                                                                    #P Create a new term in the parse tree rooted on the stack.
  {my ($depth, $description) = @_;                                               # Stack depth to be converted, text reason why we are creating a new term
   PrintOutStringNL "New: $description" if $debug;
 
-  my $t = $tree->bs->CreateBlockMultiWayTree;
+  my $t = $tree->bs->CreateTree;
   my $d = V(data);
   $t->insert(V(key, 0), V(data, $term));                                        # Create a term
   $t->insert(V(key, 1), V(data, $depth));                                       # The number of elements in the term
@@ -428,8 +428,8 @@ sub parseExpressionCode()                                                       
  {my $end = Label;
   my $eb  = $element."b";                                                       # Contains a byte from the item being parsed
 
-  my $b = CreateByteString;                                                     # Byte string to hold parse tree
-  $tree = $b->CreateBlockMultiWayTree;                                          # Root of parse tree
+  my $b = CreateArena;                                                          # Arena to hold parse tree
+  $tree = $b->CreateTree;                                                      # Root of parse tree
 
   Cmp $size, 0;                                                                 # Check for empty expression
   Je $end;
