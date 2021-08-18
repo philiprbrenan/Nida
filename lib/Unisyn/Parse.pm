@@ -1,10 +1,10 @@
-#!/usr/bin/perl -I/home/phil/perl/cpan/DataTableText/lib/ -I/home/phil/perl/cpan/NasmX86/lib/ -I/h-I/home/phil/perl/cpan/AsmC/lib/ -I/home/phil/perl/cpan/TreeTerm/lib/
+#!/usr/bin/perl -I/home/phil/perl/cpan/DataTableText/lib/ -I/home/phil/perl/cpan/NasmX86/lib/ -I/home/phil/perl/cpan/AsmC/lib/
 #-------------------------------------------------------------------------------
 # Parse a Unisyn expression.
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2021
 #-------------------------------------------------------------------------------
 # podDocumentation
-# Finished in 9.28s, bytes assembled: 2801168
+# Finished in 13.14s, bytes: 2,655,008, execs: 465,858
 package Unisyn::Parse;
 our $VERSION = "20210818";
 use warnings FATAL => qw(all);
@@ -55,7 +55,7 @@ our $lastSet          = $$Lex{structure}{last};                                 
 our $asciiNewLine     = ord("\n");                                              # New line in ascii
 our $asciiSpace       = ord(' ');                                               # Space in ascii
 
-sub getAlpha($$$)                                                               #P Load the position of a lexical item in its alphabet from the current character
+sub getAlpha($$$)                                                               #P Load the position of a lexical item in its alphabet from the current character.
  {my ($register, $address, $index) = @_;                                        # Register to load, address of start of string, index into string
   Mov $register, "[$address+$indexScale*$index]";                               # Load lexical code
  }
@@ -72,7 +72,7 @@ sub putLexicalCode($$$$)                                                        
   Mov "[$address+$indexScale*$index+$lexCodeOffset]", $register;                # Save lexical code
  }
 
-sub loadCurrentChar()                                                           #P Load the details of the character currently being processed so that we have the index of the character in the upper half of the current character and the lexical type of the character in the lowest byte
+sub loadCurrentChar()                                                           #P Load the details of the character currently being processed so that we have the index of the character in the upper half of the current character and the lexical type of the character in the lowest byte.
  {my $r = $element."b";                                                         # Classification byte
 
   Mov $element, $index;                                                         # Load index of character as upper dword
@@ -82,7 +82,7 @@ sub loadCurrentChar()                                                           
   Cmp $r, $$Lex{bracketsBase};                                                  # Brackets , due to their frequency, start after 0x10 with open even and close odd
   IfGe                                                                          # Brackets
   Then
-   {And $r, 1                                                                   # 0 - open, 1 - close
+   {And $r, 1                                                                   # Bracket: 0 - open, 1 - close
    },
   Else
    {Cmp     $r, $Ascii;                                                         # Ascii is a type of variable
@@ -100,14 +100,14 @@ sub loadCurrentChar()                                                           
    };
  }
 
-sub checkStackHas($)                                                            #P Check that we have at least the specified number of elements on the stack
+sub checkStackHas($)                                                            #P Check that we have at least the specified number of elements on the stack.
  {my ($depth) = @_;                                                             # Number of elements required on the stack
   Mov $w1, $parseStackBase;
   Sub $w1, rsp;
   Cmp $w1, $ses * $depth;
  }
 
-sub pushElement()                                                               #P Push the current element on to the stack
+sub pushElement()                                                               #P Push the current element on to the stack.
  {Push $element;
   if ($debug)
    {PrintOutStringNL "Push Element:";
@@ -115,7 +115,7 @@ sub pushElement()                                                               
    }
  }
 
-sub pushEmpty()                                                                 #P Push the empty element on to the stack
+sub pushEmpty()                                                                 #P Push the empty element on to the stack.
  {Mov  $w1, $index;
   Shl  $w1, $indexScale * $bitsPerByte;
   Or   $w1, $empty;
@@ -125,7 +125,7 @@ sub pushEmpty()                                                                 
    }
  }
 
-sub lexicalNameFromLetter($)                                                    #P Lexical name for a lexical item described by its letter
+sub lexicalNameFromLetter($)                                                    #P Lexical name for a lexical item described by its letter.
  {my ($l) = @_;                                                                 # Letter of the lexical item
   my %l = $Lex->{treeTermLexicals}->%*;
   my $n = $l{$l};
@@ -133,7 +133,7 @@ sub lexicalNameFromLetter($)                                                    
   $n->{short}
  }
 
-sub lexicalNumberFromLetter($)                                                  #P Lexical number for a lexical item described by its letter
+sub lexicalNumberFromLetter($)                                                  #P Lexical number for a lexical item described by its letter.
  {my ($l) = @_;                                                                 # Letter of the lexical item
   my $n = lexicalNameFromLetter $l;
   my $N = $Lex->{lexicals}{$n}{number};
@@ -177,8 +177,8 @@ sub new2($$)                                                                    
   Push $w1;                                                                     # Place simulated term on stack
  }
 
-sub new($$)                                                                     #P Create a new term
- {my ($depth, $description) = @_;                                               # Stack depth to be converted, text reason why we are creating a new term
+sub new($$)                                                                     #P Create a new term.
+ {my ($depth, $description) = @_;                                               # Stack depth to be converted, text reason why we are creating a new term.
   PrintOutStringNL "New: $description" if $debug;
 
   if ($tree and $tree->bs)                                                      # Parse tree available
@@ -194,7 +194,7 @@ sub new($$)                                                                     
    }
  }
 
-sub error($)                                                                    #P Die
+sub error($)                                                                    #P Die.
  {my ($message) = @_;                                                           # Error message
   PrintOutStringNL "Error: $message";
   PrintOutString "Element: ";
@@ -204,7 +204,7 @@ sub error($)                                                                    
   Exit(0);
  }
 
-sub testSet($$)                                                                 #P Test a set of items, setting the Zero Flag is one matches else clear the Zero flag
+sub testSet($$)                                                                 #P Test a set of items, setting the Zero Flag is one matches else clear the Zero flag.
  {my ($set, $register) = @_;                                                    # Set of lexical letters, Register to test
   my @n = map {sprintf("0x%x", lexicalNumberFromLetter $_)} split //, $set;     # Each lexical item by number from letter
   my $end = Label;
@@ -216,7 +216,7 @@ sub testSet($$)                                                                 
   SetLabel $end;
  }
 
-sub checkSet($)                                                                 #P Check that one of a set of items is on the top of the stack or complain if it is not
+sub checkSet($)                                                                 #P Check that one of a set of items is on the top of the stack or complain if it is not.
  {my ($set) = @_;                                                               # Set of lexical letters
   my @n =  map {lexicalNumberFromLetter $_} split //, $set;
   my $end = Label;
@@ -230,9 +230,9 @@ sub checkSet($)                                                                 
   SetLabel $end;
  }
 
-sub reduce($)                                                                   #P Convert the longest possible expression on top of the stack into a term  at the specified priority
+sub reduce($)                                                                   #P Convert the longest possible expression on top of the stack into a term  at the specified priority.
  {my ($priority) = @_;                                                          # Priority of the operators to reduce
-  $priority =~ m(\A(1|3)\Z);                                                    # 1 - all operators, 2 - priority 2 operators
+  $priority =~ m(\A(1|3)\Z);                                                    # Level: 1 - all operators, 2 - priority 2 operators
   my ($success, $end) = map {Label} 1..2;                                       # Exit points
 
   checkStackHas 3;                                                              # At least three elements on the stack
@@ -344,7 +344,7 @@ sub reduce($)                                                                   
   SetLabel $end;                                                                # End
  } # reduce
 
-sub reduceMultiple($)                                                           #P Reduce existing operators on the stack
+sub reduceMultiple($)                                                           #P Reduce existing operators on the stack.
  {my ($priority) = @_;                                                          # Priority of the operators to reduce
   K('count',99)->for(sub                                                        # An improbably high but finite number of reductions
    {my ($index, $start, $next, $end) = @_;                                      # Execute body
@@ -353,20 +353,20 @@ sub reduceMultiple($)                                                           
    });
  }
 
-sub accept_a()                                                                  #P Assign
+sub accept_a()                                                                  #P Assign.
  {checkSet("t");
   reduceMultiple 2;
   PrintOutStringNL "accept a" if $debug;
   pushElement;
  }
 
-sub accept_b                                                                    #P Open
+sub accept_b                                                                    #P Open.
  {checkSet("abdps");
   PrintOutStringNL "accept b" if $debug;
   pushElement;
  }
 
-sub accept_B                                                                    #P Closing parenthesis
+sub accept_B                                                                    #P Closing parenthesis.
  {checkSet("bst");
   PrintOutStringNL "accept B" if $debug;
   reduceMultiple 1;
@@ -375,19 +375,19 @@ sub accept_B                                                                    
   checkSet("bst");
  }
 
-sub accept_d                                                                    #P Infix but not assign or semi-colon
+sub accept_d                                                                    #P Infix but not assign or semi-colon.
  {checkSet("t");
   PrintOutStringNL "accept d" if $debug;
   pushElement;
  }
 
-sub accept_p                                                                    #P Prefix
+sub accept_p                                                                    #P Prefix.
  {checkSet("abdps");
   PrintOutStringNL "accept p" if $debug;
   pushElement;
  }
 
-sub accept_q                                                                    #P Post fix
+sub accept_q                                                                    #P Post fix.
  {checkSet("t");
   PrintOutStringNL "accept q" if $debug;
   IfEq                                                                          # Post fix operator applied to a term
@@ -399,7 +399,7 @@ sub accept_q                                                                    
    }
  }
 
-sub accept_s                                                                    #P Semi colon
+sub accept_s                                                                    #P Semi colon.
  {checkSet("bst");
   PrintOutStringNL "accept s" if $debug;
   Mov $w1, "[rsp]";
@@ -412,7 +412,7 @@ sub accept_s                                                                    
   pushElement;
  }
 
-sub accept_v                                                                    #P Variable
+sub accept_v                                                                    #P Variable.
   {checkSet("abdps");
    PrintOutStringNL "accept v" if $debug;
    pushElement;
@@ -535,7 +535,7 @@ END
   SetLabel $end;
  } # parseExpressionCode
 
-sub parseExpression(@)                                                          #P Create a parser for an expression described by variables
+sub parseExpression(@)                                                          #P Create a parser for an expression described by variables.
  {my (@parameters) = @_;                                                        # Parameters describing expression
 
   my $s = Subroutine
@@ -567,7 +567,7 @@ sub MatchBrackets(@)                                                            
     Comment "Match brackets in utf32 text";
 
     my $finish = Label;
-    PushR xmm0, k7, r10, r11, r12, r13, r14, r15, rsi;                          # r15 current character address. r14 is the current classification. r13 the last classification code. r12 the stack depth. r11 the number of opening brackets found. r10  address of first utf32 character.
+    PushR xmm0, k7, r10, r11, r12, r13, r14, r15, rsi;                          # R15 current character address. r14 is the current classification. r13 the last classification code. r12 the stack depth. r11 the number of opening brackets found. r10  address of first utf32 character.
 
     Mov rsi, rsp;                                                               # Save stack location so we can use the stack to record the brackets we have found
     ClearRegisters r11, r12, r15;                                               # Count the number of brackets and track the stack depth, index of each character
@@ -630,7 +630,7 @@ sub MatchBrackets(@)                                                            
   $s->call(@parameters);
  } # MatchBrackets
 
-sub ClassifyNewLines(@)                                                         #P Scan input string looking for opportunities to convert new lines into semi colons
+sub ClassifyNewLines(@)                                                         #P Scan input string looking for opportunities to convert new lines into semi colons.
  {my (@parameters) = @_;                                                        # Parameters
   @_ >= 1 or confess;
 
@@ -732,7 +732,7 @@ sub ClassifyNewLines(@)                                                         
   $s->call(@parameters);
  } # ClassifyNewLines
 
-sub ClassifyWhiteSpace(@)                                                       #P Classify white space per: "lib/Unisyn/whiteSpace/whiteSpaceClassification.pl"
+sub ClassifyWhiteSpace(@)                                                       #P Classify white space per: "lib/Unisyn/whiteSpace/whiteSpaceClassification.pl".
  {my (@parameters) = @_;                                                        # Parameters
   @_ >= 1 or confess;
 
@@ -755,7 +755,7 @@ sub ClassifyWhiteSpace(@)                                                       
      {getLexicalCode $eb, $address,  $index;                                    # Supplied index or default
      };
 
-    my sub putLexicalCode($;$)                                                   # Put the specified lexical code into the current character in memory.
+    my sub putLexicalCode($;$)                                                  # Put the specified lexical code into the current character in memory.
      {my ($code, $indexReg) = @_;                                               # Code, optional index register
       putLexicalCode $w1, $address, ($indexReg//$index), $code;
      };
@@ -787,7 +787,7 @@ sub ClassifyWhiteSpace(@)                                                       
           IfEq
           Then
            {Cmp $w2, $asciiNewLine;
-            IfEq                                                                # 's' followed by 'n'
+            IfEq                                                                # Disallow 's' followed by 'n'
             Then
              {PrintErrStringNL "Space detected before new line at index:";
               PrintErrRegisterInHex $index;
@@ -832,7 +832,7 @@ sub ClassifyWhiteSpace(@)                                                       
 
           For                                                                   # Move over spaces and new lines between two ascii characters that are neither of new line or space
            {my ($start, $end, $next) = @_;
-            getAlpha $cb, $s;                                                   # 's' or 'n'
+            getAlpha $cb, $s;                                                   # Check for 's' or 'n'
             Cmp $cb, $asciiSpace;
             IfEq
             Then
@@ -851,7 +851,7 @@ sub ClassifyWhiteSpace(@)                                                       
          };
        };
 
-      Block                                                                     # 's' preceding 'a' are significant
+      Block                                                                     # Note: 's' preceding 'a' are significant
        {my ($start, $end) = @_;
         Cmp $S, -1;
         IfEq                                                                    # Looking for 's'
@@ -935,7 +935,7 @@ sub ClassifyWhiteSpace(@)                                                       
   $s->call(@parameters);
  } # ClassifyWhiteSpace
 
-sub parseUtf8(@)                                                                # Parse a unisyn expression encoded as utf8
+sub parseUtf8(@)                                                                # Parse a unisyn expression encoded as utf8.
  {my (@parameters) = @_;                                                        # Parameters
   @_ >= 1 or confess;
 
@@ -2331,7 +2331,7 @@ eval {goto latest} if !caller(0) and -e "/home/phil";                           
 
 makeDieConfess;
 
-sub T($$;$)                                                                     #P Test a parse
+sub T($$;$)                                                                     #P Test a parse.
  {my ($key, $expected, $countComments) = @_;                                    # Key of text to be parsed, expected result, optionally print most frequent comments to locate most generated code
   my $source  = $$Lex{sampleText}{$key};                                        # String to be parsed in utf8
   defined $source or confess;
@@ -2588,7 +2588,7 @@ New: Prefixed variable
 END
  }
 
-sub printParseTree                                                              # Print the parse tree addressed  by r15
+sub printParseTree                                                              # Print the parse tree addressed  by r15.
  {my ($reg) = @_;                                                               # Parameters
   Mov r14, r15;
   Shr r14, 32;
@@ -3458,5 +3458,6 @@ ok 1 for 23..99;
 
 unlink $_ for qw(hash print2 sde-log.txt sde-ptr-check.out.txt z.txt);          # Remove incidental files
 
-lll "Finished:", time - $startTime;
-say STDERR sprintf("Finished in %.2fs, bytes assembled: %d ",  time - $startTime, Nasm::X86::totalBytesAssembled);
+say STDERR sprintf("# Finished in %.2fs, bytes: %s, execs: %s ",  time - $startTime,
+  map {numberWithCommas $_}
+    $Nasm::X86::totalBytesAssembled, $Nasm::X86::instructionsExecuted);
