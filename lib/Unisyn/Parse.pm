@@ -6,7 +6,7 @@
 # podDocumentation
 # Finished in 9.28s, bytes assembled: 2801168
 package Unisyn::Parse;
-our $VERSION = "20210810";
+our $VERSION = "20210818";
 use warnings FATAL => qw(all);
 use strict;
 use Carp qw(confess cluck);
