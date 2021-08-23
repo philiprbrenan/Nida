@@ -147,27 +147,26 @@ sub new2($$)                                                                    
 
   my $t = $tree->bs->CreateTree;
   my $d = V(data);
-  $t->insert(V(key, 0), V(data, $term));                                        # Create a term
+  $t->insert(V(key, 0), V(data, $term));                                        # Create a term - we only ahve terms at the moment in the parse tee - but that might change in the future
   $t->insert(V(key, 1), V(data, $depth));                                       # The number of elements in the term
 
-  for my $i(1..$depth)
+  for my $i(1..$depth)                                                          # Each term,
    {my $j = $depth + 1 - $i;
     Pop $w1;
     PrintOutRegisterInHex $w1 if $debug;
     $d->getReg($w1);
-    $t->insert(      V(key, 2 * $j    ), $d);                                   # The lexical type - which actually only takes 4 bits so this could be improved on.
+    $t->insert(      V(key, 2 * $j    ), $d);                                   # The lexical type of each operand on the even keys below 16- which actually only takes 4 bits so this could be improved on.
 
     Mov $w2, $w1;
     Shr $w2, 32;                                                                # Offset in source
     $d->getReg($w2);                                                            # Offset in source in lower dword
     Cmp $w1."b", $term;                                                         # Check whether the lexical item on the stack is a term
 
-
-    IfEq
+    IfEq                                                                        # Insert a sub tree if we are inserting a term
     Then
      {$t->insertTree(V(key, 2 * $j + 1), $d);                                   # A reference to another term
      },
-    Else
+    Else                                                                        # Insert the offset in the utf32 source if we are not on a term
      {$t->insert    (V(key, 2 * $j + 1), $d);                                   # Offset in source
      }
    }
@@ -2335,7 +2334,6 @@ sub printParseTree                                                              
  {Mov r14, r15;
   Shr r14, 32;
   $tree->first->getReg(r14);
-  $tree->first->d;
   $tree->dump;
 # $tree->print;
  }
