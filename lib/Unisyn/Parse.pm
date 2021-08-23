@@ -17,14 +17,43 @@ use feature qw(say current_sub);
 
 makeDieConfess;
 
-my $develop = -e q(/home/phil/);                                                # Developing
+my  $develop = -e q(/home/phil/);                                               # Developing
+our $tree;                                                                      # Parse tree - fork for reentrancy
+our $debug   = 0;                                                               # Include debug code if true
+
+#D1 Create                                                                      # Create a Unisyn parse of a utf8 string.
+
+sub create($$)                                                                  # Create a new unisyn parse from a utf8 string
+ {my ($address, $size) = @_;                                                    # Address of utf8 source string to parse, length of string
+  @_ == 2 or confess;
+
+  my $a         = CreateArena;                                                  # Arena to hold parse tree
+  my $t = $tree = $a->CreateTree;                                               # Root of parse tree
+
+  my $fail    = V('fail');
+  my $parse   = V('parse');
+
+  $address->setReg(rax);
+  $size   ->setReg(rdi);
+  Shl rdi, 3;
+
+  my $p = genHash(__PACKAGE__,                                                  # Description of parse
+     arena     => $a,                                                           # Arena containing tree
+     tree      => $t,                                                           # Tree containing parse
+     size      => $size,                                                        # Size of source string as utf8
+     address   => $address,                                                     # Address of source string as utf8
+     parse     => $parse,                                                       # Offset to the head of the parse tree
+     fails     => $fail,                                                        # Number of failures encountered in this parse
+   );
+
+  $p->parseUtf8;                                                                # Parse utf8 source string
+
+  $p
+ }
 
 #D1 Parse                                                                       # Parse Unisyn expressions
 
 our $Lex = &lexicalData;                                                        # Lexical table definitions
-our $tree;                                                                      # Parse tree
-
-our $debug            = 0;                                                      # Include debug code if true
 
 our $ses              = RegisterSize rax;                                       # Size of an element on the stack
 our ($w1, $w2, $w3)   = (r8, r9, r10);                                          # Work registers
@@ -531,6 +560,7 @@ END
    };
 
   Pop r15;                                                                      # The resulting parse tree
+  Shr r15, 32;                                                                  # The offset of the resulting parse tree
   SetLabel $end;
  } # parseExpressionCode
 
@@ -935,7 +965,7 @@ sub ClassifyWhiteSpace(@)                                                       
  } # ClassifyWhiteSpace
 
 sub parseUtf8(@)                                                                # Parse a unisyn expression encoded as utf8 and return the parse tree.
- {my (@parameters) = @_;                                                        # Parameters
+ {my ($p, @parameters) = @_;                                                    # Parse, parameters
   @_ >= 1 or confess;
 
   my $s = Subroutine
@@ -943,7 +973,7 @@ sub parseUtf8(@)                                                                
 
     PrintOutStringNL "ParseUtf8" if $debug;
 
-    PushR zmm0, zmm1;
+    PushZmm 0..1;                                                               # Used to hold classifiers
 
     my $source32       = V(u32),
     my $sourceSize32   = V(size32);
@@ -998,11 +1028,36 @@ sub parseUtf8(@)                                                                
 
     $$p{parse}->outNL if $debug;
 
-    PopR;
+    PopZmm;
    } [qw(address size parse fail)], name => q(Unisyn::Parse::parseUtf8);
 
-  $s->call(@parameters);
+  $s->call(address => $p->address, size => $p->size,
+           parse   => $p->parse,   fail => $p->fails);
  } # parseUtf8
+
+#D1 Print                                                                       # Print a parse tree
+## In development
+sub print($)                                                                    # Create a parser for an expression described by variables.
+ {my ($parse) = @_;                                                             # Parse tree
+
+  my $s = Subroutine
+   {my ($p) = @_;                                                               # Parameters
+    PushR $parseStackBase, map {"r$_"} 8..15;
+    $$p{source}->setReg($start);                                                # Start of expression string after it has been classified
+    $$p{size}  ->setReg($size);                                                 # Number of characters in the expression
+
+    Mov $parseStackBase, rsp;                                                   # Set base of parse stack
+
+    parseExpressionCode;
+    $$p{parse}->getReg(r15);                                                    # Number of characters in the expression
+
+    Mov rsp, $parseStackBase;                                                   # Remove parse stack
+                                                                                # Remove new frame
+    PopR;
+   } [qw(arena tree)], name => q(Unisyn::Parse::print);
+
+  $s->call(arena->parse->arena,tree => $parse->tree);
+ } # print
 
 #d
 sub lexicalData {do {
@@ -2324,18 +2379,15 @@ else
 
 my $startTime = time;                                                           # Tests
 
-   $debug     = 1;                                                              # Debug during testing so we can follow actions on the stack
+$debug = 1;                                                                     # Debug during initial testing so we can follow actions on the stack
 
 eval {goto latest} if !caller(0) and -e "/home/phil";                           # Go to latest test if specified
 
 makeDieConfess;
 
 sub printParseTree                                                              # Print the parse tree addressed  by r15.
- {Mov r14, r15;
-  Shr r14, 32;
-  $tree->first->getReg(r14);
+ {$tree->first->getReg(r15);
   $tree->dump;
-# $tree->print;
  }
 
 sub T($$%)                                                                      #P Test a parse.
@@ -2344,14 +2396,12 @@ sub T($$%)                                                                      
   defined $source or confess;
   my $address = Rutf8 $source;
   my $size    = StringLength V(string, $address);
-  my $fail    = V('fail');
-  my $parse   = V('parse');
 
-  parseUtf8  V(address, $address),  $size, $fail, $parse;                       #TparseUtf8
+  my $p = create V(address, $address),  $size;
 
-  if ($options{print})                                                          # Print the parse tree
-   {$parse->setReg(r15);
-    printParseTree;
+  if ($options{print})                                                          # Print the parse tree if requested
+   {$p->parse->setReg(r15);
+    printParseTree;                                                             # Print the parse tree
    }
 
   Assemble(debug => 0, eq => $expected);
@@ -2619,7 +2669,7 @@ New: accept initial variable
 New: accept initial variable
     r8: 0000 0000 0000 0006
 Result:
-   r15: 0000 0098 0000 0009
+   r15: 0000 0000 0000 0098
 Tree at:  0000 0000 0000 0098  length: 0000 0000 0000 0004
  zmm31: 0000 00D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
  zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0001 0000 0009
@@ -2643,7 +2693,6 @@ if (1) {                                                                        
   PrintOutStringNL "Result:";
   PrintOutRegisterInHex r15;
 
-  Shr r15, 32;
   my $o = V(first, r15);
   $tree->dump($o);
 
@@ -2674,7 +2723,7 @@ New: Term infix term
     r8: 0000 0098 0000 0009
     r8: 0000 0001 0000 0005
 Result:
-   r15: 0000 0198 0000 0009
+   r15: 0000 0000 0000 0198
 Tree at:  0000 0000 0000 0198  length: 0000 0000 0000 0008
  zmm31: 0000 01D8 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
  zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0118 0000 0009   0000 0098 0000 0009   0000 0001 0000 0005   0000 0003 0000 0009
@@ -2903,7 +2952,7 @@ accept s
 Push Element:
    r13: 0000 000D 0000 0008
 Result:
-   r15: 0000 0698 0000 0009
+   r15: 0000 0000 0000 0698
 Tree at:  0000 0000 0000 0698  length: 0000 0000 0000 0008
  zmm31: 0000 06D8 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
  zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0618 0000 0009   0000 0098 0000 0009   0000 0001 0000 0005   0000 0003 0000 0009
@@ -3088,7 +3137,7 @@ New: Term infix term
     r8: 0000 0118 0000 0009
     r8: 0000 0098 0000 0009
     r8: 0000 0001 0000 0005
-parse: 0000 0198 0000 0009
+parse: 0000 0000 0000 0198
 END
 
 ok T(q(vnv), <<END);
@@ -3131,7 +3180,7 @@ New: Term infix term
     r8: 0000 0118 0000 0009
     r8: 0000 0098 0000 0009
     r8: 0000 0001 0000 0008
-parse: 0000 0198 0000 0009
+parse: 0000 0000 0000 0198
 END
 
 #latest:
@@ -3179,7 +3228,7 @@ New: Term infix term
     r8: 0000 0118 0000 0009
     r8: 0000 0098 0000 0009
     r8: 0000 0001 0000 0008
-parse: 0000 0198 0000 0009
+parse: 0000 0000 0000 0198
 END
 
 #latest:
@@ -3231,7 +3280,7 @@ New: Term infix term
     r8: 0000 0118 0000 0009
     r8: 0000 0098 0000 0009
     r8: 0000 0002 0000 0008
-parse: 0000 0198 0000 0009
+parse: 0000 0000 0000 0198
 END
 
 #latest:
@@ -3444,7 +3493,7 @@ New: Term infix term
 accept s
 Push Element:
    r13: 0000 0017 0000 0008
-parse: 0000 0698 0000 0009
+parse: 0000 0000 0000 0698
 Tree at:  0000 0000 0000 0698  length: 0000 0000 0000 0008
  zmm31: 0000 06D8 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
  zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0618 0000 0009   0000 0098 0000 0009   0000 0001 0000 0005   0000 0003 0000 0009
@@ -3579,6 +3628,20 @@ Tree at:  0000 0000 0000 0398  length: 0000 0000 0000 0004
 
 
 END
+
+#latest:
+$debug = 0;                                                                     # Use print to find out what happened from now on
+
+if (1) {                                                                        #TprintParseTree
+  my $source  = $Lex->{sampleText}{vav};
+  my $address = Rutf8 $source;
+  my $parse   = create K(address, $address),  K(size, length $source);
+  $parse->parse->outNL;
+
+  ok Assemble(debug=>1, eq => <<END);
+parse: 0000 0000 0000 0098
+END
+ }
 
 #latest:
 ok T(q(brackets), <<END) if 0;
