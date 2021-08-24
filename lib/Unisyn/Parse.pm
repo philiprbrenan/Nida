@@ -5,6 +5,7 @@
 #-------------------------------------------------------------------------------
 # podDocumentation
 # Finished in 13.14s, bytes: 2,655,008, execs: 465,858
+# Describe the tree rather than creating it - we can always load the tree bs and forst foelds to suite before doing inserts
 package Unisyn::Parse;
 our $VERSION = "20210818";
 use warnings FATAL => qw(all);
@@ -18,32 +19,30 @@ use feature qw(say current_sub);
 makeDieConfess;
 
 my  $develop = -e q(/home/phil/);                                               # Developing
-our $tree;                                                                      # Parse tree - fork for reentrancy
-our $debug   = 0;                                                               # Include debug code if true
+my  $arena;                                                                     # We always reloafd teh actual arena address from rax and so this is permissible
+our $debug   = 0;                                                               # Include debug code if true - if you do the tests will fail
 
 #D1 Create                                                                      # Create a Unisyn parse of a utf8 string.
 
 sub create($$)                                                                  # Create a new unisyn parse from a utf8 string
- {my ($address, $size) = @_;                                                    # Address of utf8 source string to parse, length of string
+ {my ($address, $size) = @_;                                                    # Address of utf8 source string to parse as a variable, length of string as a variable
   @_ == 2 or confess;
 
-  my $a         = CreateArena;                                                  # Arena to hold parse tree
-  my $t = $tree = $a->CreateTree;                                               # Root of parse tree
+  my $a = $arena = CreateArena;                                                 # Arena to hold parse tree - every parse tree gets its own arena so that we can free parses separately
 
-  my $fail    = V('fail');
-  my $parse   = V('parse');
+  my $fail       = V('fail');
+  my $parse      = V('parse');
 
   $address->setReg(rax);
   $size   ->setReg(rdi);
   Shl rdi, 3;
 
   my $p = genHash(__PACKAGE__,                                                  # Description of parse
-     arena     => $a,                                                           # Arena containing tree
-     tree      => $t,                                                           # Tree containing parse
-     size      => $size,                                                        # Size of source string as utf8
-     address   => $address,                                                     # Address of source string as utf8
-     parse     => $parse,                                                       # Offset to the head of the parse tree
-     fails     => $fail,                                                        # Number of failures encountered in this parse
+     arena       => $a,                                                         # Arena containing tree
+     size        => $size,                                                      # Size of source string as utf8
+     address     => $address,                                                   # Address of source string as utf8
+     parse       => $parse,                                                     # Offset to the head of the parse tree
+     fails       => $fail,                                                      # Number of failures encountered in this parse
    );
 
   $p->parseUtf8;                                                                # Parse utf8 source string
@@ -63,6 +62,7 @@ our $element          = r13;                                                    
 our $start            = r14;                                                    # Start of the parse string
 our $size             = r15;                                                    # Length of the input string
 our $parseStackBase   = rsi;                                                    # The base of the parsing stack in the stack
+our $arenaReg         = rax;                                                    # The arena in which we are building the parse tree
 our $indexScale       = 4;                                                      # The size of a utf32 character
 our $lexCodeOffset    = 3;                                                      # The offset in a classified character to the lexical code.
 our $bitsPerByte      = 8;                                                      # The number of bits in a byte
@@ -170,11 +170,12 @@ sub lexicalNumberFromLetter($)                                                  
   $N
  }
 
-sub new2($$)                                                                    #P Create a new term in the parse tree rooted on the stack.
+sub new($$)                                                                     #P Create a new term in the parse tree rooted on the stack.
  {my ($depth, $description) = @_;                                               # Stack depth to be converted, text reason why we are creating a new term
   PrintOutStringNL "New: $description" if $debug;
 
-  my $t = $tree->bs->CreateTree;
+  $arena->bs->getReg($arenaReg);                                                # Address arena
+  my $t = $arena->CreateTree;                                                   # Create a tree in the arena to hold the details of the lexical elements on the stack
   my $d = V(data);
   $t->insert(V(key, 0), V(data, $term));                                        # Create a term - we only ahve terms at the moment in the parse tee - but that might change in the future
   $t->insert(V(key, 1), V(data, $depth));                                       # The number of elements in the term
@@ -203,23 +204,6 @@ sub new2($$)                                                                    
   Shl $w1, 32;                                                                  # Push offset to tree into the upper dword
   Or  $w1."b", $term;                                                           # Mark as a term tree
   Push $w1;                                                                     # Place simulated term on stack
- }
-
-sub new($$)                                                                     #P Create a new term.
- {my ($depth, $description) = @_;                                               # Stack depth to be converted, text reason why we are creating a new term.
-  PrintOutStringNL "New: $description" if $debug;
-
-  if ($tree and $tree->bs)                                                      # Parse tree available
-   {new2($depth, $description);
-   }
-  else                                                                          # Testing without building full parse tree
-   {for my $i(1..$depth)
-     {Pop $w1;
-      PrintOutRegisterInHex $w1 if $debug;
-     }
-    Mov $w1, $term;                                                             # Term
-    Push $w1;                                                                   # Place simulated term on stack
-   }
  }
 
 sub error($)                                                                    #P Die.
@@ -461,9 +445,6 @@ sub accept_v                                                                    
 sub parseExpressionCode()                                                       #P Parse the string of classified lexical items addressed by register $start of length $length.  The resulting parse tree (if any) is returned in r15.
  {my $end = Label;
   my $eb  = $element."b";                                                       # Contains a byte from the item being parsed
-
-  my $b = CreateArena;                                                          # Arena to hold parse tree
-  $tree = $b->CreateTree;                                                       # Root of parse tree
 
   Cmp $size, 0;                                                                 # Check for empty expression
   Je $end;
@@ -964,7 +945,7 @@ sub ClassifyWhiteSpace(@)                                                       
   $s->call(@parameters);
  } # ClassifyWhiteSpace
 
-sub parseUtf8(@)                                                                # Parse a unisyn expression encoded as utf8 and return the parse tree.
+sub parseUtf8(@)                                                                #P Parse a unisyn expression encoded as utf8 and return the parse tree.
  {my ($p, @parameters) = @_;                                                    # Parse, parameters
   @_ >= 1 or confess;
 
@@ -973,7 +954,7 @@ sub parseUtf8(@)                                                                
 
     PrintOutStringNL "ParseUtf8" if $debug;
 
-    PushZmm 0..1;                                                               # Used to hold classifiers
+    PushR $arenaReg; PushZmm 0..1;                                              # Used to hold arena and classifiers
 
     my $source32       = V(u32),
     my $sourceSize32   = V(size32);
@@ -1024,14 +1005,16 @@ sub parseUtf8(@)                                                                
       PrintUtf32($sourceLength32, $source32);
      }
 
+    $$p{arena}->setReg($arenaReg);                                              # Rather than passing the arena as a parameter to all the parsing routines we put it in rax and access it from there when needed
     parseExpression source=>$source32, size=>$sourceLength32, $$p{parse};
 
     $$p{parse}->outNL if $debug;
 
-    PopZmm;
-   } [qw(address size parse fail)], name => q(Unisyn::Parse::parseUtf8);
+    PopZmm; PopR;
+   } [qw(arena address size parse fail)], name => q(Unisyn::Parse::parseUtf8);
 
-  $s->call(address => $p->address, size => $p->size,
+  $s->call(arena   => $p->arena->bs,
+           address => $p->address, size => $p->size,
            parse   => $p->parse,   fail => $p->fails);
  } # parseUtf8
 
@@ -2367,7 +2350,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 22;
+   {plan tests => 2;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -2379,16 +2362,9 @@ else
 
 my $startTime = time;                                                           # Tests
 
-$debug = 1;                                                                     # Debug during initial testing so we can follow actions on the stack
-
 eval {goto latest} if !caller(0) and -e "/home/phil";                           # Go to latest test if specified
 
 makeDieConfess;
-
-sub printParseTree                                                              # Print the parse tree addressed  by r15.
- {$tree->first->getReg(r15);
-  $tree->dump;
- }
 
 sub T($$%)                                                                      #P Test a parse.
  {my ($key, $expected, %options) = @_;                                          # Key of text to be parsed, expected result, options
@@ -2401,343 +2377,30 @@ sub T($$%)                                                                      
 
   if ($options{print})                                                          # Print the parse tree if requested
    {$p->parse->setReg(r15);
-    printParseTree;                                                             # Print the parse tree
+    my $t = $arena->DescribeTree;
+    $t->first->getReg(r15);
+    $t->dump;
    }
 
   Assemble(debug => 0, eq => $expected);
  }
 
-if (1) {                                                                        # Double words get expanded to quads
-  my $q = Rb(1..8);
-  Mov rax, "[$q];";
-  Mov r8, rax;
-  Shl r8d, 16;
-  PrintOutRegisterInHex rax, r8;
-
-  ok Assemble(debug => 0, eq => <<END);
-   rax: 0807 0605 0403 0201
-    r8: 0000 0000 0201 0000
-END
- }
-
-if (1) {                                                                        #TcheckStackHas
-  my @o = (Rb(reverse 0x10,              0, 0, 1),                              # Open bracket
-           Rb(reverse 0x11,              0, 0, 2),                              # Close bracket
-           Rb(reverse $Ascii,            0, 0, 27),                             # Ascii 'a'
-           Rb(reverse $variable,         0, 0, 27),                             # Variable 'a'
-           Rb(reverse $NewLineSemiColon, 0, 0, 0),                              # New line semicolon
-           Rb(reverse $semiColon,        0, 0, 0));                             # Semi colon
-
-  for my $o(@o)                                                                 # Try converting each input element
-   {Mov $start, $o;
-    Mov $index, 0;
-    loadCurrentChar;
-    PrintOutRegisterInHex $element;
-   }
-
-  ok Assemble(debug => 0, eq => <<END);
-   r13: 0000 0000 0000 0000
-   r13: 0000 0000 0000 0001
-   r13: 0000 0000 0000 0006
-   r13: 0000 0000 0000 0006
-   r13: 0000 0000 0000 0008
-   r13: 0000 0000 0000 0008
-END
- }
-
-#latest:;
-if (1) {                                                                        #TcheckStackHas
-  PushR $parseStackBase;
-  Mov   $parseStackBase, rsp;
-  Push rax;
-  Push rax;
-  checkStackHas 2;
-  IfEq Then {PrintOutStringNL "ok"},   Else {PrintOutStringNL "fail"}; checkStackHas 2;
-  IfGe Then {PrintOutStringNL "ok"},   Else {PrintOutStringNL "fail"}; checkStackHas 2;
-  IfGt Then {PrintOutStringNL "fail"}, Else {PrintOutStringNL "ok"};
-  Push rax;                                                            checkStackHas 3;
-
-  IfEq Then {PrintOutStringNL "ok"},   Else {PrintOutStringNL "fail"}; checkStackHas 3;
-  IfGe Then {PrintOutStringNL "ok"},   Else {PrintOutStringNL "fail"}; checkStackHas 3;
-  IfGt Then {PrintOutStringNL "fail"}, Else {PrintOutStringNL "ok"};
-  ok Assemble(debug => 0, eq => <<END);
-ok
-ok
-ok
-ok
-ok
-ok
-END
- }
-
-#latest:;
-if (1) {                                                                        #TpushEmpty
-  Mov $index, 1;
-  pushEmpty;
-  Mov rax, "[rsp]";
-  PrintOutRegisterInHex rax;
-  ok Assemble(debug => 0, eq => <<END);
-Push Empty
-   rax: 0000 0001 0000 000A
-END
- }
-
-#latest:;
-if (1) {                                                                        #TlexicalNameFromLetter #TlexicalNumberFromLetter
-  is_deeply lexicalNameFromLetter('a'), q(assign);
-  is_deeply lexicalNumberFromLetter('a'), $assign;
- }
-
-#latest:;
-if (1) {                                                                        #Tnew
-  Mov $index,  1;
-  Mov rax,-1; Push rax;
-  Mov rax, 3; Push rax;
-  Mov rax, 2; Push rax;
-  Mov rax, 1; Push rax;
-  new 3, 'test';
-  Pop rax;  PrintOutRegisterInHex rax;
-  Pop rax;  PrintOutRegisterInHex rax;
-  ok Assemble(debug => 0, eq => <<END);
-New: test
-    r8: 0000 0000 0000 0001
-    r8: 0000 0000 0000 0002
-    r8: 0000 0000 0000 0003
-   rax: 0000 0000 0000 0009
-   rax: FFFF FFFF FFFF FFFF
-END
- }
-
-#latest:;
-if (1) {                                                                        #Terror
-  error "aaa bbbb";
-  ok Assemble(debug => 0, eq => <<END);
-Error: aaa bbbb
-Element:    r13: 0000 0000 0000 0000
-Index  :    r12: 0000 0000 0000 0000
-END
- }
-
-#latest:;
-if (1) {                                                                        #TtestSet
-  Mov r15,  -1;
-  Mov r15b, $term;
-  testSet("ast", r15);
-  PrintOutZF;
-  testSet("as",  r15);
-  PrintOutZF;
-  ok Assemble(debug => 0, eq => <<END);
-ZF=1
-ZF=0
-END
- }
-
-#latest:;
-if (1) {                                                                        #TcheckSet
-  Mov r15,  -1;
-  Mov r15b, $term;
-  Push r15;
-  checkSet("ast");
-  PrintOutZF;
-  checkSet("as");
-  PrintOutZF;
-  ok Assemble(debug => 0, eq => <<END);
-ZF=1
-Error: Expected one of: 'as' on the stack
-Element:    r13: 0000 0000 0000 0000
-Index  :    r12: 0000 0000 0000 0000
-END
- }
-
-#latest:;
-if (1) {                                                                        #Treduce
-  Mov rsi, rsp;                                                                 # Create parse stack base
-  Mov r15,    -1;   Push r15;
-  Mov r15, $term;   Push r15;
-  Mov r15, $assign; Push r15;
-  Mov r15, $term;   Push r15;
-  reduce 1;
-  Pop r15; PrintOutRegisterInHex r15;
-  Pop r14; PrintOutRegisterInHex r14;
-  ok Assemble(debug => 0, eq => <<END);
-Reduce 3:
-    r8: 0000 0000 0000 0009
-    r9: 0000 0000 0000 0005
-   r10: 0000 0000 0000 0009
-New: Term infix term
-    r8: 0000 0000 0000 0009
-    r8: 0000 0000 0000 0009
-    r8: 0000 0000 0000 0005
-   r15: 0000 0000 0000 0009
-   r14: FFFF FFFF FFFF FFFF
-END
- }
-
-#latest:;
-if (1) {                                                                        #TreduceMultiple
-  Mov rsi, rsp;                                                                 # Create parse stack base
-  Mov r15,           -1;  Push r15;
-  Mov r15, $OpenBracket;  Push r15;
-  reduceMultiple 1;
-  Pop r15; PrintOutRegisterInHex r15;
-  Pop r14; PrintOutRegisterInHex r14;
-  ok Assemble(debug => 0, eq => <<END);
-Reduce 2:
-    r8: 0000 0000 0000 0010
-    r9: 0000 0000 0000 0000
-   r15: 0000 0000 0000 0000
-   r14: FFFF FFFF FFFF FFFF
-END
- }
-
-#latest:;
-if (1) {
-  Mov rsi, rsp;                                                                 # Create parse stack base
-  Mov r15,           -1;  Push r15;
-  Mov r15, $OpenBracket;  Push r15;
-  Mov r15, $term;         Push r15;
-  Mov r15, $CloseBracket; Push r15;
-  reduceMultiple 1;
-  Pop r15; PrintOutRegisterInHex r15;
-  Pop r14; PrintOutRegisterInHex r14;
-  ok Assemble(debug => 0, eq => <<END);
-Reduce 3:
-    r8: 0000 0000 0000 0000
-    r9: 0000 0000 0000 0009
-   r10: 0000 0000 0000 0001
-New: Bracketed term
-    r8: 0000 0000 0000 0009
-New: Brackets for term
-    r8: 0000 0000 0000 0009
-    r8: 0000 0000 0000 0000
-Reduce by ( term )
-Reduce 2:
-    r8: 0000 0000 0000 0010
-    r9: 0000 0000 0000 0009
-   r15: 0000 0000 0000 0009
-   r14: FFFF FFFF FFFF FFFF
-END
- }
-
-#latest:;
-if (1) {
-  Mov rsi, rsp;                                                                 # Create parse stack base
-  Mov r15,      -1;  Push r15;
-  Mov r15, $prefix;  Push r15;
-  Mov r15, $prefix;  Push r15;
-  Mov r15, $prefix;  Push r15;
-  Mov $element, $variable;
-  accept_v;
-  Pop r15; PrintOutRegisterInHex r15;
-  Pop r14; PrintOutRegisterInHex r14;
-  ok Assemble(debug => 0, eq => <<END);
-accept v
-Push Element:
-   r13: 0000 0000 0000 0006
-New: Variable
-    r8: 0000 0000 0000 0006
-New: Prefixed variable
-    r8: 0000 0000 0000 0009
-    r8: 0000 0000 0000 0004
-New: Prefixed variable
-    r8: 0000 0000 0000 0009
-    r8: 0000 0000 0000 0004
-New: Prefixed variable
-    r8: 0000 0000 0000 0009
-    r8: 0000 0000 0000 0004
-   r15: 0000 0000 0000 0009
-   r14: FFFF FFFF FFFF FFFF
-END
- }
-
-#latest:;
-if (1) {
-  Mov rsi, rsp;                                                                 # Create parse stack base
-  my $l = $Lex->{sampleLexicals}{v};
-  Mov $start,  Rd(@$l);
-  Mov $size,   scalar(@$l);
-  parseExpressionCode;
-  PrintOutStringNL "Result:";
-  PrintOutRegisterInHex r15;
-
-  printParseTree;
-
-  ok Assemble(debug => 0, eq => <<END);
-Push Element:
-   r13: 0000 0000 0000 0006
-New: accept initial variable
-New: accept initial variable
-    r8: 0000 0000 0000 0006
-Result:
-   r15: 0000 0000 0000 0098
-Tree at:  0000 0000 0000 0098  length: 0000 0000 0000 0004
- zmm31: 0000 00D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0001 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0006
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0000
-
-END
- }
-
-#latest:;
-if (1) {                                                                        #TprintParseTree
-  Mov rsi, rsp;                                                                 # Create parse stack base
-  my $l = $Lex->{sampleLexicals}{vav};
-  Mov $start,  Rd(@$l);
-  Mov $size,   scalar(@$l);
-
-  parseExpressionCode;
-  PrintOutStringNL "Result:";
-  PrintOutRegisterInHex r15;
-
-  my $o = V(first, r15);
-  $tree->dump($o);
-
-  ok Assemble(debug => 0, eq => <<END);
-Push Element:
-   r13: 0000 0000 0000 0006
-New: accept initial variable
-New: accept initial variable
-    r8: 0000 0000 0000 0006
-   r13: 0000 0001 0000 0005
-accept a
-Push Element:
-   r13: 0000 0001 0000 0005
-   r13: 0000 0002 0000 0006
-accept v
-Push Element:
-   r13: 0000 0002 0000 0006
-New: Variable
-New: Variable
-    r8: 0000 0002 0000 0006
-Reduce 3:
-    r8: 0000 0098 0000 0009
-    r9: 0000 0001 0000 0005
-   r10: 0000 0118 0000 0009
-New: Term infix term
-New: Term infix term
-    r8: 0000 0118 0000 0009
-    r8: 0000 0098 0000 0009
-    r8: 0000 0001 0000 0005
-Result:
-   r15: 0000 0000 0000 0198
-Tree at:  0000 0000 0000 0198  length: 0000 0000 0000 0008
- zmm31: 0000 01D8 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0118 0000 0009   0000 0098 0000 0009   0000 0001 0000 0005   0000 0003 0000 0009
+latest:
+ok T(q(brackets), <<END, comments=>10, print=>1, $debug => 0);
+Tree at:  0000 0000 0000 0618  length: 0000 0000 0000 0008
+ zmm31: 0000 0658 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+ zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0598 0000 0009   0000 0018 0000 0009   0000 0001 0000 0005   0000 0003 0000 0009
  zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
  index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
  index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
  index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0005
  index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0001
  index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0098 subTree
+ index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0018 subTree
  index: 0000 0000 0000 0006   key: 0000 0000 0000 0006   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0118 subTree
-Tree at:  0000 0000 0000 0098  length: 0000 0000 0000 0004
- zmm31: 0000 00D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+ index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0598 subTree
+Tree at:  0000 0000 0000 0018  length: 0000 0000 0000 0004
+ zmm31: 0000 0058 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
  zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0001 0000 0009
  zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
  index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
@@ -2745,844 +2408,74 @@ Tree at:  0000 0000 0000 0098  length: 0000 0000 0000 0004
  index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0006
  index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0000
 
-Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0004
- zmm31: 0000 0158 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0002 0000 0006   0000 0001 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0006
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0002
-
-
-END
- }
-
-#latest:;
-if (1) {                                                                        #TMatchBrackets
-  my $l = $Lex->{sampleLexicals}{brackets};
-
-  Mov rsi, rsp;                                                                 # Create parse stack base
-  Mov $start,  Rd(@$l);
-  Mov $size,   scalar(@$l);
-
-  parseExpressionCode;
-  PrintOutStringNL "Result:";
-  PrintOutRegisterInHex r15;
-
-  printParseTree;
-
-  ok Assemble(debug => 0, eq => <<END);
-Push Element:
-   r13: 0000 0000 0000 0006
-New: accept initial variable
-New: accept initial variable
-    r8: 0000 0000 0000 0006
-   r13: 0000 0001 0000 0005
-accept a
-Push Element:
-   r13: 0000 0001 0000 0005
-   r13: 0000 0002 0000 0000
-accept b
-Push Element:
-   r13: 0000 0002 0000 0000
-   r13: 0000 0003 0000 0000
-accept b
-Push Element:
-   r13: 0000 0003 0000 0000
-   r13: 0000 0004 0000 0000
-accept b
-Push Element:
-   r13: 0000 0004 0000 0000
-   r13: 0000 0005 0000 0006
-accept v
-Push Element:
-   r13: 0000 0005 0000 0006
-New: Variable
-New: Variable
-    r8: 0000 0005 0000 0006
-   r13: 0000 0006 0000 0001
-accept B
-Reduce 3:
-    r8: 0000 0003 0000 0000
-    r9: 0000 0004 0000 0000
-   r10: 0000 0118 0000 0009
-Reduce 2:
-    r8: 0000 0000 0000 0030
-    r9: 0000 0004 0000 0000
-Push Element:
-   r13: 0000 0006 0000 0001
-Reduce 3:
-    r8: 0000 0004 0000 0000
-    r9: 0000 0118 0000 0009
-   r10: 0000 0006 0000 0001
-New: Bracketed term
-New: Bracketed term
-    r8: 0000 0118 0000 0009
-New: Brackets for term
-New: Brackets for term
-    r8: 0000 0198 0000 0009
-    r8: 0000 0004 0000 0000
-Reduce by ( term )
-Reduce 3:
-    r8: 0000 0002 0000 0000
-    r9: 0000 0003 0000 0000
-   r10: 0000 0218 0000 0009
-Reduce 2:
-    r8: 0000 0000 0000 0028
-    r9: 0000 0003 0000 0000
-   r13: 0000 0007 0000 0001
-accept B
-Reduce 3:
-    r8: 0000 0002 0000 0000
-    r9: 0000 0003 0000 0000
-   r10: 0000 0218 0000 0009
-Reduce 2:
-    r8: 0000 0000 0000 0028
-    r9: 0000 0003 0000 0000
-Push Element:
-   r13: 0000 0007 0000 0001
-Reduce 3:
-    r8: 0000 0003 0000 0000
-    r9: 0000 0218 0000 0009
-   r10: 0000 0007 0000 0001
-New: Bracketed term
-New: Bracketed term
-    r8: 0000 0218 0000 0009
-New: Brackets for term
-New: Brackets for term
-    r8: 0000 0298 0000 0009
-    r8: 0000 0003 0000 0000
-Reduce by ( term )
-Reduce 3:
-    r8: 0000 0001 0000 0005
-    r9: 0000 0002 0000 0000
-   r10: 0000 0318 0000 0009
-Reduce 2:
-    r8: 0000 0000 0000 0020
-    r9: 0000 0002 0000 0000
-   r13: 0000 0008 0000 0003
-accept d
-Push Element:
-   r13: 0000 0008 0000 0003
-   r13: 0000 0009 0000 0000
-accept b
-Push Element:
-   r13: 0000 0009 0000 0000
-   r13: 0000 000A 0000 0006
-accept v
-Push Element:
-   r13: 0000 000A 0000 0006
-New: Variable
-New: Variable
-    r8: 0000 000A 0000 0006
-   r13: 0000 000B 0000 0001
-accept B
-Reduce 3:
-    r8: 0000 0008 0000 0003
-    r9: 0000 0009 0000 0000
-   r10: 0000 0398 0000 0009
-Reduce 2:
-    r8: 0000 0000 0000 0038
-    r9: 0000 0009 0000 0000
-Push Element:
-   r13: 0000 000B 0000 0001
-Reduce 3:
-    r8: 0000 0009 0000 0000
-    r9: 0000 0398 0000 0009
-   r10: 0000 000B 0000 0001
-New: Bracketed term
-New: Bracketed term
-    r8: 0000 0398 0000 0009
-New: Brackets for term
-New: Brackets for term
-    r8: 0000 0418 0000 0009
-    r8: 0000 0009 0000 0000
-Reduce by ( term )
-Reduce 3:
-    r8: 0000 0318 0000 0009
-    r9: 0000 0008 0000 0003
-   r10: 0000 0498 0000 0009
-New: Term infix term
-New: Term infix term
-    r8: 0000 0498 0000 0009
-    r8: 0000 0318 0000 0009
-    r8: 0000 0008 0000 0003
-Reduce 3:
-    r8: 0000 0001 0000 0005
-    r9: 0000 0002 0000 0000
-   r10: 0000 0518 0000 0009
-Reduce 2:
-    r8: 0000 0000 0000 0020
-    r9: 0000 0002 0000 0000
-   r13: 0000 000C 0000 0001
-accept B
-Reduce 3:
-    r8: 0000 0001 0000 0005
-    r9: 0000 0002 0000 0000
-   r10: 0000 0518 0000 0009
-Reduce 2:
-    r8: 0000 0000 0000 0020
-    r9: 0000 0002 0000 0000
-Push Element:
-   r13: 0000 000C 0000 0001
-Reduce 3:
-    r8: 0000 0002 0000 0000
-    r9: 0000 0518 0000 0009
-   r10: 0000 000C 0000 0001
-New: Bracketed term
-New: Bracketed term
-    r8: 0000 0518 0000 0009
-New: Brackets for term
-New: Brackets for term
-    r8: 0000 0598 0000 0009
-    r8: 0000 0002 0000 0000
-Reduce by ( term )
-Reduce 3:
-    r8: 0000 0098 0000 0009
-    r9: 0000 0001 0000 0005
-   r10: 0000 0618 0000 0009
-New: Term infix term
-New: Term infix term
-    r8: 0000 0618 0000 0009
-    r8: 0000 0098 0000 0009
-    r8: 0000 0001 0000 0005
-   r13: 0000 000D 0000 0008
-accept s
-Push Element:
-   r13: 0000 000D 0000 0008
-Result:
-   r15: 0000 0000 0000 0698
-Tree at:  0000 0000 0000 0698  length: 0000 0000 0000 0008
- zmm31: 0000 06D8 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0618 0000 0009   0000 0098 0000 0009   0000 0001 0000 0005   0000 0003 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0005
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0001
- index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0098 subTree
- index: 0000 0000 0000 0006   key: 0000 0000 0000 0006   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0618 subTree
-Tree at:  0000 0000 0000 0098  length: 0000 0000 0000 0004
- zmm31: 0000 00D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0001 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0006
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0000
-
-Tree at:  0000 0000 0000 0618  length: 0000 0000 0000 0006
- zmm31: 0000 0658 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0598 0000 0009   0000 0002 0000 0000   0000 0002 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0000
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0002
- index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0598 subTree
-Tree at:  0000 0000 0000 0598  length: 0000 0000 0000 0004
- zmm31: 0000 05D8 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0518 0000 0009   0000 0001 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0518 subTree
-Tree at:  0000 0000 0000 0518  length: 0000 0000 0000 0008
- zmm31: 0000 0558 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0498 0000 0009   0000 0318 0000 0009   0000 0008 0000 0003   0000 0003 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0003
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0008
- index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0318 subTree
- index: 0000 0000 0000 0006   key: 0000 0000 0000 0006   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0498 subTree
-Tree at:  0000 0000 0000 0318  length: 0000 0000 0000 0006
- zmm31: 0000 0358 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0298 0000 0009   0000 0003 0000 0000   0000 0002 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0000
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0003
- index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0298 subTree
-Tree at:  0000 0000 0000 0298  length: 0000 0000 0000 0004
- zmm31: 0000 02D8 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0218 0000 0009   0000 0001 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0218 subTree
-Tree at:  0000 0000 0000 0218  length: 0000 0000 0000 0006
- zmm31: 0000 0258 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0198 0000 0009   0000 0004 0000 0000   0000 0002 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0000
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0004
- index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0198 subTree
-Tree at:  0000 0000 0000 0198  length: 0000 0000 0000 0004
- zmm31: 0000 01D8 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0118 0000 0009   0000 0001 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0118 subTree
-Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0004
- zmm31: 0000 0158 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0006   0000 0001 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0006
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0005
-
-
-
-
-
-Tree at:  0000 0000 0000 0498  length: 0000 0000 0000 0006
- zmm31: 0000 04D8 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0418 0000 0009   0000 0009 0000 0000   0000 0002 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0000
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0418 subTree
-Tree at:  0000 0000 0000 0418  length: 0000 0000 0000 0004
- zmm31: 0000 0458 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0398 0000 0009   0000 0001 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0398 subTree
-Tree at:  0000 0000 0000 0398  length: 0000 0000 0000 0004
- zmm31: 0000 03D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 000A 0000 0006   0000 0001 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0006
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 000A
-
-
-
-
-
-
-
-END
- }
-
-#latest:
-ok T(q(s1), <<END);
-ParseUtf8
-After conversion from utf8 to utf32
-Output Length: 0000 0000 0000 0040
-0001 D5EE 0001 D44E  0000 000A 0000 0020  0000 0020 0000 0041  0000 000A 0000 0020  0000 0020 0000 0020
-After classification into alphabet ranges
-0600 001A 0500 001A  0200 000A 0200 0020  0200 0020 0200 0041  0200 000A 0200 0020  0200 0020 0200 0020
-After classification into brackets
-0600 001A 0500 001A  0200 000A 0200 0020  0200 0020 0200 0041  0200 000A 0200 0020  0200 0020 0200 0020
-After bracket matching
-0600 001A 0500 001A  0200 000A 0200 0020  0200 0020 0200 0041  0200 000A 0200 0020  0200 0020 0200 0020
-After white space classification
-0600 001A 0500 001A  0B00 000A 0200 0020  0200 0020 0200 0041  0200 000A 0B00 0020  0B00 0020 0B00 0020
-After classifying new lines
-0600 001A 0500 001A  0B00 000A 0200 0020  0200 0020 0200 0041  0200 000A 0B00 0020  0B00 0020 0B00 0020
-Push Element:
-   r13: 0000 0000 0000 0006
-New: accept initial variable
-New: accept initial variable
-    r8: 0000 0000 0000 0006
-   r13: 0000 0001 0000 0005
-accept a
-Push Element:
-   r13: 0000 0001 0000 0005
-   r13: 0000 0002 0000 000B
-   r13: 0000 0003 0000 0006
-accept v
-Push Element:
-   r13: 0000 0003 0000 0006
-New: Variable
-New: Variable
-    r8: 0000 0003 0000 0006
-   r13: 0000 0004 0000 0006
-   r13: 0000 0005 0000 0006
-   r13: 0000 0006 0000 0006
-   r13: 0000 0007 0000 000B
-   r13: 0000 0008 0000 000B
-   r13: 0000 0009 0000 000B
-Reduce 3:
-    r8: 0000 0098 0000 0009
-    r9: 0000 0001 0000 0005
-   r10: 0000 0118 0000 0009
-New: Term infix term
-New: Term infix term
-    r8: 0000 0118 0000 0009
-    r8: 0000 0098 0000 0009
-    r8: 0000 0001 0000 0005
-parse: 0000 0000 0000 0198
-END
-
-ok T(q(vnv), <<END);
-ParseUtf8
-After conversion from utf8 to utf32
-Output Length: 0000 0000 0000 0024
-0001 D5EE 0000 000A
-After classification into alphabet ranges
-0600 001A 0200 000A
-After classification into brackets
-0600 001A 0200 000A
-After bracket matching
-0600 001A 0200 000A
-After white space classification
-0600 001A 0B00 000A
-After classifying new lines
-0600 001A 0C00 000A
-Push Element:
-   r13: 0000 0000 0000 0006
-New: accept initial variable
-New: accept initial variable
-    r8: 0000 0000 0000 0006
-   r13: 0000 0001 0000 0008
-accept s
-Push Element:
-   r13: 0000 0001 0000 0008
-   r13: 0000 0002 0000 0006
-accept v
-Push Element:
-   r13: 0000 0002 0000 0006
-New: Variable
-New: Variable
-    r8: 0000 0002 0000 0006
-Reduce 3:
-    r8: 0000 0098 0000 0009
-    r9: 0000 0001 0000 0008
-   r10: 0000 0118 0000 0009
-New: Term infix term
-New: Term infix term
-    r8: 0000 0118 0000 0009
-    r8: 0000 0098 0000 0009
-    r8: 0000 0001 0000 0008
-parse: 0000 0000 0000 0198
-END
-
-#latest:
-ok T(q(vnvs), <<END);
-ParseUtf8
-After conversion from utf8 to utf32
-Output Length: 0000 0000 0000 0034
-0001 D5EE 0000 000A  0001 D5EF 0000 0020  0000 0020 0000 0020
-After classification into alphabet ranges
-0600 001A 0200 000A  0600 001B 0200 0020  0200 0020 0200 0020
-After classification into brackets
-0600 001A 0200 000A  0600 001B 0200 0020  0200 0020 0200 0020
-After bracket matching
-0600 001A 0200 000A  0600 001B 0200 0020  0200 0020 0200 0020
-After white space classification
-0600 001A 0B00 000A  0600 001B 0B00 0020  0B00 0020 0B00 0020
-After classifying new lines
-0600 001A 0C00 000A  0600 001B 0B00 0020  0B00 0020 0B00 0020
-Push Element:
-   r13: 0000 0000 0000 0006
-New: accept initial variable
-New: accept initial variable
-    r8: 0000 0000 0000 0006
-   r13: 0000 0001 0000 0008
-accept s
-Push Element:
-   r13: 0000 0001 0000 0008
-   r13: 0000 0002 0000 0006
-accept v
-Push Element:
-   r13: 0000 0002 0000 0006
-New: Variable
-New: Variable
-    r8: 0000 0002 0000 0006
-   r13: 0000 0003 0000 000B
-   r13: 0000 0004 0000 000B
-   r13: 0000 0005 0000 000B
-   r13: 0000 0006 0000 000B
-Reduce 3:
-    r8: 0000 0098 0000 0009
-    r9: 0000 0001 0000 0008
-   r10: 0000 0118 0000 0009
-New: Term infix term
-New: Term infix term
-    r8: 0000 0118 0000 0009
-    r8: 0000 0098 0000 0009
-    r8: 0000 0001 0000 0008
-parse: 0000 0000 0000 0198
-END
-
-#latest:
-ok T(q(vnsvs), <<END);
-ParseUtf8
-After conversion from utf8 to utf32
-Output Length: 0000 0000 0000 005C
-0001 D5EE 0001 D5EE  0000 000A 0000 0020  0000 0020 0000 0020  0001 D5EF 0001 D5EF  0000 0020 0000 0020
-After classification into alphabet ranges
-0600 001A 0600 001A  0200 000A 0200 0020  0200 0020 0200 0020  0600 001B 0600 001B  0200 0020 0200 0020
-After classification into brackets
-0600 001A 0600 001A  0200 000A 0200 0020  0200 0020 0200 0020  0600 001B 0600 001B  0200 0020 0200 0020
-After bracket matching
-0600 001A 0600 001A  0200 000A 0200 0020  0200 0020 0200 0020  0600 001B 0600 001B  0200 0020 0200 0020
-After white space classification
-0600 001A 0600 001A  0B00 000A 0B00 0020  0B00 0020 0B00 0020  0600 001B 0600 001B  0B00 0020 0B00 0020
-After classifying new lines
-0600 001A 0600 001A  0C00 000A 0B00 0020  0B00 0020 0B00 0020  0600 001B 0600 001B  0B00 0020 0B00 0020
-Push Element:
-   r13: 0000 0000 0000 0006
-New: accept initial variable
-New: accept initial variable
-    r8: 0000 0000 0000 0006
-   r13: 0000 0001 0000 0006
-   r13: 0000 0002 0000 0008
-accept s
-Push Element:
-   r13: 0000 0002 0000 0008
-   r13: 0000 0003 0000 000B
-   r13: 0000 0004 0000 000B
-   r13: 0000 0005 0000 000B
-   r13: 0000 0006 0000 0006
-accept v
-Push Element:
-   r13: 0000 0006 0000 0006
-New: Variable
-New: Variable
-    r8: 0000 0006 0000 0006
-   r13: 0000 0007 0000 0006
-   r13: 0000 0008 0000 000B
-   r13: 0000 0009 0000 000B
-   r13: 0000 000A 0000 000B
-Reduce 3:
-    r8: 0000 0098 0000 0009
-    r9: 0000 0002 0000 0008
-   r10: 0000 0118 0000 0009
-New: Term infix term
-New: Term infix term
-    r8: 0000 0118 0000 0009
-    r8: 0000 0098 0000 0009
-    r8: 0000 0002 0000 0008
-parse: 0000 0000 0000 0198
-END
-
-#latest:
-ok T(q(brackets), <<END, comments=>10, print=>1);
-ParseUtf8
-After conversion from utf8 to utf32
-Output Length: 0000 0000 0000 015C
-0001 D5EE 0001 D44E  0001 D460 0001 D460  0001 D456 0001 D454  0001 D45B 0000 230A  0000 2329 0000 2768  0001 D5EF 0001 D5FD  0000 2769 0000 232A  0001 D429 0001 D425
-0001 D42E 0001 D42C  0000 276A 0001 D600  0001 D5F0 0000 276B  0000 230B 0000 27E2
-After classification into alphabet ranges
-0600 001A 0500 001A  0500 002C 0500 002C  0500 0022 0500 0020  0500 0027 0000 230A  0000 2329 0000 2768  0600 001B 0600 0029  0000 2769 0000 232A  0300 0029 0300 0025
-0300 002E 0300 002C  0000 276A 0600 002C  0600 001C 0000 276B  0000 230B 0800 0000
-After classification into brackets
-0600 001A 0500 001A  0500 002C 0500 002C  0500 0022 0500 0020  0500 0027 1200 230A  1400 2329 1600 2768  0600 001B 0600 0029  1700 2769 1500 232A  0300 0029 0300 0025
-0300 002E 0300 002C  1800 276A 0600 002C  0600 001C 1900 276B  1300 230B 0800 0000
-After bracket matching
-0600 001A 0500 001A  0500 002C 0500 002C  0500 0022 0500 0020  0500 0027 1200 0016  1400 000D 1600 000C  0600 001B 0600 0029  1700 0009 1500 0008  0300 0029 0300 0025
-0300 002E 0300 002C  1800 0015 0600 002C  0600 001C 1900 0012  1300 0007 0800 0000
-After white space classification
-0600 001A 0500 001A  0500 002C 0500 002C  0500 0022 0500 0020  0500 0027 1200 0016  1400 000D 1600 000C  0600 001B 0600 0029  1700 0009 1500 0008  0300 0029 0300 0025
-0300 002E 0300 002C  1800 0015 0600 002C  0600 001C 1900 0012  1300 0007 0800 0000
-After classifying new lines
-0600 001A 0500 001A  0500 002C 0500 002C  0500 0022 0500 0020  0500 0027 1200 0016  1400 000D 1600 000C  0600 001B 0600 0029  1700 0009 1500 0008  0300 0029 0300 0025
-0300 002E 0300 002C  1800 0015 0600 002C  0600 001C 1900 0012  1300 0007 0800 0000
-Push Element:
-   r13: 0000 0000 0000 0006
-New: accept initial variable
-New: accept initial variable
-    r8: 0000 0000 0000 0006
-   r13: 0000 0001 0000 0005
-accept a
-Push Element:
-   r13: 0000 0001 0000 0005
-   r13: 0000 0002 0000 0005
-   r13: 0000 0003 0000 0005
-   r13: 0000 0004 0000 0005
-   r13: 0000 0005 0000 0005
-   r13: 0000 0006 0000 0005
-   r13: 0000 0007 0000 0000
-accept b
-Push Element:
-   r13: 0000 0007 0000 0000
-   r13: 0000 0008 0000 0000
-accept b
-Push Element:
-   r13: 0000 0008 0000 0000
-   r13: 0000 0009 0000 0000
-accept b
-Push Element:
-   r13: 0000 0009 0000 0000
-   r13: 0000 000A 0000 0006
-accept v
-Push Element:
-   r13: 0000 000A 0000 0006
-New: Variable
-New: Variable
-    r8: 0000 000A 0000 0006
-   r13: 0000 000B 0000 0006
-   r13: 0000 000C 0000 0001
-accept B
-Reduce 3:
-    r8: 0000 0008 0000 0000
-    r9: 0000 0009 0000 0000
-   r10: 0000 0118 0000 0009
-Reduce 2:
-    r8: 0000 0000 0000 0030
-    r9: 0000 0009 0000 0000
-Push Element:
-   r13: 0000 000C 0000 0001
-Reduce 3:
-    r8: 0000 0009 0000 0000
-    r9: 0000 0118 0000 0009
-   r10: 0000 000C 0000 0001
-New: Bracketed term
-New: Bracketed term
-    r8: 0000 0118 0000 0009
-New: Brackets for term
-New: Brackets for term
-    r8: 0000 0198 0000 0009
-    r8: 0000 0009 0000 0000
-Reduce by ( term )
-Reduce 3:
-    r8: 0000 0007 0000 0000
-    r9: 0000 0008 0000 0000
-   r10: 0000 0218 0000 0009
-Reduce 2:
-    r8: 0000 0000 0000 0028
-    r9: 0000 0008 0000 0000
-   r13: 0000 000D 0000 0001
-accept B
-Reduce 3:
-    r8: 0000 0007 0000 0000
-    r9: 0000 0008 0000 0000
-   r10: 0000 0218 0000 0009
-Reduce 2:
-    r8: 0000 0000 0000 0028
-    r9: 0000 0008 0000 0000
-Push Element:
-   r13: 0000 000D 0000 0001
-Reduce 3:
-    r8: 0000 0008 0000 0000
-    r9: 0000 0218 0000 0009
-   r10: 0000 000D 0000 0001
-New: Bracketed term
-New: Bracketed term
-    r8: 0000 0218 0000 0009
-New: Brackets for term
-New: Brackets for term
-    r8: 0000 0298 0000 0009
-    r8: 0000 0008 0000 0000
-Reduce by ( term )
-Reduce 3:
-    r8: 0000 0001 0000 0005
-    r9: 0000 0007 0000 0000
-   r10: 0000 0318 0000 0009
-Reduce 2:
-    r8: 0000 0000 0000 0020
-    r9: 0000 0007 0000 0000
-   r13: 0000 000E 0000 0003
-accept d
-Push Element:
-   r13: 0000 000E 0000 0003
-   r13: 0000 000F 0000 0003
-   r13: 0000 0010 0000 0003
-   r13: 0000 0011 0000 0003
-   r13: 0000 0012 0000 0000
-accept b
-Push Element:
-   r13: 0000 0012 0000 0000
-   r13: 0000 0013 0000 0006
-accept v
-Push Element:
-   r13: 0000 0013 0000 0006
-New: Variable
-New: Variable
-    r8: 0000 0013 0000 0006
-   r13: 0000 0014 0000 0006
-   r13: 0000 0015 0000 0001
-accept B
-Reduce 3:
-    r8: 0000 000E 0000 0003
-    r9: 0000 0012 0000 0000
-   r10: 0000 0398 0000 0009
-Reduce 2:
-    r8: 0000 0000 0000 0038
-    r9: 0000 0012 0000 0000
-Push Element:
-   r13: 0000 0015 0000 0001
-Reduce 3:
-    r8: 0000 0012 0000 0000
-    r9: 0000 0398 0000 0009
-   r10: 0000 0015 0000 0001
-New: Bracketed term
-New: Bracketed term
-    r8: 0000 0398 0000 0009
-New: Brackets for term
-New: Brackets for term
-    r8: 0000 0418 0000 0009
-    r8: 0000 0012 0000 0000
-Reduce by ( term )
-Reduce 3:
-    r8: 0000 0318 0000 0009
-    r9: 0000 000E 0000 0003
-   r10: 0000 0498 0000 0009
-New: Term infix term
-New: Term infix term
-    r8: 0000 0498 0000 0009
-    r8: 0000 0318 0000 0009
-    r8: 0000 000E 0000 0003
-Reduce 3:
-    r8: 0000 0001 0000 0005
-    r9: 0000 0007 0000 0000
-   r10: 0000 0518 0000 0009
-Reduce 2:
-    r8: 0000 0000 0000 0020
-    r9: 0000 0007 0000 0000
-   r13: 0000 0016 0000 0001
-accept B
-Reduce 3:
-    r8: 0000 0001 0000 0005
-    r9: 0000 0007 0000 0000
-   r10: 0000 0518 0000 0009
-Reduce 2:
-    r8: 0000 0000 0000 0020
-    r9: 0000 0007 0000 0000
-Push Element:
-   r13: 0000 0016 0000 0001
-Reduce 3:
-    r8: 0000 0007 0000 0000
-    r9: 0000 0518 0000 0009
-   r10: 0000 0016 0000 0001
-New: Bracketed term
-New: Bracketed term
-    r8: 0000 0518 0000 0009
-New: Brackets for term
-New: Brackets for term
-    r8: 0000 0598 0000 0009
-    r8: 0000 0007 0000 0000
-Reduce by ( term )
-Reduce 3:
-    r8: 0000 0098 0000 0009
-    r9: 0000 0001 0000 0005
-   r10: 0000 0618 0000 0009
-New: Term infix term
-New: Term infix term
-    r8: 0000 0618 0000 0009
-    r8: 0000 0098 0000 0009
-    r8: 0000 0001 0000 0005
-   r13: 0000 0017 0000 0008
-accept s
-Push Element:
-   r13: 0000 0017 0000 0008
-parse: 0000 0000 0000 0698
-Tree at:  0000 0000 0000 0698  length: 0000 0000 0000 0008
- zmm31: 0000 06D8 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0618 0000 0009   0000 0098 0000 0009   0000 0001 0000 0005   0000 0003 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0005
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0001
- index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0098 subTree
- index: 0000 0000 0000 0006   key: 0000 0000 0000 0006   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0618 subTree
-Tree at:  0000 0000 0000 0098  length: 0000 0000 0000 0004
- zmm31: 0000 00D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0001 0000 0009
- zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
- index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
- index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0006
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0000
-
-Tree at:  0000 0000 0000 0618  length: 0000 0000 0000 0006
- zmm31: 0000 0658 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0598 0000 0009   0000 0007 0000 0000   0000 0002 0000 0009
+Tree at:  0000 0000 0000 0598  length: 0000 0000 0000 0006
+ zmm31: 0000 05D8 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+ zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0518 0000 0009   0000 0007 0000 0000   0000 0002 0000 0009
  zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
  index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
  index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
  index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0000
  index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0007
  index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0598 subTree
-Tree at:  0000 0000 0000 0598  length: 0000 0000 0000 0004
- zmm31: 0000 05D8 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0518 0000 0009   0000 0001 0000 0009
+ index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0518 subTree
+Tree at:  0000 0000 0000 0518  length: 0000 0000 0000 0004
+ zmm31: 0000 0558 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+ zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0498 0000 0009   0000 0001 0000 0009
  zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
  index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
  index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
  index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0518 subTree
-Tree at:  0000 0000 0000 0518  length: 0000 0000 0000 0008
- zmm31: 0000 0558 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0498 0000 0009   0000 0318 0000 0009   0000 000E 0000 0003   0000 0003 0000 0009
+ index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0498 subTree
+Tree at:  0000 0000 0000 0498  length: 0000 0000 0000 0008
+ zmm31: 0000 04D8 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+ zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0418 0000 0009   0000 0298 0000 0009   0000 000E 0000 0003   0000 0003 0000 0009
  zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
  index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
  index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
  index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0003
  index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 000E
  index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0318 subTree
+ index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0298 subTree
  index: 0000 0000 0000 0006   key: 0000 0000 0000 0006   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0498 subTree
-Tree at:  0000 0000 0000 0318  length: 0000 0000 0000 0006
- zmm31: 0000 0358 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0298 0000 0009   0000 0008 0000 0000   0000 0002 0000 0009
+ index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0418 subTree
+Tree at:  0000 0000 0000 0298  length: 0000 0000 0000 0006
+ zmm31: 0000 02D8 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+ zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0218 0000 0009   0000 0008 0000 0000   0000 0002 0000 0009
  zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
  index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
  index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
  index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0000
  index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0008
  index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0298 subTree
-Tree at:  0000 0000 0000 0298  length: 0000 0000 0000 0004
- zmm31: 0000 02D8 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0218 0000 0009   0000 0001 0000 0009
+ index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0218 subTree
+Tree at:  0000 0000 0000 0218  length: 0000 0000 0000 0004
+ zmm31: 0000 0258 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+ zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0198 0000 0009   0000 0001 0000 0009
  zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
  index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
  index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
  index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0218 subTree
-Tree at:  0000 0000 0000 0218  length: 0000 0000 0000 0006
- zmm31: 0000 0258 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0198 0000 0009   0000 0009 0000 0000   0000 0002 0000 0009
+ index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0198 subTree
+Tree at:  0000 0000 0000 0198  length: 0000 0000 0000 0006
+ zmm31: 0000 01D8 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+ zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0118 0000 0009   0000 0009 0000 0000   0000 0002 0000 0009
  zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
  index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
  index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
  index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0000
  index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0009
  index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0198 subTree
-Tree at:  0000 0000 0000 0198  length: 0000 0000 0000 0004
- zmm31: 0000 01D8 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0118 0000 0009   0000 0001 0000 0009
+ index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0118 subTree
+Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0004
+ zmm31: 0000 0158 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+ zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0098 0000 0009   0000 0001 0000 0009
  zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
  index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
  index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
  index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0118 subTree
-Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0004
- zmm31: 0000 0158 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+ index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0098 subTree
+Tree at:  0000 0000 0000 0098  length: 0000 0000 0000 0004
+ zmm31: 0000 00D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
  zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 000A 0000 0006   0000 0001 0000 0009
  zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
  index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
@@ -3594,26 +2487,26 @@ Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0004
 
 
 
-Tree at:  0000 0000 0000 0498  length: 0000 0000 0000 0006
- zmm31: 0000 04D8 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0418 0000 0009   0000 0012 0000 0000   0000 0002 0000 0009
+Tree at:  0000 0000 0000 0418  length: 0000 0000 0000 0006
+ zmm31: 0000 0458 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+ zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0398 0000 0009   0000 0012 0000 0000   0000 0002 0000 0009
  zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
  index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
  index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
  index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0000
  index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0012
  index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0418 subTree
-Tree at:  0000 0000 0000 0418  length: 0000 0000 0000 0004
- zmm31: 0000 0458 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
- zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0398 0000 0009   0000 0001 0000 0009
+ index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0398 subTree
+Tree at:  0000 0000 0000 0398  length: 0000 0000 0000 0004
+ zmm31: 0000 03D8 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+ zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0318 0000 0009   0000 0001 0000 0009
  zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
  index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
  index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
  index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0009
- index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0398 subTree
-Tree at:  0000 0000 0000 0398  length: 0000 0000 0000 0004
- zmm31: 0000 03D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+ index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0318 subTree
+Tree at:  0000 0000 0000 0318  length: 0000 0000 0000 0004
+ zmm31: 0000 0358 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
  zmm30: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0013 0000 0006   0000 0001 0000 0009
  zmm29: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
  index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
@@ -3639,7 +2532,7 @@ if (1) {                                                                        
   $parse->parse->outNL;
 
   ok Assemble(debug=>1, eq => <<END);
-parse: 0000 0000 0000 0098
+parse: 0000 0000 0000 0018
 END
  }
 
