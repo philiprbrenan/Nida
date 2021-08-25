@@ -5,7 +5,6 @@
 #-------------------------------------------------------------------------------
 # podDocumentation
 # Finished in 13.14s, bytes: 2,655,008, execs: 465,858
-# Describe the tree rather than creating it - we can always load the tree bs and forst foelds to suite before doing inserts
 package Unisyn::Parse;
 our $VERSION = "20210818";
 use warnings FATAL => qw(all);
@@ -1546,12 +1545,12 @@ B<Example:>
 
     my $address = Rutf8 $Lex->{sampleText}{vav};                                  # Source in utf8
     my $size    = StringLength V(string, $address);                               # Length of source
-  
-  
+
+
     my $parse   = create K(address, $address),  $size;                            # Create parse tree from source  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
        $parse->print;                                                             # Print parse tree
-  
+
     ok Assemble(debug=>0, eq => <<END);
   Assign
     Term
@@ -1559,7 +1558,7 @@ B<Example:>
     Term
       Variable
   END
-  
+
 
 =head1 Parse
 
@@ -1581,12 +1580,12 @@ B<Example:>
 
     my $address = Rutf8 $Lex->{sampleText}{vav};                                  # Source in utf8
     my $size    = StringLength V(string, $address);                               # Length of source
-  
+
     my $parse   = create K(address, $address),  $size;                            # Create parse tree from source
-  
+
        $parse->print;                                                             # Print parse tree  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-  
+
     ok Assemble(debug=>0, eq => <<END);
   Assign
     Term
@@ -1594,7 +1593,7 @@ B<Example:>
     Term
       Variable
   END
-  
+
 
 
 =head1 Hash Definitions
