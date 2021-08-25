@@ -6,7 +6,7 @@
 # podDocumentation
 # Finished in 13.14s, bytes: 2,655,008, execs: 465,858
 package Unisyn::Parse;
-our $VERSION = "20210818";
+our $VERSION = "20210825";
 use warnings FATAL => qw(all);
 use strict;
 use Carp qw(confess cluck);
@@ -174,7 +174,7 @@ sub new($$)                                                                     
   $arena->bs->getReg($arenaReg);                                                # Address arena
   my $t = $arena->CreateTree;                                                   # Create a tree in the arena to hold the details of the lexical elements on the stack
   my $d = V(data);
-  $t->insert(V(key, 0), V(data, $term));                                        # Create a term - we only ahve terms at the moment in the parse tee - but that might change in the future
+  $t->insert(V(key, 0), V(data, $term));                                        # Create a term - we only have terms at the moment in the parse tee - but that might change in the future
   $t->insert(V(key, 1), V(data, $depth));                                       # The number of elements in the term
 
   for my $i(1..$depth)                                                          # Each term,
@@ -1037,7 +1037,7 @@ sub print($)                                                                    
 
     $t->address->copy($$p{bs});
     $t->first  ->copy($$p{first});
-    $t->find(K(key, 0));                                                        # key 0 tells us the type of the element - normally a term
+    $t->find(K(key, 0));                                                        # Key 0 tells us the type of the element - normally a term
 
     If ($t->found == 0,                                                         # Not found key 0
     Then
@@ -1067,7 +1067,8 @@ sub print($)                                                                    
       my $i = 2 + $index * 2; my $j = $i + 1;                                   # Operand type and value
       $t->find($i); my $key  = V(key) ->copy($t->data);
       $t->find($j); my $data = V(data)->copy($t->data);
-      If ($key == $term,
+
+      If ($key == $term,                                                        # Term
       Then
        {$b->call;
         PrintOutStringNL "Term";
@@ -1077,12 +1078,13 @@ sub print($)                                                                    
         $t->first  ->copy($$p{first});                                          # Re-establish addressability to the tree after the recursive call
        });
 
-      If ($key == $variable,
+      If ($key == $variable,                                                    # Variable
       Then
        {$b->call;
         PrintOutStringNL "Variable";
        });
-      If ($key == $assign,
+
+      If ($key == $assign,                                                      # Assign
       Then
        {$b->call;
         PrintOutStringNL "Assign";
