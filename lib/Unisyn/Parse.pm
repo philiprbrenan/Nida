@@ -15,6 +15,8 @@ use Data::Table::Text qw(:all !parse);
 use Nasm::X86 qw(:all);
 use feature qw(say current_sub);
 
+makeDieConfess;
+
 my  $develop = -e q(/home/phil/);                                               # Developing
 my  $arena;                                                                     # We always reload the actual arena address from rax and so this is permissible
 our $debug   = 0;                                                               # Include debug code if true - the tests will fail if you do
@@ -35,11 +37,14 @@ sub create($$)                                                                  
   Shl rdi, 3;
 
   my $p = genHash(__PACKAGE__,                                                  # Description of parse
-     arena       => $a,                                                         # Arena containing tree
-     size        => $size,                                                      # Size of source string as utf8
-     address     => $address,                                                   # Address of source string as utf8
-     parse       => $parse,                                                     # Offset to the head of the parse tree
-     fails       => $fail,                                                      # Number of failures encountered in this parse
+     arena          => $a,                                                      # Arena containing tree
+     size8          => $size,                                                   # Size of source string as utf8
+     address8       => $address,                                                # Address of source string as utf8
+     source32       => V(source32),                                             # Source text as utff 32
+     sourceSize32   => V(sourceSize32),                                         # Size of utf32 allocation
+     sourceLength32 => V(sourceLength32),                                       # Length of utf32 string
+     parse          => $parse,                                                  # Offset to the head of the parse tree
+     fails          => $fail,                                                   # Number of failures encountered in this parse
    );
 
   $p->parseUtf8;                                                                # Parse utf8 source string
@@ -954,11 +959,13 @@ sub parseUtf8($@)                                                               
 
     PushR $arenaReg; PushZmm 0..1;                                              # Used to hold arena and classifiers
 
-    my $source32       = V(u32),
-    my $sourceSize32   = V(size32);
-    my $sourceLength32 = V(count);
-    ConvertUtf8ToUtf32 u8 => $$p{address}, size8 => $$p{size},                  # Convert to utf32
-      $source32, $sourceSize32, $sourceLength32;
+    my $source32       = $$p{source32};
+    my $sourceSize32   = $$p{sourceSize32};
+    my $sourceLength32 = $$p{sourceLength32};
+
+    ConvertUtf8ToUtf32 u8 => $$p{address}, size8  => $$p{size},                  # Convert to utf32
+                      u32 => $source32,    size32 => $sourceSize32,
+                    count => $sourceLength32;
 
     if ($debug)
      {PrintOutStringNL "After conversion from utf8 to utf32";
@@ -1009,11 +1016,17 @@ sub parseUtf8($@)                                                               
     $$p{parse}->outNL if $debug;
 
     PopZmm; PopR;
-   } [qw(arena address size parse fail)], name => q(Unisyn::Parse::parseUtf8);
+   } [qw(arena address size parse fail source32 sourceSize32 sourceLength32)],
+  name => q(Unisyn::Parse::parseUtf8);
 
-  $s->call(arena   => $p->arena->bs,
-           address => $p->address, size => $p->size,
-           parse   => $p->parse,   fail => $p->fails);
+  $s->call(arena          => $p->arena->bs,
+           address        => $p->address8,
+           size           => $p->size8,
+           source32       => $p->source32,
+           sourceSize32   => $p->sourceSize32,
+           sourceLength32 => $p->sourceLength32,
+           parse          => $p->parse,
+           fail           => $p->fails);
  } # parseUtf8
 
 #D1 Print                                                                       # Print a parse tree
@@ -1073,7 +1086,7 @@ sub print($)                                                                    
        {$b->call;
         PrintOutStringNL "Term";
         Inc $depthR;                                                            # Increase indentation for sub terms
-        $s->call($B, first => $data);                                           # Print sub tree referenced by data field
+        $s->call($B, first => $data, $$p{source32});                            # Print sub tree referenced by data field
         Dec $depthR;                                                            # Restore existing indentation
         $t->first  ->copy($$p{first});                                          # Re-establish addressability to the tree after the recursive call
        });
@@ -1082,6 +1095,12 @@ sub print($)                                                                    
       Then
        {$b->call;
         PrintOutStringNL "Variable";
+        PushR (zmm0, rax, rdi, r14, r15);
+        $$p{source32}->setReg(r15);
+        $data->setReg(r14);
+        Vmovdqu8 zmm0, "[r15+4*r14]";
+        PrintErrRegisterInHex zmm0;
+        PopR;
        });
 
       If ($key == $assign,                                                      # Assign
@@ -1097,11 +1116,11 @@ sub print($)                                                                    
      });
 
     Dec $depthR;                                                                # Reset indentation after operands
-   } [qw(bs first)], name => "Nasm::X86::Tree::print";
+   } [qw(bs first source32)], name => "Nasm::X86::Tree::print";
 
   ClearRegisters $depthR;                                                       # Depth starts at zero
 
-  $s->call($parse->arena->bs, first => $parse->parse);
+  $s->call($parse->arena->bs, first => $parse->parse, $parse->source32);
 
   PopR;
  } # print
@@ -2159,7 +2178,7 @@ Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0008
 end
 END
 
-#latest:
+latest:
 if (1) {                                                                        #Tcreate #Tprint
   my $address = Rutf8 $Lex->{sampleText}{vav};                                  # Source in utf8
   my $size    = StringLength V(string, $address);                               # Length of source
