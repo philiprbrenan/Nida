@@ -311,7 +311,7 @@ do {
                           nosemi => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}",
                           s1 => "\x{1D5EE}\x{1D44E}\n  A\n   ",
                           v => "\x{1D5EE}",
-                          vav => "\x{1D78F}\x{1D44E}\x{1D78F}",
+                          vav => "\x{1D5EE}\x{1D44E}\x{1D5EF}",
                           vnsvs => "\x{1D5EE}\x{1D5EE}\n   \x{1D5EF}\x{1D5EF}   ",
                           vnv => "\x{1D5EE}\n\x{1D5EF}",
                           vnvs => "\x{1D5EE}\n\x{1D5EF}    ",
