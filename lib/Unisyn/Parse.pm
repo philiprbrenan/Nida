@@ -6,7 +6,7 @@
 # podDocumentation
 # Finished in 13.14s, bytes: 2,655,008, execs: 465,858
 package Unisyn::Parse;
-our $VERSION = "20210825";
+our $VERSION = "20210827";
 use warnings FATAL => qw(all);
 use strict;
 use Carp qw(confess cluck);
@@ -14,6 +14,7 @@ use Data::Dump qw(dump);
 use Data::Table::Text qw(:all !parse);
 use Nasm::X86 qw(:all);
 use feature qw(say current_sub);
+use utf8;
 
 makeDieConfess;
 
@@ -40,7 +41,7 @@ sub create($$)                                                                  
      arena          => $a,                                                      # Arena containing tree
      size8          => $size,                                                   # Size of source string as utf8
      address8       => $address,                                                # Address of source string as utf8
-     source32       => V(source32),                                             # Source text as utff 32
+     source32       => V(source32),                                             # Source text as utf32
      sourceSize32   => V(sourceSize32),                                         # Size of utf32 allocation
      sourceLength32 => V(sourceLength32),                                       # Length of utf32 string
      parse          => $parse,                                                  # Offset to the head of the parse tree
@@ -1036,14 +1037,13 @@ sub printLexicalItem($$$)                                                       
   my $t = $parse->arena->DescribeTree;
 
   my $s = Subroutine
-   {my ($p) = @_;                                                               # Parameters
+   {my ($p, $s) = @_;                                                           # Parameters
     PushR zmm0, zmm1, rax, r14, r15;
+    my $success = Label;
 
     $$p{source32}->setReg(r14);
     $$p{offset}->setReg(r15);
     Vmovdqu8 zmm0, "[r14+4*r15]";
-PrintErrStringNL "AAAA";
-PrintErrRegisterInHex r14, r15, zmm0;
 
     Pextrw rax,  xmm0, 1;                                                       # Extract lexical type of first element
     Vpbroadcastw zmm1, ax;                                                      # Broadcast
@@ -1063,10 +1063,32 @@ PrintErrRegisterInHex r14, r15, zmm0;
     Vpbroadcastd zmm1, r15d;                                                    # Broadcast
     Vpandd zmm1, zmm0, zmm1;                                                    # Remove lexical type to leave index into alphabet
 
-    Cmp rax, 6;                                                                 # Test for variable
+    Cmp rax, $variable;                                                         # Test for variable
     IfEq
     Then
-     {my $va = Rutf8 "\x{1D5D4}\x{1D5D5}\x{1D5D6}\x{1D5D7}\x{1D5D8}\x{1D5D9}\x{1D5DA}\x{1D5DB}\x{1D5DC}\x{1D5DD}\x{1D5DE}\x{1D5DF}\x{1D5E0}\x{1D5E1}\x{1D5E2}\x{1D5E3}\x{1D5E4}\x{1D5E5}\x{1D5E6}\x{1D5E7}\x{1D5E8}\x{1D5E9}\x{1D5EA}\x{1D5EB}\x{1D5EC}\x{1D5ED}\x{1D5EE}\x{1D5EF}\x{1D5F0}\x{1D5F1}\x{1D5F2}\x{1D5F3}\x{1D5F4}\x{1D5F5}\x{1D5F6}\x{1D5F7}\x{1D5F8}\x{1D5F9}\x{1D5FA}\x{1D5FB}\x{1D5FC}\x{1D5FD}\x{1D5FE}\x{1D5FF}\x{1D600}\x{1D601}\x{1D602}\x{1D603}\x{1D604}\x{1D605}\x{1D606}\x{1D607}\x{1D756}\x{1D757}\x{1D758}\x{1D759}\x{1D75A}\x{1D75B}\x{1D75C}\x{1D75D}\x{1D75E}\x{1D75F}\x{1D760}\x{1D761}\x{1D762}\x{1D763}\x{1D764}\x{1D765}\x{1D766}\x{1D767}\x{1D768}\x{1D769}\x{1D76A}\x{1D76B}\x{1D76C}\x{1D76D}\x{1D76E}\x{1D76F}\x{1D770}\x{1D771}\x{1D772}\x{1D773}\x{1D774}\x{1D775}\x{1D776}\x{1D777}\x{1D778}\x{1D779}\x{1D77A}\x{1D77B}\x{1D77C}\x{1D77D}\x{1D77E}\x{1D77F}\x{1D780}\x{1D781}\x{1D782}\x{1D783}\x{1D784}\x{1D785}\x{1D786}\x{1D787}\x{1D788}\x{1D789}\x{1D78A}\x{1D78B}\x{1D78C}\x{1D78D}\x{1D78E}\x{1D78F}";
+     {my $a = Rutf8 "\x{1D5D4}\x{1D5D5}\x{1D5D6}\x{1D5D7}\x{1D5D8}\x{1D5D9}\x{1D5DA}\x{1D5DB}\x{1D5DC}\x{1D5DD}\x{1D5DE}\x{1D5DF}\x{1D5E0}\x{1D5E1}\x{1D5E2}\x{1D5E3}\x{1D5E4}\x{1D5E5}\x{1D5E6}\x{1D5E7}\x{1D5E8}\x{1D5E9}\x{1D5EA}\x{1D5EB}\x{1D5EC}\x{1D5ED}\x{1D5EE}\x{1D5EF}\x{1D5F0}\x{1D5F1}\x{1D5F2}\x{1D5F3}\x{1D5F4}\x{1D5F5}\x{1D5F6}\x{1D5F7}\x{1D5F8}\x{1D5F9}\x{1D5FA}\x{1D5FB}\x{1D5FC}\x{1D5FD}\x{1D5FE}\x{1D5FF}\x{1D600}\x{1D601}\x{1D602}\x{1D603}\x{1D604}\x{1D605}\x{1D606}\x{1D607}\x{1D756}\x{1D757}\x{1D758}\x{1D759}\x{1D75A}\x{1D75B}\x{1D75C}\x{1D75D}\x{1D75E}\x{1D75F}\x{1D760}\x{1D761}\x{1D762}\x{1D763}\x{1D764}\x{1D765}\x{1D766}\x{1D767}\x{1D768}\x{1D769}\x{1D76A}\x{1D76B}\x{1D76C}\x{1D76D}\x{1D76E}\x{1D76F}\x{1D770}\x{1D771}\x{1D772}\x{1D773}\x{1D774}\x{1D775}\x{1D776}\x{1D777}\x{1D778}\x{1D779}\x{1D77A}\x{1D77B}\x{1D77C}\x{1D77D}\x{1D77E}\x{1D77F}\x{1D780}\x{1D781}\x{1D782}\x{1D783}\x{1D784}\x{1D785}\x{1D786}\x{1D787}\x{1D788}\x{1D789}\x{1D78A}\x{1D78B}\x{1D78C}\x{1D78D}\x{1D78E}\x{1D78F}";
+      PushR zmm1;
+      V(loop)->getReg(r14)->for(sub                                             # Write each letter out from its position on the stack
+       {my ($index, $start, $next, $end) = @_;                                  # Execute body
+        $index->setReg(r14);                                                    # Index stack
+        ClearRegisters r15;
+        Mov r15b, "[rsp+4*r14]";                                                # Load alphabet offset from stack
+        Shl r15, 2;                                                             # Each letter is 4 bytes wide in utf8
+        Mov r14, $a;                                                            # Alphabet address
+        Mov r14d, "[r14+r15]";                                                  # Alphabet letter as utf8
+        PushR r14;                                                              # utf8 is on the stack and it is 4 bytes wide
+        Mov rax, rsp;
+        Mov rdi, 4;
+        PrintOutMemory;                                                         # Print letter from stack
+        PopR;
+       });
+      Jmp $success;
+     };
+
+    Cmp rax, $assign;                                                           # Test for operator
+    IfEq
+    Then
+     {my $va = Rutf8 "\x{1D434}\x{1D435}\x{1D436}\x{1D437}\x{1D438}\x{1D439}\x{1D43A}\x{1D43B}\x{1D43C}\x{1D43D}\x{1D43E}\x{1D43F}\x{1D440}\x{1D441}\x{1D442}\x{1D443}\x{1D444}\x{1D445}\x{1D446}\x{1D447}\x{1D448}\x{1D449}\x{1D44A}\x{1D44B}\x{1D44C}\x{1D44D}\x{1D44E}\x{1D44F}\x{1D450}\x{1D451}\x{1D452}\x{1D453}\x{1D454}\x{1D456}\x{1D457}\x{1D458}\x{1D459}\x{1D45A}\x{1D45B}\x{1D45C}\x{1D45D}\x{1D45E}\x{1D45F}\x{1D460}\x{1D461}\x{1D462}\x{1D463}\x{1D464}\x{1D465}\x{1D466}\x{1D467}\x{1D6E2}\x{1D6E3}\x{1D6E4}\x{1D6E5}\x{1D6E6}\x{1D6E7}\x{1D6E8}\x{1D6E9}\x{1D6EA}\x{1D6EB}\x{1D6EC}\x{1D6ED}\x{1D6EE}\x{1D6EF}\x{1D6F0}\x{1D6F1}\x{1D6F2}\x{1D6F3}\x{1D6F4}\x{1D6F5}\x{1D6F6}\x{1D6F7}\x{1D6F8}\x{1D6F9}\x{1D6FA}\x{1D6FB}\x{1D6FC}\x{1D6FD}\x{1D6FE}\x{1D6FF}\x{1D700}\x{1D701}\x{1D702}\x{1D703}\x{1D704}\x{1D705}\x{1D706}\x{1D707}\x{1D708}\x{1D709}\x{1D70A}\x{1D70B}\x{1D70C}\x{1D70D}\x{1D70E}\x{1D70F}\x{1D710}\x{1D711}\x{1D712}\x{1D713}\x{1D714}\x{1D715}\x{1D716}\x{1D717}\x{1D718}\x{1D719}\x{1D71A}\x{1D71B}";
       PushR zmm1;
       V(loop)->getReg(r14)->for(sub                                             # Write each letter out from its position on the stack
        {my ($index, $start, $next, $end) = @_;                                  # Execute body
@@ -1081,9 +1103,11 @@ PrintErrRegisterInHex r14, r15, zmm0;
         Mov rdi, 4;
         PrintOutMemory;                                                         # Print letter from stack
         PopR;
+        Jmp $success;
        });
      };
 
+    SetLabel $success;
     PopR;
    } [qw(offset source32)],
   name => q(Unisyn::Parse::printLexicalItem);
@@ -1157,18 +1181,14 @@ sub print($)                                                                    
         PrintOutString "Variable: ";
         $parse->printLexicalItem($$p{source32}, $data);                         # Print the variable name
         PrintOutNL;
-#        PushR (zmm0, rax, rdi, r14, r15);
-#        $$p{source32}->setReg(r15);
-#        $data->setReg(r14);
-#        Vmovdqu8 zmm0, "[r15+4*r14]";
-#        PrintErrRegisterInHex zmm0;
-        #PopR;
        });
 
       If ($key == $assign,                                                      # Assign
       Then
        {$b->call;
-        PrintOutStringNL "Assign";
+        PrintOutString "Assign: ";
+        $parse->printLexicalItem($$p{source32}, $data);                         # Print the variable name
+        PrintOutNL;
        });
 
       If ($index == 0,                                                          # Operator followed by indented operands
@@ -1591,12 +1611,11 @@ tree:
 To get:
 
   ok Assemble(debug=>0, eq => <<END);                   # Assemble and run
-  Assign
-    Assign
-      Term
-        Variable: 𝗮
-      Term
-        Variable: 𝗯
+  Assign: 𝑎
+    Term
+      Variable: 𝗮
+    Term
+      Variable: 𝗯
   END
 
 =head1 Description
@@ -2239,7 +2258,7 @@ Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0008
 end
 END
 
-latest:
+#latest:
 if (1) {                                                                        #Tcreate #Tprint
   my $address = Rutf8 $Lex->{sampleText}{vav};                                  # Source in utf8
   my $size    = StringLength V(string, $address);                               # Length of source
@@ -2248,11 +2267,11 @@ if (1) {                                                                        
      $parse->print;                                                             # Print parse tree
 
   ok Assemble(debug=>0, eq => <<END);
-Assign
+Assign: 𝑎
   Term
-    Variable
+    Variable: 𝗮
   Term
-    Variable
+    Variable: 𝗯
 END
  }
 
