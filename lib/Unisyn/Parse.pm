@@ -1031,6 +1031,66 @@ sub parseUtf8($@)                                                               
 
 #D1 Print                                                                       # Print a parse tree
 
+sub printLexicalItem($$$)                                                       # Print the utf8 string corresponding to a lexical item at a variable offset
+ {my ($parse, $source32, $offset) = @_;                                         # Parse tree, variable address of utf32 source representation, variable offset to lexical item in utf32
+  my $t = $parse->arena->DescribeTree;
+
+  my $s = Subroutine
+   {my ($p) = @_;                                                               # Parameters
+    PushR zmm0, zmm1, rax, r14, r15;
+
+    $$p{source32}->setReg(r14);
+    $$p{offset}->setReg(r15);
+    Vmovdqu8 zmm0, "[r14+4*r15]";
+PrintErrStringNL "AAAA";
+PrintErrRegisterInHex r14, r15, zmm0;
+
+    Pextrw rax,  xmm0, 1;                                                       # Extract lexical type of first element
+    Vpbroadcastw zmm1, ax;                                                      # Broadcast
+    Vpcmpeqw k0, zmm0, zmm1;                                                    # Check extent of first lexical item up to 16
+    Shr rax, 8;                                                                 # Lexical type in lowest byte
+
+    Mov r15, 0x55555555;                                                        # Set odd positions to one where we know the match will fail
+    Kmovq k1, r15;
+    Korq k2, k0, k1;                                                            # Fill in odd positions
+
+    Kmovq r15, k2;
+    Not r15;                                                                    # Swap zeroes and ones
+    Tzcnt r14, r15;                                                             # Trailing zero count is a factor two too big
+    Shr r14, 1;                                                                 # Normalized count of number of characters int name
+
+    Mov r15, 0xffff;                                                            # Zero out lexical type
+    Vpbroadcastd zmm1, r15d;                                                    # Broadcast
+    Vpandd zmm1, zmm0, zmm1;                                                    # Remove lexical type to leave index into alphabet
+
+    Cmp rax, 6;                                                                 # Test for variable
+    IfEq
+    Then
+     {my $va = Rutf8 "\x{1D5D4}\x{1D5D5}\x{1D5D6}\x{1D5D7}\x{1D5D8}\x{1D5D9}\x{1D5DA}\x{1D5DB}\x{1D5DC}\x{1D5DD}\x{1D5DE}\x{1D5DF}\x{1D5E0}\x{1D5E1}\x{1D5E2}\x{1D5E3}\x{1D5E4}\x{1D5E5}\x{1D5E6}\x{1D5E7}\x{1D5E8}\x{1D5E9}\x{1D5EA}\x{1D5EB}\x{1D5EC}\x{1D5ED}\x{1D5EE}\x{1D5EF}\x{1D5F0}\x{1D5F1}\x{1D5F2}\x{1D5F3}\x{1D5F4}\x{1D5F5}\x{1D5F6}\x{1D5F7}\x{1D5F8}\x{1D5F9}\x{1D5FA}\x{1D5FB}\x{1D5FC}\x{1D5FD}\x{1D5FE}\x{1D5FF}\x{1D600}\x{1D601}\x{1D602}\x{1D603}\x{1D604}\x{1D605}\x{1D606}\x{1D607}\x{1D756}\x{1D757}\x{1D758}\x{1D759}\x{1D75A}\x{1D75B}\x{1D75C}\x{1D75D}\x{1D75E}\x{1D75F}\x{1D760}\x{1D761}\x{1D762}\x{1D763}\x{1D764}\x{1D765}\x{1D766}\x{1D767}\x{1D768}\x{1D769}\x{1D76A}\x{1D76B}\x{1D76C}\x{1D76D}\x{1D76E}\x{1D76F}\x{1D770}\x{1D771}\x{1D772}\x{1D773}\x{1D774}\x{1D775}\x{1D776}\x{1D777}\x{1D778}\x{1D779}\x{1D77A}\x{1D77B}\x{1D77C}\x{1D77D}\x{1D77E}\x{1D77F}\x{1D780}\x{1D781}\x{1D782}\x{1D783}\x{1D784}\x{1D785}\x{1D786}\x{1D787}\x{1D788}\x{1D789}\x{1D78A}\x{1D78B}\x{1D78C}\x{1D78D}\x{1D78E}\x{1D78F}";
+      PushR zmm1;
+      V(loop)->getReg(r14)->for(sub                                             # Write each letter out from its position on the stack
+       {my ($index, $start, $next, $end) = @_;                                  # Execute body
+        $index->setReg(r14);                                                    # Index stack
+        ClearRegisters r15;
+        Mov r15b, "[rsp+4*r14]";                                                # Load alphabet offset from stack
+        Shl r15, 2;                                                             # Each letter is 4 bytes wide in utf8
+        Mov r14, $va;                                                           # Alphabet address
+        Mov r14d, "[r14+r15]";                                                  # Alphabet letter as utf8
+        PushR r14;                                                              # utf8 is on the stack and it is 4 bytes wide
+        Mov rax, rsp;
+        Mov rdi, 4;
+        PrintOutMemory;                                                         # Print letter from stack
+        PopR;
+       });
+     };
+
+    PopR;
+   } [qw(offset source32)],
+  name => q(Unisyn::Parse::printLexicalItem);
+
+  $s->call(offset => $offset, source32 => $source32);
+ }
+
 sub print($)                                                                    # Create a parser for an expression described by variables.
  {my ($parse) = @_;                                                             # Parse tree
   my $t = $parse->arena->DescribeTree;
@@ -1094,13 +1154,15 @@ sub print($)                                                                    
       If ($key == $variable,                                                    # Variable
       Then
        {$b->call;
-        PrintOutStringNL "Variable";
-        PushR (zmm0, rax, rdi, r14, r15);
-        $$p{source32}->setReg(r15);
-        $data->setReg(r14);
-        Vmovdqu8 zmm0, "[r15+4*r14]";
-        PrintErrRegisterInHex zmm0;
-        PopR;
+        PrintOutString "Variable: ";
+        $parse->printLexicalItem($$p{source32}, $data);                         # Print the variable name
+        PrintOutNL;
+#        PushR (zmm0, rax, rdi, r14, r15);
+#        $$p{source32}->setReg(r15);
+#        $data->setReg(r14);
+#        Vmovdqu8 zmm0, "[r15+4*r14]";
+#        PrintErrRegisterInHex zmm0;
+        #PopR;
        });
 
       If ($key == $assign,                                                      # Assign
@@ -1530,10 +1592,11 @@ To get:
 
   ok Assemble(debug=>0, eq => <<END);                   # Assemble and run
   Assign
-    Term
-      Variable
-    Term
-      Variable
+    Assign
+      Term
+        Variable: 𝗮
+      Term
+        Variable: 𝗯
   END
 
 =head1 Description
@@ -1591,13 +1654,11 @@ Print a parse tree
 
 =head2 print($parse)
 
-Create a parser for an expression described by variables.
+Create a parser for an expression:
 
-     Parameter  Description
-  1  $parse     Parse tree
+   𝗮 = 𝗯
 
-B<Example:>
-
+by coding:
 
     my $address = Rutf8 $Lex->{sampleText}{vav};                                  # Source in utf8
     my $size    = StringLength V(string, $address);                               # Length of source
@@ -1606,15 +1667,15 @@ B<Example:>
 
        $parse->print;                                                             # Print parse tree  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
+Parse the B<Unisyn> expression to get:
 
     ok Assemble(debug=>0, eq => <<END);
-  Assign
-    Term
-      Variable
-    Term
-      Variable
-  END
-
+    Assign
+      Term
+        Variable: 𝗮
+      Term
+        Variable: 𝗯
+    END
 
 
 =head1 Hash Definitions
