@@ -6,7 +6,7 @@
 # podDocumentation
 # Finished in 13.14s, bytes: 2,655,008, execs: 465,858
 package Unisyn::Parse;
-our $VERSION = "20210827";
+our $VERSION = "20210828";
 use warnings FATAL => qw(all);
 use strict;
 use Carp qw(confess cluck);
@@ -24,7 +24,7 @@ our $debug   = 0;                                                               
 
 #D1 Create                                                                      # Create a Unisyn parse of a utf8 string.
 
-sub create($)                                                                   # Create a new unisyn parse from a utf8 string
+sub create($)                                                                   # Create a new unisyn parse from a utf8 string.
  {my ($address) = @_;                                                           # Address of utf8 source string to parse as a variable
   @_ == 1 or confess;
 
@@ -959,7 +959,7 @@ sub parseUtf8($@)                                                               
     my $sourceSize32   = $$p{sourceSize32};
     my $sourceLength32 = $$p{sourceLength32};
 
-    ConvertUtf8ToUtf32 u8 => $$p{address}, size8  => $$p{size},                  # Convert to utf32
+    ConvertUtf8ToUtf32 u8 => $$p{address}, size8  => $$p{size},                 # Convert to utf32
                       u32 => $source32,    size32 => $sourceSize32,
                     count => $sourceLength32;
 
@@ -1027,7 +1027,7 @@ sub parseUtf8($@)                                                               
 
 #D1 Print                                                                       # Print a parse tree
 
-sub printLexicalItem($$$)                                                       #P Print the utf8 string corresponding to a lexical item at a variable offset
+sub printLexicalItem($$$)                                                       #P Print the utf8 string corresponding to a lexical item at a variable offset.
  {my ($parse, $source32, $offset) = @_;                                         # Parse tree, variable address of utf32 source representation, variable offset to lexical item in utf32
   my $t = $parse->arena->DescribeTree;
 
@@ -1061,7 +1061,7 @@ sub printLexicalItem($$$)                                                       
     Then
      {my $b = $Lex->{alphabetsOrdered}{variable};                               # Load variable alphabet in dwords
       my @b = map {convertUtf32ToUtf8LE $_} @$b;
-      my $a = Rd @b;                                                            #
+      my $a = Rd @b;
       PushR zmm1;                                                               # Stack zmm1 for ready access
       V(loop)->getReg(r14)->for(sub                                             # Write each letter out from its position on the stack
        {my ($index, $start, $next, $end) = @_;                                  # Execute body
@@ -1082,7 +1082,7 @@ sub printLexicalItem($$$)                                                       
     Then
      {my $b = $Lex->{alphabetsOrdered}{assign};                                 # Load assign alphabet in dwords
       my @b = map {convertUtf32ToUtf8LE $_} @$b;
-      my $a = Rd @b;                                                            #
+      my $a = Rd @b;
       PushR zmm1;                                                               # Stack zmm1 for ready access
       V(loop)->getReg(r14)->for(sub                                             # Write each letter out from its position on the stack
        {my ($index, $start, $next, $end) = @_;                                  # Execute body
@@ -1104,7 +1104,7 @@ sub printLexicalItem($$$)                                                       
     Then
      {my $b = $Lex->{alphabetsOrdered}{dyad};                                   # Load dyad alphabet in dwords
       my @b = map {convertUtf32ToUtf8LE $_} @$b;
-      my $a = Rd @b;                                                            #
+      my $a = Rd @b;
       PushR zmm1;                                                               # Stack zmm1 for ready access
       V(loop)->getReg(r14)->for(sub                                             # Write each letter out from its position on the stack
        {my ($index, $start, $next, $end) = @_;                                  # Execute body
@@ -1114,7 +1114,7 @@ sub printLexicalItem($$$)                                                       
         Shl r15, 2;                                                             # Each letter is 4 bytes wide in utf8
         Mov r14, $a;                                                            # Alphabet address
         Lea rax, "[r14+r15]";                                                   # Address alphabet letter as utf8
-        Mov rdi, 4;                                                             # The size of a dyad operator asa utf8
+        Mov rdi, 4;                                                             # The size of a dyad operator as utf8
         PrintOutMemory;                                                         # Print letter from stack
        });
       Jmp $success;
@@ -1125,7 +1125,7 @@ sub printLexicalItem($$$)                                                       
     Then
      {my $b = $Lex->{alphabetsOrdered}{Ascii};                                  # Load ascii alphabet in dwords
       my @b = map {convertUtf32ToUtf8LE $_} @$b;
-      my $a = Rd @b;                                                            #
+      my $a = Rd @b;
       PushR zmm1;                                                               # Stack zmm1 for ready access
       V(loop)->getReg(r14)->for(sub                                             # Write each letter out from its position on the stack
        {my ($index, $start, $next, $end) = @_;                                  # Execute body
@@ -1149,7 +1149,7 @@ sub printLexicalItem($$$)                                                       
   $s->call(offset => $offset, source32 => $source32);
  }
 
-sub printBrackets($$$)                                                          #P Print the utf8 string corresponding to a lexical item at a variable offset
+sub printBrackets($$$)                                                          #P Print the utf8 string corresponding to a lexical item at a variable offset.
  {my ($parse, $source32, $offset) = @_;                                         # Parse tree, variable address of utf32 source representation, variable offset to lexical item in utf32
   my $t = $parse->arena->DescribeTree;
 
@@ -1781,7 +1781,7 @@ to get:
 Parse a Unisyn expression.
 
 
-Version "20210827".
+Version "20210828".
 
 
 The following sections describe the methods in each functional area of this
@@ -1795,7 +1795,7 @@ Create a Unisyn parse of a utf8 string.
 
 =head2 create($address)
 
-Create a new unisyn parse from a utf8 string
+Create a new unisyn parse from a utf8 string.
 
      Parameter  Description
   1  $address   Address of utf8 source string to parse as a variable
@@ -1803,10 +1803,10 @@ Create a new unisyn parse from a utf8 string
 B<Example:>
 
 
-
+  
     create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with  zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-
+  
     ok Assemble(debug => 0, eq => <<END);
   Assign: 𝑎
     Term
@@ -1814,7 +1814,7 @@ B<Example:>
     Term
       Variable: 𝗯
   END
-
+  
 
 =head1 Parse
 
@@ -1834,10 +1834,10 @@ Create a parser for an expression described by variables.
 B<Example:>
 
 
-
+  
     create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with  zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-
+  
     ok Assemble(debug => 0, eq => <<END);
   Assign: 𝑎
     Term
@@ -1845,7 +1845,7 @@ B<Example:>
     Term
       Variable: 𝗯
   END
-
+  
 
 
 =head1 Hash Definitions
@@ -2091,7 +2091,7 @@ Parse a unisyn expression encoded as utf8 and return the parse tree.
 
 =head2 printLexicalItem($parse, $source32, $offset)
 
-Print the utf8 string corresponding to a lexical item at a variable offset
+Print the utf8 string corresponding to a lexical item at a variable offset.
 
      Parameter  Description
   1  $parse     Parse tree
@@ -2100,7 +2100,7 @@ Print the utf8 string corresponding to a lexical item at a variable offset
 
 =head2 printBrackets($parse, $source32, $offset)
 
-Print the utf8 string corresponding to a lexical item at a variable offset
+Print the utf8 string corresponding to a lexical item at a variable offset.
 
      Parameter  Description
   1  $parse     Parse tree
@@ -2122,9 +2122,9 @@ Test a parse.
 
 1 L<accept_a|/accept_a> - Assign.
 
-2 L<accept_b|/accept_b> - Open.
+2 L<accept_B|/accept_B> - Closing parenthesis.
 
-3 L<accept_B|/accept_B> - Closing parenthesis.
+3 L<accept_b|/accept_b> - Open.
 
 4 L<accept_d|/accept_d> - Infix but not assign or semi-colon.
 
@@ -2144,7 +2144,7 @@ Test a parse.
 
 12 L<ClassifyWhiteSpace|/ClassifyWhiteSpace> - Classify white space per: "lib/Unisyn/whiteSpace/whiteSpaceClassification.
 
-13 L<create|/create> - Create a new unisyn parse from a utf8 string
+13 L<create|/create> - Create a new unisyn parse from a utf8 string.
 
 14 L<error|/error> - Die.
 
@@ -2170,9 +2170,9 @@ Test a parse.
 
 25 L<print|/print> - Create a parser for an expression described by variables.
 
-26 L<printBrackets|/printBrackets> - Print the utf8 string corresponding to a lexical item at a variable offset
+26 L<printBrackets|/printBrackets> - Print the utf8 string corresponding to a lexical item at a variable offset.
 
-27 L<printLexicalItem|/printLexicalItem> - Print the utf8 string corresponding to a lexical item at a variable offset
+27 L<printLexicalItem|/printLexicalItem> - Print the utf8 string corresponding to a lexical item at a variable offset.
 
 28 L<pushElement|/pushElement> - Push the current element on to the stack.
 
