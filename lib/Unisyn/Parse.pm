@@ -2254,10 +2254,9 @@ END
 
 #latest:
 if (1) {                                                                        #Tcreate #Tprint
-  my $p = create K(address, Rutf8 $Lex->{sampleText}{vav});                     # Create parse tree from source terminated with  zero
-     $p->print;                                                                 # Print parse tree
+  create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with  zero
 
-  ok Assemble(debug=>0, eq => <<END);
+  ok Assemble(debug => 0, eq => <<END);
 Assign: 𝑎
   Term
     Variable: 𝗮
