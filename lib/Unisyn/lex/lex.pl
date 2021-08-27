@@ -8,7 +8,6 @@ use strict;
 use Carp;
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
-#use Test::More qw(no_plan);
 use Tree::Term;
 use feature qw(say state current_sub);
 use utf8;
@@ -397,7 +396,7 @@ sub translateSomeText($$)                                                       
     elsif ($w =~ m(\AB)) {$T .= $Tables->bracketsClose->[substr($w, 1)]}
     elsif ($w =~ m(\AS)) {$T .= ' '}
     elsif ($w =~ m(\AN)) {$T .= "\n"}
-    elsif ($w =~ m(\AA)) {$T .= 'A'}
+    elsif ($w =~ m(\AA)) {$T .= substr($w, 1)}
     else {confess "Invalid lexical item $w in $string"}
    }
 
@@ -412,8 +411,8 @@ sub translateSomeText($$)                                                       
     elsif ($w =~ m(\As)) {push @L, $n{semiColon}}
     elsif ($w =~ m(\Ab)) {push @L, $n{OpenBracket}}
     elsif ($w =~ m(\AB)) {push @L, $n{CloseBracket}}
-    elsif ($w =~ m(\AS)) {push @L, ($n{Ascii} << 24) + 32}
-    elsif ($w =~ m(\AN)) {push @L, ($n{Ascii} << 24) + 10}
+    elsif ($w =~ m(\AS)) {push @L, ($n{Ascii} << 24) + ord(' ')}
+    elsif ($w =~ m(\AN)) {push @L, ($n{Ascii} << 24) + ord("\n")}
     elsif ($w =~ m(\AA)) {push @L, ($n{Ascii} << 24) + ord('A')}
    }
   lll '-' x 32;
@@ -492,6 +491,10 @@ END
 
 translateSomeText 'vnsvs', <<END;
 vaa N S S S vbb S S S
+END
+
+translateSomeText 'A', <<END;
+vaa aequals Aabc S A123  S S S S
 END
 
 say STDERR owf $lexicalsFile, dump($Tables);                                    # Write results
