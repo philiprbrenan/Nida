@@ -25,7 +25,7 @@ our $debug   = 0;                                                               
 #D1 Create                                                                      # Create a Unisyn parse of a utf8 string.
 
 sub create($)                                                                   # Create a new unisyn parse from a utf8 string
- {my ($address) = @_;                                                           # Address of utf8 source string to parse as a variable, length of string as a variable
+ {my ($address) = @_;                                                           # Address of utf8 source string to parse as a variable
   @_ == 1 or confess;
 
   my $a    = $arena = CreateArena;                                              # Arena to hold parse tree - every parse tree gets its own arena so that we can free parses separately
@@ -66,6 +66,7 @@ our $bitsPerByte      = 8;                                                      
 
 our $Ascii            = $$Lex{lexicals}{Ascii}           {number};              # Ascii
 our $assign           = $$Lex{lexicals}{assign}          {number};              # Assign
+our $dyad             = $$Lex{lexicals}{dyad}            {number};              # Dyad
 our $CloseBracket     = $$Lex{lexicals}{CloseBracket}    {number};              # Close bracket
 our $empty            = $$Lex{lexicals}{empty}           {number};              # Empty element
 our $NewLineSemiColon = $$Lex{lexicals}{NewLineSemiColon}{number};              # New line semicolon
@@ -1026,7 +1027,7 @@ sub parseUtf8($@)                                                               
 
 #D1 Print                                                                       # Print a parse tree
 
-sub printLexicalItem($$$)                                                       # Print the utf8 string corresponding to a lexical item at a variable offset
+sub printLexicalItem($$$)                                                       #P Print the utf8 string corresponding to a lexical item at a variable offset
  {my ($parse, $source32, $offset) = @_;                                         # Parse tree, variable address of utf32 source representation, variable offset to lexical item in utf32
   my $t = $parse->arena->DescribeTree;
 
@@ -1042,7 +1043,6 @@ sub printLexicalItem($$$)                                                       
     Vpbroadcastw zmm1, ax;                                                      # Broadcast
     Vpcmpeqw k0, zmm0, zmm1;                                                    # Check extent of first lexical item up to 16
     Shr rax, 8;                                                                 # Lexical type in lowest byte
-
     Mov r15, 0x55555555;                                                        # Set odd positions to one where we know the match will fail
     Kmovq k1, r15;
     Korq k2, k0, k1;                                                            # Fill in odd positions
@@ -1059,7 +1059,9 @@ sub printLexicalItem($$$)                                                       
     Cmp rax, $variable;                                                         # Test for variable
     IfEq
     Then
-     {my $a = Rutf8 $Lex->{alphabets}{$Lex->{lexicalAlpha}{variable}[0]};
+     {my $b = $Lex->{alphabetsOrdered}{variable};                               # Load variable alphabet in dwords
+      my @b = map {convertUtf32ToUtf8LE $_} @$b;
+      my $a = Rd @b;                                                            #
       PushR zmm1;                                                               # Stack zmm1 for ready access
       V(loop)->getReg(r14)->for(sub                                             # Write each letter out from its position on the stack
        {my ($index, $start, $next, $end) = @_;                                  # Execute body
@@ -1075,10 +1077,10 @@ sub printLexicalItem($$$)                                                       
       Jmp $success;
      };
 
-    Cmp rax, $assign;                                                           # Test for operator
+    Cmp rax, $assign;                                                           # Test for assign operator
     IfEq
     Then
-     {my $b = $Lex->{alphabetsOrdered}{assign};
+     {my $b = $Lex->{alphabetsOrdered}{assign};                                 # Load assign alphabet in dwords
       my @b = map {convertUtf32ToUtf8LE $_} @$b;
       my $a = Rd @b;                                                            #
       PushR zmm1;                                                               # Stack zmm1 for ready access
@@ -1097,6 +1099,48 @@ sub printLexicalItem($$$)                                                       
       Jmp $success;
      };
 
+    Cmp rax, $dyad;                                                             # Test for dyad
+    IfEq
+    Then
+     {my $b = $Lex->{alphabetsOrdered}{dyad};                                   # Load dyad alphabet in dwords
+      my @b = map {convertUtf32ToUtf8LE $_} @$b;
+      my $a = Rd @b;                                                            #
+      PushR zmm1;                                                               # Stack zmm1 for ready access
+      V(loop)->getReg(r14)->for(sub                                             # Write each letter out from its position on the stack
+       {my ($index, $start, $next, $end) = @_;                                  # Execute body
+        $index->setReg(r14);                                                    # Index stack
+        ClearRegisters r15;
+        Mov r15b, "[rsp+4*r14]";                                                # Load alphabet offset from stack
+        Shl r15, 2;                                                             # Each letter is 4 bytes wide in utf8
+        Mov r14, $a;                                                            # Alphabet address
+        Lea rax, "[r14+r15]";                                                   # Address alphabet letter as utf8
+        Mov rdi, 4;                                                             # The size of a dyad operator asa utf8
+        PrintOutMemory;                                                         # Print letter from stack
+       });
+      Jmp $success;
+     };
+
+    Cmp rax, $Ascii;                                                            # Test for ascii
+    IfEq
+    Then
+     {my $b = $Lex->{alphabetsOrdered}{Ascii};                                  # Load ascii alphabet in dwords
+      my @b = map {convertUtf32ToUtf8LE $_} @$b;
+      my $a = Rd @b;                                                            #
+      PushR zmm1;                                                               # Stack zmm1 for ready access
+      V(loop)->getReg(r14)->for(sub                                             # Write each letter out from its position on the stack
+       {my ($index, $start, $next, $end) = @_;                                  # Execute body
+        $index->setReg(r14);                                                    # Index stack
+        ClearRegisters r15;
+        Mov r15b, "[rsp+4*r14]";                                                # Load alphabet offset from stack
+        Shl r15, 2;                                                             # Each letter is 4 bytes wide in utf8
+        Mov r14, $a;                                                            # Alphabet address
+        Lea rax, "[r14+r15]";                                                   # Address alphabet letter as utf8
+        Mov rdi, 1;                                                             # Size of an ascii character in bytes
+        PrintOutMemory;                                                         # Print letter from stack
+       });
+      Jmp $success;
+     };
+
     SetLabel $success;
     PopR;
    } [qw(offset source32)],
@@ -1105,7 +1149,7 @@ sub printLexicalItem($$$)                                                       
   $s->call(offset => $offset, source32 => $source32);
  }
 
-sub printBrackets($$$)                                                          # Print the utf8 string corresponding to a lexical item at a variable offset
+sub printBrackets($$$)                                                          #P Print the utf8 string corresponding to a lexical item at a variable offset
  {my ($parse, $source32, $offset) = @_;                                         # Parse tree, variable address of utf32 source representation, variable offset to lexical item in utf32
   my $t = $parse->arena->DescribeTree;
 
@@ -1217,6 +1261,28 @@ sub print($)                                                                    
         PrintOutString "Brackets: ";
         $parse->printBrackets($$p{source32}, $data);                            # Print the variable name
         PrintOutNL;
+       });
+
+      If ($key == $dyad,                                                        # Dyad
+      Then
+       {$b->call;
+        PrintOutString "Dyad: ";
+        $parse->printLexicalItem($$p{source32}, $data);                         # Print the variable name
+        PrintOutNL;
+       });
+
+      If ($key == $Ascii,                                                       # Ascii
+      Then
+       {$b->call;
+        PrintOutString "Ascii: ";
+        $parse->printLexicalItem($$p{source32}, $data);                         # Print the variable name
+        PrintOutNL;
+       });
+
+      If ($key == $semiColon,                                                   # Semicolon
+      Then
+       {$b->call;
+        PrintOutStringNL "Semicolon";
        });
 
       If ($index == 0,                                                          # Operator followed by indented operands
@@ -1497,6 +1563,7 @@ sub lexicalData {do {
                             16777216,
                             16777216,
                           ],
+                          s => [100663296, 134217728, 100663296],
                           s1 => [
                             100663296,
                             83886080,
@@ -1550,6 +1617,30 @@ sub lexicalData {do {
                             134217728,
                             100663296,
                             83886080,
+                            0,
+                            100663296,
+                            50331648,
+                            100663296,
+                            16777216,
+                            134217728,
+                          ],
+                          wsa => [
+                            100663296,
+                            83886080,
+                            0,
+                            0,
+                            0,
+                            100663296,
+                            16777216,
+                            16777216,
+                            50331648,
+                            0,
+                            100663296,
+                            16777216,
+                            16777216,
+                            134217728,
+                            100663296,
+                            83886080,
                             33554497,
                             50331648,
                             100663296,
@@ -1560,6 +1651,7 @@ sub lexicalData {do {
                           brackets => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}",
                           bvB => "\x{2329}\x{1D5EE}\x{1D5EF}\x{1D5F0}\x{232A}",
                           nosemi => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}",
+                          s => "\x{1D5EE}\x{27E2}\x{1D5EF}",
                           s1 => "\x{1D5EE}\x{1D44E}\n  A\n   ",
                           v => "\x{1D5EE}",
                           vav => "\x{1D5EE}\x{1D44E}\x{1D5EF}",
@@ -1567,7 +1659,8 @@ sub lexicalData {do {
                           vnsvs => "\x{1D5EE}\x{1D5EE}\n   \x{1D5EF}\x{1D5EF}   ",
                           vnv => "\x{1D5EE}\n\x{1D5EF}",
                           vnvs => "\x{1D5EE}\n\x{1D5EF}    ",
-                          ws => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}\x{1D5EE}\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}A\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F0}\x{1D5F0}\x{27E2}",
+                          ws => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}\x{1D5EE}\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{276C}\x{1D5EF}\x{1D5EF}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F0}\x{1D5F0}\x{276D}\x{27E2}",
+                          wsa => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}\x{1D5EE}\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}A\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F0}\x{1D5F0}\x{27E2}",
                         },
     semiColon        => "\x{27E2}",
     separator        => "\x{205F}",
@@ -1579,17 +1672,17 @@ sub lexicalData {do {
                                             next   => "bpv",
                                             short  => "assign",
                                           }, "Tree::Term::LexicalCode"),
-                                     b => bless({
-                                            letter => "b",
-                                            name   => "opening parenthesis",
-                                            next   => "bBpsv",
-                                            short  => "OpenBracket",
-                                          }, "Tree::Term::LexicalCode"),
                                      B => bless({
                                             letter => "B",
                                             name   => "closing parenthesis",
                                             next   => "aBdqs",
                                             short  => "CloseBracket",
+                                          }, "Tree::Term::LexicalCode"),
+                                     b => bless({
+                                            letter => "b",
+                                            name   => "opening parenthesis",
+                                            next   => "bBpsv",
+                                            short  => "OpenBracket",
                                           }, "Tree::Term::LexicalCode"),
                                      d => bless({ letter => "d", name => "dyadic operator", next => "bpv", short => "dyad" }, "Tree::Term::LexicalCode"),
                                      p => bless({ letter => "p", name => "prefix operator", next => "bpv", short => "prefix" }, "Tree::Term::LexicalCode"),
@@ -1638,26 +1731,49 @@ Unisyn::Parse - Parse a Unisyn expression.
 
 Parse the Unisyn expression:
 
-      𝗮𝑎𝗯
+    my $expr = "𝗮𝑎𝑠𝑠𝑖𝑔𝑛⌊〈❨𝗯𝗽❩〉𝐩𝐥𝐮𝐬❪𝘀𝗰❫⌋⟢𝗮𝗮𝑎𝑠𝑠𝑖𝑔𝑛❬𝗯𝗯𝐩𝐥𝐮𝐬𝗰𝗰❭⟢";
 
-which assigns B<b> to B<a>. Parse this expression and print the resulting parse
-tree:
+to get:
 
-    my $address = Rutf8 $Lex->{sampleText}{vav};        # Source in utf8
-    my $size    = StringLength V(string, $address);     # Length of source
+  create (K(address, Rutf8 $expr))->print;
 
-    my $parse   = create K(address, $address),  $size;  # Create parse tree from source
-       $parse->print;                                   # Print parse tree
-
-
-To get:
-
-  ok Assemble(debug=>0, eq => <<END);                   # Assemble and run
-  Assign: 𝑎
+  ok Assemble(debug => 0, eq => <<END);
+  Semicolon
     Term
-      Variable: 𝗮
+      Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
+        Term
+          Variable: 𝗮
+        Term
+          Brackets: ⦉⦊
+            Term
+              Term
+                Dyad: 𝐩𝐥𝐮𝐬
+                  Term
+                    Brackets: ⦍⦎
+                      Term
+                        Term
+                          Brackets: ⦑⦒
+                            Term
+                              Term
+                                Variable: 𝗯𝗽
+                  Term
+                    Brackets: ⦕⦖
+                      Term
+                        Term
+                          Variable: 𝘀𝗰
     Term
-      Variable: 𝗯
+      Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
+        Term
+          Variable: 𝗮𝗮
+        Term
+          Brackets: ⧼⧽
+            Term
+              Term
+                Dyad: 𝐩𝐥𝐮𝐬
+                  Term
+                    Variable: 𝗯𝗯
+                  Term
+                    Variable: 𝗰𝗰
   END
 
 =head1 Description
@@ -1665,7 +1781,7 @@ To get:
 Parse a Unisyn expression.
 
 
-Version "20210818".
+Version "20210827".
 
 
 The following sections describe the methods in each functional area of this
@@ -1677,31 +1793,26 @@ module.  For an alphabetic listing of all methods by name see L<Index|/Index>.
 
 Create a Unisyn parse of a utf8 string.
 
-=head2 create($address, $size)
+=head2 create($address)
 
 Create a new unisyn parse from a utf8 string
 
      Parameter  Description
   1  $address   Address of utf8 source string to parse as a variable
-  2  $size      Length of string as a variable
 
 B<Example:>
 
 
-    my $address = Rutf8 $Lex->{sampleText}{vav};                                  # Source in utf8
-    my $size    = StringLength V(string, $address);                               # Length of source
+
+    create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with  zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
 
-    my $parse   = create K(address, $address),  $size;                            # Create parse tree from source  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
-
-       $parse->print;                                                             # Print parse tree
-
-    ok Assemble(debug=>0, eq => <<END);
-  Assign
+    ok Assemble(debug => 0, eq => <<END);
+  Assign: 𝑎
     Term
-      Variable
+      Variable: 𝗮
     Term
-      Variable
+      Variable: 𝗯
   END
 
 
@@ -1715,28 +1826,26 @@ Print a parse tree
 
 =head2 print($parse)
 
-Create a parser for an expression:
+Create a parser for an expression described by variables.
 
-   𝗮 = 𝗯
+     Parameter  Description
+  1  $parse     Parse tree
 
-by coding:
+B<Example:>
 
-    my $address = Rutf8 $Lex->{sampleText}{vav};                                  # Source in utf8
-    my $size    = StringLength V(string, $address);                               # Length of source
 
-    my $parse   = create K(address, $address),  $size;                            # Create parse tree from source
 
-       $parse->print;                                                             # Print parse tree  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with  zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-Parse the B<Unisyn> expression to get:
 
-    ok Assemble(debug=>0, eq => <<END);
-    Assign
-      Term
-        Variable: 𝗮
-      Term
-        Variable: 𝗯
-    END
+    ok Assemble(debug => 0, eq => <<END);
+  Assign: 𝑎
+    Term
+      Variable: 𝗮
+    Term
+      Variable: 𝗯
+  END
+
 
 
 =head1 Hash Definitions
@@ -1755,7 +1864,7 @@ Description of parse
 =head3 Output fields
 
 
-=head4 address
+=head4 address8
 
 Address of source string as utf8
 
@@ -1771,9 +1880,21 @@ Number of failures encountered in this parse
 
 Offset to the head of the parse tree
 
-=head4 size
+=head4 size8
 
 Size of source string as utf8
+
+=head4 source32
+
+Source text as utf32
+
+=head4 sourceLength32
+
+Length of utf32 string
+
+=head4 sourceSize32
+
+Size of utf32 allocation
 
 
 
@@ -1968,6 +2089,24 @@ Parse a unisyn expression encoded as utf8 and return the parse tree.
   1  $p           Parse
   2  @parameters  Parameters
 
+=head2 printLexicalItem($parse, $source32, $offset)
+
+Print the utf8 string corresponding to a lexical item at a variable offset
+
+     Parameter  Description
+  1  $parse     Parse tree
+  2  $source32  Variable address of utf32 source representation
+  3  $offset    Variable offset to lexical item in utf32
+
+=head2 printBrackets($parse, $source32, $offset)
+
+Print the utf8 string corresponding to a lexical item at a variable offset
+
+     Parameter  Description
+  1  $parse     Parse tree
+  2  $source32  Variable address of utf32 source representation
+  3  $offset    Variable offset to lexical item in utf32
+
 =head2 T($key, $expected, %options)
 
 Test a parse.
@@ -1983,9 +2122,9 @@ Test a parse.
 
 1 L<accept_a|/accept_a> - Assign.
 
-2 L<accept_B|/accept_B> - Closing parenthesis.
+2 L<accept_b|/accept_b> - Open.
 
-3 L<accept_b|/accept_b> - Open.
+3 L<accept_B|/accept_B> - Closing parenthesis.
 
 4 L<accept_d|/accept_d> - Infix but not assign or semi-colon.
 
@@ -2031,19 +2170,23 @@ Test a parse.
 
 25 L<print|/print> - Create a parser for an expression described by variables.
 
-26 L<pushElement|/pushElement> - Push the current element on to the stack.
+26 L<printBrackets|/printBrackets> - Print the utf8 string corresponding to a lexical item at a variable offset
 
-27 L<pushEmpty|/pushEmpty> - Push the empty element on to the stack.
+27 L<printLexicalItem|/printLexicalItem> - Print the utf8 string corresponding to a lexical item at a variable offset
 
-28 L<putLexicalCode|/putLexicalCode> - Put the specified lexical code into the current character in memory.
+28 L<pushElement|/pushElement> - Push the current element on to the stack.
 
-29 L<reduce|/reduce> - Convert the longest possible expression on top of the stack into a term  at the specified priority.
+29 L<pushEmpty|/pushEmpty> - Push the empty element on to the stack.
 
-30 L<reduceMultiple|/reduceMultiple> - Reduce existing operators on the stack.
+30 L<putLexicalCode|/putLexicalCode> - Put the specified lexical code into the current character in memory.
 
-31 L<T|/T> - Test a parse.
+31 L<reduce|/reduce> - Convert the longest possible expression on top of the stack into a term  at the specified priority.
 
-32 L<testSet|/testSet> - Test a set of items, setting the Zero Flag is one matches else clear the Zero flag.
+32 L<reduceMultiple|/reduceMultiple> - Reduce existing operators on the stack.
+
+33 L<T|/T> - Test a parse.
+
+34 L<testSet|/testSet> - Test a set of items, setting the Zero Flag is one matches else clear the Zero flag.
 
 =head1 Installation
 
@@ -2096,7 +2239,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 7;
+   {plan tests => 10;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -2387,6 +2530,7 @@ Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
     Brackets: ⦉⦊
       Term
         Term
+          Dyad: 𝐩𝐥𝐮𝐬
             Term
               Brackets: ⦍⦎
                 Term
@@ -2404,18 +2548,20 @@ END
  }
 
 #latest:
-if (0) {
+if (1) {
   create (K(address, Rutf8 $Lex->{sampleText}{ws}))->print;
 
   ok Assemble(debug => 0, eq => <<END);
+Semicolon
   Term
-    Assign:   𝑎𝑠𝑠𝑖𝑔𝑛
+    Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
       Term
         Variable: 𝗮
       Term
         Brackets: ⦉⦊
           Term
             Term
+              Dyad: 𝐩𝐥𝐮𝐬
                 Term
                   Brackets: ⦍⦎
                     Term
@@ -2430,21 +2576,68 @@ if (0) {
                       Term
                         Variable: 𝘀𝗰
   Term
-    Assign:   𝑎𝑠𝑠𝑖𝑔𝑛
+    Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
       Term
         Variable: 𝗮𝗮
       Term
+        Brackets: ⧼⧽
           Term
-            Variable:
-          Term
-            Variable: 𝗰𝗰
+            Term
+              Dyad: 𝐩𝐥𝐮𝐬
+                Term
+                  Variable: 𝗯𝗯
+                Term
+                  Variable: 𝗰𝗰
 END
  }
 
-#latest:
-ok T(q(brackets), <<END) if 0;
-ParseUtf8
+#latest:;
+ok T(q(s), <<END, comments=>10, print=>1);
+Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0008
+  0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+  0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0098 0000 0009   0000 0018 0000 0009   0000 0001 0000 0008   0000 0003 0000 0009
+  0000 0158 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+    index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
+    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0008
+    index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0018 subTree
+    index: 0000 0000 0000 0006   key: 0000 0000 0000 0006   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0098 subTree
+  Tree at:  0000 0000 0000 0018  length: 0000 0000 0000 0004
+    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0001 0000 0009
+    0000 0058 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+      index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+      index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0006
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0000
+  end
+  Tree at:  0000 0000 0000 0098  length: 0000 0000 0000 0004
+    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0002 0000 0006   0000 0001 0000 0009
+    0000 00D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+      index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+      index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0006
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0002
+  end
+end
 END
+
+#latest:
+if (1) {
+  create (K(address, Rutf8 $Lex->{sampleText}{s}))->print;
+
+  ok Assemble(debug => 0, eq => <<END);
+Semicolon
+  Term
+    Variable: 𝗮
+  Term
+    Variable: 𝗯
+END
+ }
 
 #latest:
 ok T(q(brackets), <<END) if 0;
