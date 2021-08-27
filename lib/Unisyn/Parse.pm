@@ -137,8 +137,8 @@ sub checkStackHas($)                                                            
 sub pushElement()                                                               #P Push the current element on to the stack.
  {Push $element;
   if ($debug)
-   {PrintOutStringNL "Push Element:";
-    PrintOutRegisterInHex $element;
+   {PrintErrStringNL "Push Element:";
+    PrintErrRegisterInHex $element;
    }
  }
 
@@ -148,7 +148,7 @@ sub pushEmpty()                                                                 
   Or   $w1, $empty;
   Push $w1;
   if ($debug)
-   {PrintOutStringNL "Push Empty";
+   {PrintErrStringNL "Push Empty";
    }
  }
 
@@ -170,7 +170,7 @@ sub lexicalNumberFromLetter($)                                                  
 
 sub new($$)                                                                     #P Create a new term in the parse tree rooted on the stack.
  {my ($depth, $description) = @_;                                               # Stack depth to be converted, text reason why we are creating a new term
-  PrintOutStringNL "New: $description" if $debug;
+  PrintErrStringNL "New: $description" if $debug;
 
   $arena->bs->getReg($arenaReg);                                                # Address arena
   my $t = $arena->CreateTree;                                                   # Create a tree in the arena to hold the details of the lexical elements on the stack
@@ -181,7 +181,7 @@ sub new($$)                                                                     
   for my $i(1..$depth)                                                          # Each term,
    {my $j = $depth + 1 - $i;
     Pop $w1;
-    PrintOutRegisterInHex $w1 if $debug;
+    PrintErrRegisterInHex $w1 if $debug;
     $d->getReg($w1);
     $t->insert(      V(key, 2 * $j    ), $d);                                   # The lexical type of each operand on the even keys below 16- which actually only takes 4 bits so this could be improved on.
 
@@ -254,8 +254,8 @@ sub reduce($)                                                                   
     Mov $r, "[rsp+".(0*$ses)."]";
 
     if ($debug)
-     {PrintOutStringNL "Reduce 3:";
-      PrintOutRegisterInHex $l, $d, $r;
+     {PrintErrStringNL "Reduce 3:";
+      PrintErrRegisterInHex $l, $d, $r;
      }
 
     testSet("t",  $l);                                                          # Parse out infix operator expression
@@ -287,7 +287,7 @@ sub reduce($)                                                                   
          {Add rsp, $ses;
           new(1, "Bracketed term");
           new(2, "Brackets for term");
-          PrintOutStringNL "Reduce by ( term )" if $debug;
+          PrintErrStringNL "Reduce by ( term )" if $debug;
           Jmp $success;
          };
        };
@@ -301,8 +301,8 @@ sub reduce($)                                                                   
    {my ($l, $r) = ($w1, $w2);
 
     if ($debug)
-     {PrintOutStringNL "Reduce 2:";
-      PrintOutRegisterInHex $l, $r;
+     {PrintErrStringNL "Reduce 2:";
+      PrintErrRegisterInHex $l, $r;
      }
 
 #   KeepFree $l, $r;                                                            # Why ?
@@ -328,7 +328,7 @@ sub reduce($)                                                                   
       Then
        {Add rsp, 2 * $ses;                                                      # Pop expression
         Push $r;
-        PrintOutStringNL "Reduce by ;)" if $debug;
+        PrintErrStringNL "Reduce by ;)" if $debug;
         Jmp $success;
        };
      };
@@ -366,19 +366,19 @@ sub reduceMultiple($)                                                           
 sub accept_a()                                                                  #P Assign.
  {checkSet("t");
   reduceMultiple 2;
-  PrintOutStringNL "accept a" if $debug;
+  PrintErrStringNL "accept a" if $debug;
   pushElement;
  }
 
 sub accept_b                                                                    #P Open.
  {checkSet("abdps");
-  PrintOutStringNL "accept b" if $debug;
+  PrintErrStringNL "accept b" if $debug;
   pushElement;
  }
 
 sub accept_B                                                                    #P Closing parenthesis.
  {checkSet("bst");
-  PrintOutStringNL "accept B" if $debug;
+  PrintErrStringNL "accept B" if $debug;
   reduceMultiple 1;
   pushElement;
   reduceMultiple 1;
@@ -387,19 +387,19 @@ sub accept_B                                                                    
 
 sub accept_d                                                                    #P Infix but not assign or semi-colon.
  {checkSet("t");
-  PrintOutStringNL "accept d" if $debug;
+  PrintErrStringNL "accept d" if $debug;
   pushElement;
  }
 
 sub accept_p                                                                    #P Prefix.
  {checkSet("abdps");
-  PrintOutStringNL "accept p" if $debug;
+  PrintErrStringNL "accept p" if $debug;
   pushElement;
  }
 
 sub accept_q                                                                    #P Post fix.
  {checkSet("t");
-  PrintOutStringNL "accept q" if $debug;
+  PrintErrStringNL "accept q" if $debug;
   IfEq                                                                          # Post fix operator applied to a term
   Then
    {Pop $w1;
@@ -411,7 +411,7 @@ sub accept_q                                                                    
 
 sub accept_s                                                                    #P Semi colon.
  {checkSet("bst");
-  PrintOutStringNL "accept s" if $debug;
+  PrintErrStringNL "accept s" if $debug;
   Mov $w1, "[rsp]";
   testSet("s",  $w1);
   IfEq                                                                          # Insert an empty element between two consecutive semicolons
@@ -424,7 +424,7 @@ sub accept_s                                                                    
 
 sub accept_v                                                                    #P Variable.
   {checkSet("abdps");
-   PrintOutStringNL "accept v" if $debug;
+   PrintErrStringNL "accept v" if $debug;
    pushElement;
    new(1, "Variable");
    V(count,99)->for(sub                                                         # Reduce prefix operators
@@ -481,7 +481,7 @@ END
    {my ($start, $end, $next) = @_;                                              # Start and end of the classification loop
     loadCurrentChar;                                                            # Load current character
 
-    PrintOutRegisterInHex $element if $debug;
+    PrintErrRegisterInHex $element if $debug;
 
     Cmp $eb, $WhiteSpace;
     Je $next;                                                                   # Ignore white space
@@ -951,7 +951,7 @@ sub parseUtf8($@)                                                               
   my $s = Subroutine
    {my ($p) = @_;                                                               # Parameters
 
-    PrintOutStringNL "ParseUtf8" if $debug;
+    PrintErrStringNL "ParseUtf8" if $debug;
 
     PushR $arenaReg; PushZmm 0..1;                                              # Used to hold arena and classifiers
 
@@ -964,7 +964,7 @@ sub parseUtf8($@)                                                               
                     count => $sourceLength32;
 
     if ($debug)
-     {PrintOutStringNL "After conversion from utf8 to utf32";
+     {PrintErrStringNL "After conversion from utf8 to utf32";
       $sourceSize32   ->outNL("Output Length: ");                               # Write output length
       PrintUtf32($sourceLength32, $source32);                                   # Print utf32
      }
@@ -974,7 +974,7 @@ sub parseUtf8($@)                                                               
 
     ClassifyWithInRangeAndSaveOffset address=>$source32, size=>$sourceLength32; # Alphabetic classification
     if ($debug)
-     {PrintOutStringNL "After classification into alphabet ranges";
+     {PrintErrStringNL "After classification into alphabet ranges";
       PrintUtf32($sourceLength32, $source32);                                   # Print classified utf32
      }
 
@@ -983,33 +983,33 @@ sub parseUtf8($@)                                                               
 
     ClassifyWithInRange address=>$source32, size=>$sourceLength32;              # Bracket classification
     if ($debug)
-     {PrintOutStringNL "After classification into brackets";
+     {PrintErrStringNL "After classification into brackets";
       PrintUtf32($sourceLength32, $source32);                                   # Print classified brackets
      }
 
     my $opens = V(opens, -1);
     MatchBrackets address=>$source32, size=>$sourceLength32, $opens, $$p{fail}; # Match brackets
     if ($debug)
-     {PrintOutStringNL "After bracket matching";
+     {PrintErrStringNL "After bracket matching";
       PrintUtf32($sourceLength32, $source32);                                   # Print matched brackets
      }
 
     ClassifyWhiteSpace address=>$source32, size=>$sourceLength32;               # Classify white space
     if ($debug)
-     {PrintOutStringNL "After white space classification";
+     {PrintErrStringNL "After white space classification";
       PrintUtf32($sourceLength32, $source32);
      }
 
     ClassifyNewLines address=>$source32, size=>$sourceLength32;                 # Classify new lines
     if ($debug)
-     {PrintOutStringNL "After classifying new lines";
+     {PrintErrStringNL "After classifying new lines";
       PrintUtf32($sourceLength32, $source32);
      }
 
     $$p{arena}->setReg($arenaReg);                                              # Rather than passing the arena as a parameter to all the parsing routines we put it in rax and access it from there when needed
     parseExpression source=>$source32, size=>$sourceLength32, $$p{parse};
 
-    $$p{parse}->outNL if $debug;
+    $$p{parse}->errNL if $debug;
 
     PopZmm; PopR;
    } [qw(arena address size parse fail source32 sourceSize32 sourceLength32)],
@@ -1531,6 +1531,17 @@ sub lexicalData {do {
                           WhiteSpace       => bless({ letter => "W", like => undef, name => "WhiteSpace", number => 11 }, "Unisyn::Parse::Lexical::Constant"),
                         }, "Unisyn::Parse::Lexicals"),
     sampleLexicals   => {
+                          A => [
+                            100663296,
+                            83886080,
+                            33554497,
+                            33554464,
+                            33554497,
+                            33554464,
+                            33554464,
+                            33554464,
+                            33554464,
+                          ],
                           brackets => [
                             100663296,
                             83886080,
@@ -1648,11 +1659,12 @@ sub lexicalData {do {
                           ],
                         },
     sampleText       => {
+                          A => "\x{1D5EE}\x{1D5EE}\x{1D452}\x{1D45E}\x{1D462}\x{1D44E}\x{1D459}\x{1D460}abc 123    ",
                           brackets => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}",
                           bvB => "\x{2329}\x{1D5EE}\x{1D5EF}\x{1D5F0}\x{232A}",
                           nosemi => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}",
                           s => "\x{1D5EE}\x{27E2}\x{1D5EF}",
-                          s1 => "\x{1D5EE}\x{1D44E}\n  A\n   ",
+                          s1 => "\x{1D5EE}\x{1D44E}\n  \n   ",
                           v => "\x{1D5EE}",
                           vav => "\x{1D5EE}\x{1D44E}\x{1D5EF}",
                           vavav => "\x{1D5EE}\x{1D44E}\x{1D5EF}\x{1D44E}\x{1D5F0}",
@@ -1660,7 +1672,7 @@ sub lexicalData {do {
                           vnv => "\x{1D5EE}\n\x{1D5EF}",
                           vnvs => "\x{1D5EE}\n\x{1D5EF}    ",
                           ws => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}\x{1D5EE}\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{276C}\x{1D5EF}\x{1D5EF}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F0}\x{1D5F0}\x{276D}\x{27E2}",
-                          wsa => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}\x{1D5EE}\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}A\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F0}\x{1D5F0}\x{27E2}",
+                          wsa => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}\x{1D5EE}\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}some--ascii--text\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F0}\x{1D5F0}\x{27E2}",
                         },
     semiColon        => "\x{27E2}",
     separator        => "\x{205F}",
@@ -1803,10 +1815,10 @@ Create a new unisyn parse from a utf8 string.
 B<Example:>
 
 
-  
+
     create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with  zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-  
+
     ok Assemble(debug => 0, eq => <<END);
   Assign: 𝑎
     Term
@@ -1814,7 +1826,7 @@ B<Example:>
     Term
       Variable: 𝗯
   END
-  
+
 
 =head1 Parse
 
@@ -1834,10 +1846,10 @@ Create a parser for an expression described by variables.
 B<Example:>
 
 
-  
+
     create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with  zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-  
+
     ok Assemble(debug => 0, eq => <<END);
   Assign: 𝑎
     Term
@@ -1845,7 +1857,7 @@ B<Example:>
     Term
       Variable: 𝗯
   END
-  
+
 
 
 =head1 Hash Definitions
@@ -2239,7 +2251,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 10;
+   {plan tests => 12;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -2262,7 +2274,7 @@ sub T($$%)                                                                      
 
   my $p = create V(address, $address);
 
-  if ($options{print})                                                          # Print the parse tree if requested
+  if (1)                                                                        # Print the parse tree if requested
    {my $t = $arena->DescribeTree;
     $t->first->copy($p->parse);
     $t->dump;
@@ -2272,7 +2284,7 @@ sub T($$%)                                                                      
  }
 
 #latest:
-ok T(q(brackets), <<END, comments=>10, print=>1, debug => 0);
+ok T(q(brackets), <<END, comments=>10, debug => 0);
 Tree at:  0000 0000 0000 0618  length: 0000 0000 0000 0008
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0598 0000 0009   0000 0018 0000 0009   0000 0001 0000 0005   0000 0003 0000 0009
@@ -2409,7 +2421,7 @@ end
 END
 
 #latest:
-ok T(q(vav), <<END, comments=>10, print=>1);
+ok T(q(vav), <<END, comments=>10);
 Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0008
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0098 0000 0009   0000 0018 0000 0009   0000 0001 0000 0005   0000 0003 0000 0009
@@ -2474,7 +2486,7 @@ END
  }
 
 #latest:
-ok T(q(bvB), <<END, comments=>10, print=>1);
+ok T(q(bvB), <<END, comments=>10);
 Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0006
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0098 0000 0009   0000 0000 0000 0000   0000 0002 0000 0009
@@ -2592,7 +2604,7 @@ END
  }
 
 #latest:;
-ok T(q(s), <<END, comments=>10, print=>1);
+ok T(q(s), <<END, comments=>10);
 Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0008
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0098 0000 0009   0000 0018 0000 0009   0000 0001 0000 0008   0000 0003 0000 0009
@@ -2640,10 +2652,52 @@ END
  }
 
 #latest:
-ok T(q(brackets), <<END) if 0;
-ParseUtf8
+ok T(q(A), <<END);
+Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0008
+  0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+  0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0098 0000 0009   0000 0018 0000 0009   0000 0002 0000 0005   0000 0003 0000 0009
+  0000 0158 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+    index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
+    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0005
+    index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0002
+    index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0018 subTree
+    index: 0000 0000 0000 0006   key: 0000 0000 0000 0006   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0098 subTree
+  Tree at:  0000 0000 0000 0018  length: 0000 0000 0000 0004
+    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0001 0000 0009
+    0000 0058 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+      index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+      index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0006
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0000
+  end
+  Tree at:  0000 0000 0000 0098  length: 0000 0000 0000 0004
+    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0008 0000 0006   0000 0001 0000 0009
+    0000 00D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+      index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+      index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0006
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0008
+  end
+end
 END
 
+#latest:
+if (1) {
+  create (K(address, Rutf8 $Lex->{sampleText}{A}))->print;
+
+  ok Assemble(debug => 0, eq => <<END);
+Assign: 𝑒𝑞𝑢𝑎𝑙𝑠
+  Term
+    Variable: 𝗮𝗮
+  Term
+    Variable: abc 123
+END
+ }
 
 unlink $_ for qw(hash print2 sde-log.txt sde-ptr-check.out.txt z.txt);          # Remove incidental files
 
