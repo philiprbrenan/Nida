@@ -442,6 +442,10 @@ translateSomeText 'v', <<END;                                                   
 va
 END
 
+translateSomeText 's', <<END;
+va s vb
+END
+
 translateSomeText 'vav', <<END;
 va aa vb
 END
@@ -455,6 +459,11 @@ b2 vabc B2
 END
 
 translateSomeText 'ws', <<END;
+va aassign b1 b2 b3 vbp B3 B2 dplus b4 vsc B4 B1 s
+vaa aassign b5 vbb dplus vcc B5 s
+END
+
+translateSomeText 'wsa', <<END;
 va aassign b1 b2 b3 vbp B3 B2 dplus b4 vsc B4 B1 s
 vaa aassign
   Asome--ascii--text dplus
