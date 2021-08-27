@@ -1038,7 +1038,6 @@ sub printLexicalItem($$$)                                                       
     $$p{source32}->setReg(r14);
     $$p{offset}->setReg(r15);
     Vmovdqu8 zmm0, "[r14+4*r15]";
-
     Pextrw rax,  xmm0, 1;                                                       # Extract lexical type of first element
     Vpbroadcastw zmm1, ax;                                                      # Broadcast
     Vpcmpeqw k0, zmm0, zmm1;                                                    # Check extent of first lexical item up to 16
@@ -1060,8 +1059,8 @@ sub printLexicalItem($$$)                                                       
     Cmp rax, $variable;                                                         # Test for variable
     IfEq
     Then
-     {my $a = Rutf8 "\x{1D5D4}\x{1D5D5}\x{1D5D6}\x{1D5D7}\x{1D5D8}\x{1D5D9}\x{1D5DA}\x{1D5DB}\x{1D5DC}\x{1D5DD}\x{1D5DE}\x{1D5DF}\x{1D5E0}\x{1D5E1}\x{1D5E2}\x{1D5E3}\x{1D5E4}\x{1D5E5}\x{1D5E6}\x{1D5E7}\x{1D5E8}\x{1D5E9}\x{1D5EA}\x{1D5EB}\x{1D5EC}\x{1D5ED}\x{1D5EE}\x{1D5EF}\x{1D5F0}\x{1D5F1}\x{1D5F2}\x{1D5F3}\x{1D5F4}\x{1D5F5}\x{1D5F6}\x{1D5F7}\x{1D5F8}\x{1D5F9}\x{1D5FA}\x{1D5FB}\x{1D5FC}\x{1D5FD}\x{1D5FE}\x{1D5FF}\x{1D600}\x{1D601}\x{1D602}\x{1D603}\x{1D604}\x{1D605}\x{1D606}\x{1D607}\x{1D756}\x{1D757}\x{1D758}\x{1D759}\x{1D75A}\x{1D75B}\x{1D75C}\x{1D75D}\x{1D75E}\x{1D75F}\x{1D760}\x{1D761}\x{1D762}\x{1D763}\x{1D764}\x{1D765}\x{1D766}\x{1D767}\x{1D768}\x{1D769}\x{1D76A}\x{1D76B}\x{1D76C}\x{1D76D}\x{1D76E}\x{1D76F}\x{1D770}\x{1D771}\x{1D772}\x{1D773}\x{1D774}\x{1D775}\x{1D776}\x{1D777}\x{1D778}\x{1D779}\x{1D77A}\x{1D77B}\x{1D77C}\x{1D77D}\x{1D77E}\x{1D77F}\x{1D780}\x{1D781}\x{1D782}\x{1D783}\x{1D784}\x{1D785}\x{1D786}\x{1D787}\x{1D788}\x{1D789}\x{1D78A}\x{1D78B}\x{1D78C}\x{1D78D}\x{1D78E}\x{1D78F}";
-      PushR zmm1;
+     {my $a = Rutf8 $Lex->{alphabets}{$Lex->{lexicalAlpha}{variable}[0]};
+      PushR zmm1;                                                               # Stack zmm1 for ready access
       V(loop)->getReg(r14)->for(sub                                             # Write each letter out from its position on the stack
        {my ($index, $start, $next, $end) = @_;                                  # Execute body
         $index->setReg(r14);                                                    # Index stack
@@ -1069,12 +1068,9 @@ sub printLexicalItem($$$)                                                       
         Mov r15b, "[rsp+4*r14]";                                                # Load alphabet offset from stack
         Shl r15, 2;                                                             # Each letter is 4 bytes wide in utf8
         Mov r14, $a;                                                            # Alphabet address
-        Mov r14d, "[r14+r15]";                                                  # Alphabet letter as utf8
-        PushR r14;                                                              # utf8 is on the stack and it is 4 bytes wide
-        Mov rax, rsp;
+        Lea rax, "[r14+r15]";                                                   # Address alphabet letter as utf8
         Mov rdi, 4;
         PrintOutMemory;                                                         # Print letter from stack
-        PopR;
        });
       Jmp $success;
      };
@@ -1082,29 +1078,59 @@ sub printLexicalItem($$$)                                                       
     Cmp rax, $assign;                                                           # Test for operator
     IfEq
     Then
-     {my $va = Rutf8 "\x{1D434}\x{1D435}\x{1D436}\x{1D437}\x{1D438}\x{1D439}\x{1D43A}\x{1D43B}\x{1D43C}\x{1D43D}\x{1D43E}\x{1D43F}\x{1D440}\x{1D441}\x{1D442}\x{1D443}\x{1D444}\x{1D445}\x{1D446}\x{1D447}\x{1D448}\x{1D449}\x{1D44A}\x{1D44B}\x{1D44C}\x{1D44D}\x{1D44E}\x{1D44F}\x{1D450}\x{1D451}\x{1D452}\x{1D453}\x{1D454}\x{1D456}\x{1D457}\x{1D458}\x{1D459}\x{1D45A}\x{1D45B}\x{1D45C}\x{1D45D}\x{1D45E}\x{1D45F}\x{1D460}\x{1D461}\x{1D462}\x{1D463}\x{1D464}\x{1D465}\x{1D466}\x{1D467}\x{1D6E2}\x{1D6E3}\x{1D6E4}\x{1D6E5}\x{1D6E6}\x{1D6E7}\x{1D6E8}\x{1D6E9}\x{1D6EA}\x{1D6EB}\x{1D6EC}\x{1D6ED}\x{1D6EE}\x{1D6EF}\x{1D6F0}\x{1D6F1}\x{1D6F2}\x{1D6F3}\x{1D6F4}\x{1D6F5}\x{1D6F6}\x{1D6F7}\x{1D6F8}\x{1D6F9}\x{1D6FA}\x{1D6FB}\x{1D6FC}\x{1D6FD}\x{1D6FE}\x{1D6FF}\x{1D700}\x{1D701}\x{1D702}\x{1D703}\x{1D704}\x{1D705}\x{1D706}\x{1D707}\x{1D708}\x{1D709}\x{1D70A}\x{1D70B}\x{1D70C}\x{1D70D}\x{1D70E}\x{1D70F}\x{1D710}\x{1D711}\x{1D712}\x{1D713}\x{1D714}\x{1D715}\x{1D716}\x{1D717}\x{1D718}\x{1D719}\x{1D71A}\x{1D71B}";
-      PushR zmm1;
+     {my $b = $Lex->{alphabetsOrdered}{assign};
+      my @b = map {convertUtf32ToUtf8LE $_} @$b;
+      my $a = Rd @b;                                                            #
+      PushR zmm1;                                                               # Stack zmm1 for ready access
       V(loop)->getReg(r14)->for(sub                                             # Write each letter out from its position on the stack
        {my ($index, $start, $next, $end) = @_;                                  # Execute body
         $index->setReg(r14);                                                    # Index stack
         ClearRegisters r15;
         Mov r15b, "[rsp+4*r14]";                                                # Load alphabet offset from stack
-        Shl r15, 2;                                                             # Each letter is 4 bytes wide in utf8
-        Mov r14, $va;                                                           # Alphabet address
-        Mov r14d, "[r14+r15]";                                                  # Alphabet letter as utf8
-        PushR r14;                                                              # utf8 is on the stack and it is 4 bytes wide
-        Mov rax, rsp;
-        Mov rdi, 4;
+        Mov rdi, 4;                                                             # Each letter is 4 bytes wide in utf8
+        Shl r15, 2;                                                             # Each utf8 representation of a code point is held in a 4 byte block
+        IfZ Then {Dec rdi};                                                     # Planck's constant is h, it is first, it is 3 bytes in utf8
+        Mov r14, $a;                                                            # Alphabet address
+        Lea rax, "[r14+r15]";                                                   # Alphabet letter as utf8
         PrintOutMemory;                                                         # Print letter from stack
-        PopR;
-        Jmp $success;
        });
+      Jmp $success;
      };
 
     SetLabel $success;
     PopR;
    } [qw(offset source32)],
   name => q(Unisyn::Parse::printLexicalItem);
+
+  $s->call(offset => $offset, source32 => $source32);
+ }
+
+sub printBrackets($$$)                                                          # Print the utf8 string corresponding to a lexical item at a variable offset
+ {my ($parse, $source32, $offset) = @_;                                         # Parse tree, variable address of utf32 source representation, variable offset to lexical item in utf32
+  my $t = $parse->arena->DescribeTree;
+
+  my $s = Subroutine
+   {my ($p, $s) = @_;                                                           # Parameters
+    PushR rax, rdi, r14, r15;
+
+    $$p{source32}->setReg(r14);
+    $$p{offset}  ->setReg(r15);
+    Mov r15b, "[r14+4*r15+3]";                                                  # Bracket number
+    my $o = $Lex->{bracketsOpen};                                               # Opening brackets
+    my $c = $Lex->{bracketsClose};                                              # Closing brackets
+    my $O = Rutf8 map {($_, chr(0))} @$o;                                       # Brackets in 3 bytes of utf8 each, with each bracket followed by a zero to make 4 bytes which is more easily addressed
+    my $C = Rutf8 map {($_, chr(0))} @$c;                                       # Brackets in 3 bytes of utf8 each, with each bracket followed by a zero to make 4 bytes which is more easily addressed
+    Mov r14, $O;                                                                # Address open bracket
+    Lea rax, "[r14+4*r15]";
+    Mov rdi, 3;                                                                 # Opening brackets occupy 3 bytes
+    PrintOutMemory;                                                             # Print letter from stack
+    Mov r14, $C;                                                                # Address close bracket
+    Lea rax, "[r14+4*r15]";                                                     # Closing brackets occupy 3 bytes
+    Mov rdi, 3;
+    PrintOutMemory;                                                             # Print letter from stack
+    PopR;
+   } [qw(offset source32)],
+  name => q(Unisyn::Parse::printBrackets);
 
   $s->call(offset => $offset, source32 => $source32);
  }
@@ -1185,6 +1211,14 @@ sub print($)                                                                    
         PrintOutNL;
        });
 
+      If ($key == $OpenBracket,                                                 # Open brackets
+      Then
+       {$b->call;
+        PrintOutString "Brackets: ";
+        $parse->printBrackets($$p{source32}, $data);                            # Print the variable name
+        PrintOutNL;
+       });
+
       If ($index == 0,                                                          # Operator followed by indented operands
       Then
        {Inc $depthR;
@@ -1204,7 +1238,7 @@ sub print($)                                                                    
 #d
 sub lexicalData {do {
   my $a = bless({
-    alphabetRanges   => 13,
+    alphabetRanges   => 14,
     alphabets        => {
                           "circledLatinLetter"               => "\x{24B6}\x{24B7}\x{24B8}\x{24B9}\x{24BA}\x{24BB}\x{24BC}\x{24BD}\x{24BE}\x{24BF}\x{24C0}\x{24C1}\x{24C2}\x{24C3}\x{24C4}\x{24C5}\x{24C6}\x{24C7}\x{24C8}\x{24C9}\x{24CA}\x{24CB}\x{24CC}\x{24CD}\x{24CE}\x{24CF}\x{24D0}\x{24D1}\x{24D2}\x{24D3}\x{24D4}\x{24D5}\x{24D6}\x{24D7}\x{24D8}\x{24D9}\x{24DA}\x{24DB}\x{24DC}\x{24DD}\x{24DE}\x{24DF}\x{24E0}\x{24E1}\x{24E2}\x{24E3}\x{24E4}\x{24E5}\x{24E6}\x{24E7}\x{24E8}\x{24E9}",
                           "mathematicalBold"                 => "\x{1D400}\x{1D401}\x{1D402}\x{1D403}\x{1D404}\x{1D405}\x{1D406}\x{1D407}\x{1D408}\x{1D409}\x{1D40A}\x{1D40B}\x{1D40C}\x{1D40D}\x{1D40E}\x{1D40F}\x{1D410}\x{1D411}\x{1D412}\x{1D413}\x{1D414}\x{1D415}\x{1D416}\x{1D417}\x{1D418}\x{1D419}\x{1D41A}\x{1D41B}\x{1D41C}\x{1D41D}\x{1D41E}\x{1D41F}\x{1D420}\x{1D421}\x{1D422}\x{1D423}\x{1D424}\x{1D425}\x{1D426}\x{1D427}\x{1D428}\x{1D429}\x{1D42A}\x{1D42B}\x{1D42C}\x{1D42D}\x{1D42E}\x{1D42F}\x{1D430}\x{1D431}\x{1D432}\x{1D433}\x{1D6A8}\x{1D6A9}\x{1D6AA}\x{1D6AB}\x{1D6AC}\x{1D6AD}\x{1D6AE}\x{1D6AF}\x{1D6B0}\x{1D6B1}\x{1D6B2}\x{1D6B3}\x{1D6B4}\x{1D6B5}\x{1D6B6}\x{1D6B7}\x{1D6B8}\x{1D6B9}\x{1D6BA}\x{1D6BB}\x{1D6BC}\x{1D6BD}\x{1D6BE}\x{1D6BF}\x{1D6C0}\x{1D6C1}\x{1D6C2}\x{1D6C3}\x{1D6C4}\x{1D6C5}\x{1D6C6}\x{1D6C7}\x{1D6C8}\x{1D6C9}\x{1D6CA}\x{1D6CB}\x{1D6CC}\x{1D6CD}\x{1D6CE}\x{1D6CF}\x{1D6D0}\x{1D6D1}\x{1D6D2}\x{1D6D3}\x{1D6D4}\x{1D6D5}\x{1D6D6}\x{1D6D7}\x{1D6D8}\x{1D6D9}\x{1D6DA}\x{1D6DB}\x{1D6DC}\x{1D6DD}\x{1D6DE}\x{1D6DF}\x{1D6E0}\x{1D6E1}",
@@ -1222,8 +1256,18 @@ sub lexicalData {do {
                           "mathematicalScript"               => "\x{1D49C}\x{1D49E}\x{1D49F}\x{1D4A2}\x{1D4A5}\x{1D4A6}\x{1D4A9}\x{1D4AA}\x{1D4AB}\x{1D4AC}\x{1D4AE}\x{1D4AF}\x{1D4B0}\x{1D4B1}\x{1D4B2}\x{1D4B3}\x{1D4B4}\x{1D4B5}\x{1D4B6}\x{1D4B7}\x{1D4B8}\x{1D4B9}\x{1D4BB}\x{1D4BD}\x{1D4BE}\x{1D4BF}\x{1D4C0}\x{1D4C1}\x{1D4C2}\x{1D4C3}\x{1D4C5}\x{1D4C6}\x{1D4C7}\x{1D4C8}\x{1D4C9}\x{1D4CA}\x{1D4CB}\x{1D4CC}\x{1D4CD}\x{1D4CE}\x{1D4CF}",
                           "negativeCircledLatinLetter"       => "\x{1F150}\x{1F151}\x{1F152}\x{1F153}\x{1F154}\x{1F155}\x{1F156}\x{1F157}\x{1F158}\x{1F159}\x{1F15A}\x{1F15B}\x{1F15C}\x{1F15D}\x{1F15E}\x{1F15F}\x{1F160}\x{1F161}\x{1F162}\x{1F163}\x{1F164}\x{1F165}\x{1F166}\x{1F167}\x{1F168}\x{1F169}",
                           "negativeSquaredLatinLetter"       => "\x{1F170}\x{1F171}\x{1F172}\x{1F173}\x{1F174}\x{1F175}\x{1F176}\x{1F177}\x{1F178}\x{1F179}\x{1F17A}\x{1F17B}\x{1F17C}\x{1F17D}\x{1F17E}\x{1F17F}\x{1F180}\x{1F181}\x{1F182}\x{1F183}\x{1F184}\x{1F185}\x{1F186}\x{1F187}\x{1F188}\x{1F189}",
+                          "planck"                           => "\x{210E}",
                           "semiColon"                        => "\x{27E2}",
                           "squaredLatinLetter"               => "\x{1F130}\x{1F131}\x{1F132}\x{1F133}\x{1F134}\x{1F135}\x{1F136}\x{1F137}\x{1F138}\x{1F139}\x{1F13A}\x{1F13B}\x{1F13C}\x{1F13D}\x{1F13E}\x{1F13F}\x{1F140}\x{1F141}\x{1F142}\x{1F143}\x{1F144}\x{1F145}\x{1F146}\x{1F147}\x{1F148}\x{1F149}\x{1F1A5}",
+                        },
+    alphabetsOrdered => {
+                          Ascii     => [0 .. 127, 127312 .. 127337],
+                          assign    => [8462, 119860 .. 119911, 120546 .. 120603],
+                          dyad      => [119808 .. 119859, 120488 .. 120545],
+                          prefix    => [119912 .. 119963, 120604 .. 120661],
+                          semiColon => [10210],
+                          suffix    => [120380 .. 120431, 120720 .. 120777],
+                          variable  => [120276 .. 120327, 120662 .. 120719],
                         },
     brackets         => 16,
     bracketsBase     => 16,
@@ -1359,7 +1403,7 @@ sub lexicalData {do {
                                               "squaredLatinLetter",
                                             ],
                           "Ascii"        => ["negativeCircledLatinLetter"],
-                          "assign"       => ["mathematicalItalic"],
+                          "assign"       => ["mathematicalItalic", "planck"],
                           "CloseBracket" => [],
                           "dyad"         => ["mathematicalBold"],
                           "OpenBracket"  => [],
@@ -1371,24 +1415,25 @@ sub lexicalData {do {
                         },
     lexicalHigh      => [
                           127,
+                          8462,
                           10210,
                           119859,
-                          119911,
+                          16897127,
                           119963,
                           120327,
                           120431,
                           872535777,
-                          872535835,
+                          889313051,
                           872535893,
                           872535951,
                           872536009,
                           2147610985,
                           0,
                           0,
-                          0,
                         ],
     lexicalLow       => [
                           33554432,
+                          83894542,
                           134227938,
                           50451456,
                           84005940,
@@ -1401,7 +1446,6 @@ sub lexicalData {do {
                           100783958,
                           117561232,
                           33681744,
-                          0,
                           0,
                           0,
                         ],
@@ -1437,6 +1481,7 @@ sub lexicalData {do {
                             16777216,
                             134217728,
                           ],
+                          bvB => [0, 100663296, 16777216],
                           nosemi => [
                             100663296,
                             83886080,
@@ -1466,6 +1511,7 @@ sub lexicalData {do {
                           ],
                           v => [100663296],
                           vav => [100663296, 83886080, 100663296],
+                          vavav => [100663296, 83886080, 100663296, 83886080, 100663296],
                           vnsvs => [
                             100663296,
                             33554442,
@@ -1512,10 +1558,12 @@ sub lexicalData {do {
                         },
     sampleText       => {
                           brackets => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}",
+                          bvB => "\x{2329}\x{1D5EE}\x{1D5EF}\x{1D5F0}\x{232A}",
                           nosemi => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}",
                           s1 => "\x{1D5EE}\x{1D44E}\n  A\n   ",
                           v => "\x{1D5EE}",
                           vav => "\x{1D5EE}\x{1D44E}\x{1D5EF}",
+                          vavav => "\x{1D5EE}\x{1D44E}\x{1D5EF}\x{1D44E}\x{1D5F0}",
                           vnsvs => "\x{1D5EE}\x{1D5EE}\n   \x{1D5EF}\x{1D5EF}   ",
                           vnv => "\x{1D5EE}\n\x{1D5EF}",
                           vnvs => "\x{1D5EE}\n\x{1D5EF}    ",
@@ -1531,17 +1579,17 @@ sub lexicalData {do {
                                             next   => "bpv",
                                             short  => "assign",
                                           }, "Tree::Term::LexicalCode"),
-                                     B => bless({
-                                            letter => "B",
-                                            name   => "closing parenthesis",
-                                            next   => "aBdqs",
-                                            short  => "CloseBracket",
-                                          }, "Tree::Term::LexicalCode"),
                                      b => bless({
                                             letter => "b",
                                             name   => "opening parenthesis",
                                             next   => "bBpsv",
                                             short  => "OpenBracket",
+                                          }, "Tree::Term::LexicalCode"),
+                                     B => bless({
+                                            letter => "B",
+                                            name   => "closing parenthesis",
+                                            next   => "aBdqs",
+                                            short  => "CloseBracket",
                                           }, "Tree::Term::LexicalCode"),
                                      d => bless({ letter => "d", name => "dyadic operator", next => "bpv", short => "dyad" }, "Tree::Term::LexicalCode"),
                                      p => bless({ letter => "p", name => "prefix operator", next => "bpv", short => "prefix" }, "Tree::Term::LexicalCode"),
@@ -2048,7 +2096,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 3;
+   {plan tests => 7;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -2262,6 +2310,134 @@ Assign: 𝑎
     Variable: 𝗮
   Term
     Variable: 𝗯
+END
+ }
+
+#latest:
+if (1) {
+  create (K(address, Rutf8 $Lex->{sampleText}{vavav}))->print;
+
+  ok Assemble(debug => 0, eq => <<END);
+Assign: 𝑎
+  Term
+    Variable: 𝗮
+  Term
+    Assign: 𝑎
+      Term
+        Variable: 𝗯
+      Term
+        Variable: 𝗰
+END
+ }
+
+#latest:
+ok T(q(bvB), <<END, comments=>10, print=>1);
+Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0006
+  0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+  0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0098 0000 0009   0000 0000 0000 0000   0000 0002 0000 0009
+  0000 0158 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+    index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
+    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0000
+    index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0000
+    index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0098 subTree
+  Tree at:  0000 0000 0000 0098  length: 0000 0000 0000 0004
+    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0018 0000 0009   0000 0001 0000 0009
+    0000 00D8 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+      index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+      index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0009
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0018 subTree
+    Tree at:  0000 0000 0000 0018  length: 0000 0000 0000 0004
+      0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+      0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0001 0000 0006   0000 0001 0000 0009
+      0000 0058 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+        index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+        index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
+        index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0006
+        index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0001
+    end
+  end
+end
+END
+
+#latest:
+if (1) {
+  create (K(address, Rutf8 $Lex->{sampleText}{bvB}))->print;
+
+  ok Assemble(debug => 0, eq => <<END);
+Brackets: ⦍⦎
+  Term
+    Term
+      Variable: 𝗮𝗯𝗰
+END
+ }
+
+#latest:
+if (1) {
+  create (K(address, Rutf8 $Lex->{sampleText}{brackets}))->print;
+
+  ok Assemble(debug => 0, eq => <<END);
+Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
+  Term
+    Variable: 𝗮
+  Term
+    Brackets: ⦉⦊
+      Term
+        Term
+            Term
+              Brackets: ⦍⦎
+                Term
+                  Term
+                    Brackets: ⦑⦒
+                      Term
+                        Term
+                          Variable: 𝗯𝗽
+            Term
+              Brackets: ⦕⦖
+                Term
+                  Term
+                    Variable: 𝘀𝗰
+END
+ }
+
+#latest:
+if (0) {
+  create (K(address, Rutf8 $Lex->{sampleText}{ws}))->print;
+
+  ok Assemble(debug => 0, eq => <<END);
+  Term
+    Assign:   𝑎𝑠𝑠𝑖𝑔𝑛
+      Term
+        Variable: 𝗮
+      Term
+        Brackets: ⦉⦊
+          Term
+            Term
+                Term
+                  Brackets: ⦍⦎
+                    Term
+                      Term
+                        Brackets: ⦑⦒
+                          Term
+                            Term
+                              Variable: 𝗯𝗽
+                Term
+                  Brackets: ⦕⦖
+                    Term
+                      Term
+                        Variable: 𝘀𝗰
+  Term
+    Assign:   𝑎𝑠𝑠𝑖𝑔𝑛
+      Term
+        Variable: 𝗮𝗮
+      Term
+          Term
+            Variable:
+          Term
+            Variable: 𝗰𝗰
 END
  }
 
