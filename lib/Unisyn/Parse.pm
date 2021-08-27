@@ -24,18 +24,12 @@ our $debug   = 0;                                                               
 
 #D1 Create                                                                      # Create a Unisyn parse of a utf8 string.
 
-sub create($$)                                                                  # Create a new unisyn parse from a utf8 string
- {my ($address, $size) = @_;                                                    # Address of utf8 source string to parse as a variable, length of string as a variable
-  @_ == 2 or confess;
+sub create($)                                                                   # Create a new unisyn parse from a utf8 string
+ {my ($address) = @_;                                                           # Address of utf8 source string to parse as a variable, length of string as a variable
+  @_ == 1 or confess;
 
-  my $a = $arena = CreateArena;                                                 # Arena to hold parse tree - every parse tree gets its own arena so that we can free parses separately
-
-  my $fail       = V('fail');
-  my $parse      = V('parse');
-
-  $address->setReg(rax);
-  $size   ->setReg(rdi);
-  Shl rdi, 3;
+  my $a    = $arena = CreateArena;                                              # Arena to hold parse tree - every parse tree gets its own arena so that we can free parses separately
+  my $size = StringLength string => $address;                                   # Length of input utf8
 
   my $p = genHash(__PACKAGE__,                                                  # Description of parse
      arena          => $a,                                                      # Arena containing tree
@@ -44,8 +38,8 @@ sub create($$)                                                                  
      source32       => V(source32),                                             # Source text as utf32
      sourceSize32   => V(sourceSize32),                                         # Size of utf32 allocation
      sourceLength32 => V(sourceLength32),                                       # Length of utf32 string
-     parse          => $parse,                                                  # Offset to the head of the parse tree
-     fails          => $fail,                                                   # Number of failures encountered in this parse
+     parse          => V('parse'),                                              # Offset to the head of the parse tree
+     fails          => V('fail'),                                               # Number of failures encountered in this parse
    );
 
   $p->parseUtf8;                                                                # Parse utf8 source string
@@ -2075,7 +2069,7 @@ sub T($$%)                                                                      
   my $address = Rutf8 $source;
   my $size    = StringLength V(string, $address);
 
-  my $p = create V(address, $address),  $size;
+  my $p = create V(address, $address);
 
   if ($options{print})                                                          # Print the parse tree if requested
    {my $t = $arena->DescribeTree;
@@ -2260,11 +2254,8 @@ END
 
 #latest:
 if (1) {                                                                        #Tcreate #Tprint
-  my $address = Rutf8 $Lex->{sampleText}{vav};                                  # Source in utf8
-  my $size    = StringLength V(string, $address);                               # Length of source
-
-  my $parse   = create K(address, $address),  $size;                            # Create parse tree from source
-     $parse->print;                                                             # Print parse tree
+  my $p = create K(address, Rutf8 $Lex->{sampleText}{vav});                     # Create parse tree from source terminated with  zero
+     $p->print;                                                                 # Print parse tree
 
   ok Assemble(debug=>0, eq => <<END);
 Assign: 𝑎
