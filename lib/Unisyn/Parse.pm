@@ -180,28 +180,36 @@ sub new($$)                                                                     
 
   for my $i(1..$depth)                                                          # Each term,
    {my $j = $depth + 1 - $i;
-    Pop $w1;
+    Pop $w1;                                                                    # Unload stack
     PrintErrRegisterInHex $w1 if $debug;
-    $d->getReg($w1);
-    $t->insert(      V(key, 2 * $j    ), $d);                                   # The lexical type of each operand on the even keys below 16- which actually only takes 4 bits so this could be improved on.
 
     Mov $w2, $w1;
     Shr $w2, 32;                                                                # Offset in source
     $d->getReg($w2);                                                            # Offset in source in lower dword
-    Cmp $w1."b", $term;                                                         # Check whether the lexical item on the stack is a term
 
+    Cmp $w1."b", $term;                                                         # Check whether the lexical item on the stack is a term
     IfEq                                                                        # Insert a sub tree if we are inserting a term
     Then
      {$t->insertTree(V(key, 2 * $j + 1), $d);                                   # A reference to another term
      },
     Else                                                                        # Insert the offset in the utf32 source if we are not on a term
      {$t->insert    (V(key, 2 * $j + 1), $d);                                   # Offset in source
-     }
+     };
+
+    Cmp $w1."b", $variable;                                                     # Check whether the lexical item is a variable which can also represent ascii
+    IfEq                                                                        # Insert a sub tree if we are inserting a term
+    Then
+     {ClearRegisters $w1;
+      Mov $w1."b", "[$start+4*$w2+3]";
+     };
+    $d->getReg($w1);                                                            # Lexical type
+    $t->insert      (V(key, 2 * $j    ), $d);                                   # Save lexical type in parse tree
    }
+
   $t->first->setReg($w1);                                                       # Term
   Shl $w1, 32;                                                                  # Push offset to tree into the upper dword
   Or  $w1."b", $term;                                                           # Mark as a term tree
-  Push $w1;                                                                     # Place simulated term on stack
+  Push $w1;                                                                     # Place new term on stack
  }
 
 sub error($)                                                                    #P Die.
@@ -2676,11 +2684,11 @@ Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0008
   end
   Tree at:  0000 0000 0000 0098  length: 0000 0000 0000 0004
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0008 0000 0006   0000 0001 0000 0009
+    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0008 0000 0002   0000 0001 0000 0009
     0000 00D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0006
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0002
       index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0008
   end
 end
@@ -2695,7 +2703,7 @@ Assign: 𝑒𝑞𝑢𝑎𝑙𝑠
   Term
     Variable: 𝗮𝗮
   Term
-    Variable: abc 123
+    Ascii: abc 123
 END
  }
 
