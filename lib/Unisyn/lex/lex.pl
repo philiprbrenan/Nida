@@ -50,6 +50,7 @@ my $TreeTermLexicals = Tree::Term::LexicalStructure->codes;
 my $Tables = genHash("Unisyn::Parse::Lexical::Tables",                          # Tables used to parse lexical items
   alphabets        => undef,                                                    # Alphabets selected from uncode database
   alphabetRanges   => undef,                                                    # Number of alphabet ranges
+  alphabetsOrdered => undef,                                                    # Alphabets be lexical element name with each alphabet ordered by unicode point
   brackets         => undef,                                                    # Number of brackets
   bracketsBase     => 0x10,                                                     # Start numbering brackets from here
   bracketsHigh     => undef,                                                    # High zmm for closing brackets
@@ -85,7 +86,7 @@ sub alphabets                                                                   
   for my $s(@s)                                                                 # Select the brackets we want
    {my @w = split /;/, $s;
 
-# 1D49C;MATHEMATICAL SCRIPT CAPITAL A;Lu;0;L;<font> 0041;;;;N;;;;;
+# 1D49C;MATHEMATICAL SCRIPT CAPITAL A;Lu;0;L;<font> 0041;;;;N;;;;;              # Sample input
 # 1D72D;MATHEMATICAL BOLD ITALIC CAPITAL THETA SYMBOL;Lu;0;L;<font> 03F4;;;;N;;;;;
 # 1D70D;MATHEMATICAL ITALIC SMALL FINAL SIGMA;Ll;0;L;<font> 03C2;;;;N;;;;;
 
@@ -93,7 +94,8 @@ sub alphabets                                                                   
     my $C = convert $c;                                                         # Character
 
     next if     $d =~ m(DIGAMMA)i;                                              # Select family of letters
-    next unless $d =~ m(\A(Mathematical|Squared|Circled|Negative))i;            # Select family of letters
+    next if     $d =~ m(PLANCK CONSTANT OVER TWO)i;
+    next unless $d =~ m(\A(Mathematical|Squared|Circled|Negative|PLANCK CONSTANT))i;
     next unless $t =~ m(\A(L|So|Sm));                                           # Letter or other symbol
 
     my $D = $d;
@@ -112,20 +114,19 @@ sub alphabets                                                                   
   my %selected = (semiColon => $Tables->semiColon);                             # We cannot use semi colon as it is an ascii character, so we use this character instead  U+27E2
 
   for my $a(sort keys %alpha)
-   {next unless $a =~ m((CIRCLED LATIN LETTER|MATHEMATICAL BOLD|MATHEMATICAL BOLD FRAKTUR|MATHEMATICAL BOLD ITALIC|MATHEMATICAL BOLD SCRIPT|MATHEMATICAL DOUBLE-STRUCK|MATHEMATICAL FRAKTUR|MATHEMATICAL ITALIC|MATHEMATICAL MONOSPACE|MATHEMATICAL SANS-SERIF|MATHEMATICAL SANS-SERIF BOLD|MATHEMATICAL SANS-SERIF|BOLD ITALIC|MATHEMATICAL SANS-SERIF ITALIC|MATHEMATICAL SCRIPT|NEGATIVE|CIRCLED LATIN LETTER|NEGATIVE SQUARED LATIN LETTER|SQUARED LATIN LETTER))i;
+   {next unless $a =~ m((CIRCLED LATIN LETTER|MATHEMATICAL BOLD|MATHEMATICAL BOLD FRAKTUR|MATHEMATICAL BOLD ITALIC|MATHEMATICAL BOLD SCRIPT|MATHEMATICAL DOUBLE-STRUCK|MATHEMATICAL FRAKTUR|MATHEMATICAL ITALIC|MATHEMATICAL MONOSPACE|MATHEMATICAL SANS-SERIF|MATHEMATICAL SANS-SERIF BOLD|MATHEMATICAL SANS-SERIF|BOLD ITALIC|MATHEMATICAL SANS-SERIF ITALIC|MATHEMATICAL SCRIPT|NEGATIVE|CIRCLED LATIN LETTER|NEGATIVE SQUARED LATIN LETTER|SQUARED LATIN LETTER|PLANCK))i;
                                                                                 # Selected alphabets
     my @l;
     for my $l(sort keys $alpha{$a}->%*)                                         # Sort alphabet by point
      {push @l, $alpha{$a}{$l};
      }
     my $l = join '', sort @l;                                                   # Alphabet
-
-    next unless length($l) > 5;                                                 # Ignore short sets which are probably not alphabets
+    next unless length($l) > 5 or $l eq "\x{210e}";                             # Ignore short sets which are probably not alphabets except for Plancks constant
     my $A = lcfirst join '', map {ucfirst} split /\s+/, lc $a;
     $selected{$A} = $l;                                                         # Selected alphabets
    }
 
-  #lll "AAAA", dump(\%alpha);                                                   # Alphabets discovered
+  #lll "AAAA", dump(\%selected); exit;                                                   # Alphabets discovered
 
   my @range;  my @zmm;                                                          # Ranges of characters
 
@@ -135,6 +136,7 @@ sub alphabets                                                                   
        $z = q(dyad)     if $a =~ m/mathematicalBold\Z/;
        $z = q(prefix)   if $a =~ m/mathematicalBoldItalic\Z/;
        $z = q(assign)   if $a =~ m/mathematicalItalic\Z/;
+       $z = q(assign)   if $a =~ m/planck/;
        $z = q(suffix)   if $a =~ m/mathematicalSans-serifBoldItalic\Z/;
        $z = q(Ascii)    if $a =~ m/negativeCircledLatinLetter\Z/;               # Control characters as used in regular expressions and quoted strings
 
@@ -184,7 +186,7 @@ sub alphabets                                                                   
     my $nl = ord("\n");
 
 #               0               1                              2    3
-#   push @zmm, ["NewLine",      $l{NewLine},                   $nl, $nl];       # New lines are being handled after lexical pas
+#   push @zmm, ["NewLine",      $l{NewLine},                   $nl, $nl];       # New lines are being handled after lexical pass
     push @zmm, ["Ascii",        $l{Ascii},                     0,   127];
     push @zmm, ["semiColon",    $Lexicals->semiColon->number,  $s,  $s];
 #   push @zmm, ["WhiteSpace",   $Lexicals->WhiteSpace->number, $t,  $t];        # White space is being handled after the lexical pass
@@ -193,7 +195,7 @@ sub alphabets                                                                   
 
   $Tables->alphabetRanges = scalar(@zmm);                                       # Alphabet ranges
   lll "Alphabet Ranges: ",  scalar(@zmm);
-  say STDERR formatTable(\@zmm);
+  say STDERR formatTable(\@zmm, [qw(Alphabet Lex Start End)]);
 
   if (1)                                                                        # Write zmm load sequence
    {my @l; my @h; my %r;                                                        # Low, high, current start within range
@@ -215,6 +217,16 @@ sub alphabets                                                                   
    }
 
   $Tables->alphabets = \%selected;
+
+  my %a;                                                                        # Each alphabet in character order by name
+  for my $z(@zmm)
+   {my ($name, $lex, $start, $end) = @$z;                                       # Current range
+    push $a{$name}->@*, $start..$end;
+   }
+
+  lll "Alphabets Ordered:\n", dump(\%a);
+
+  $Tables->alphabetsOrdered = \%a;
  }
 
 sub brackets                                                                    # Write brackets
@@ -360,12 +372,21 @@ sub translateSomeText($$)                                                       
     my @a =   split //, $$a[1];                                                 # Alphabet to translate to
 
     for my $c(split //, substr($lexical, 1))
-     {my $i = index $normal, $c;
+     {my $i = index $normal, $c;                                                # The long struggle for mathematical italic h as used in physics.
       if ($$a[0] =~ m(\AmathematicalItalic\Z))
-       {$c eq 'h' and confess "Cannot translate 'h' to $$a[0]";
-        --$i if $c ge 'h';
+       {if ($c eq 'h')
+         {$T .= "\x{210e}";
+         }
+        elsif ($c lt 'h')
+         {$T .= $a[$i];
+         }
+        else
+         {$T .= $a[$i-1];
+         }
        }
-      $T .= $a[$i];
+      else
+       {$T .= $a[$i];
+       }
      }
    }
 
@@ -395,7 +416,7 @@ sub translateSomeText($$)                                                       
     elsif ($w =~ m(\AN)) {push @L, ($n{Ascii} << 24) + 10}
     elsif ($w =~ m(\AA)) {push @L, ($n{Ascii} << 24) + ord('A')}
    }
-
+  lll '-' x 32;
   lll "Sample text length in chars   :", sprintf("0x%x", length($T));
   lll "Sample text length in lexicals:", scalar(@L);
 
@@ -423,6 +444,14 @@ END
 
 translateSomeText 'vav', <<END;
 va aa vb
+END
+
+translateSomeText 'vavav', <<END;
+va aa vb aa vc
+END
+
+translateSomeText 'bvB', <<END;
+b2 vabc B2
 END
 
 translateSomeText 'ws', <<END;
