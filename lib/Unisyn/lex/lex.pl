@@ -1,6 +1,6 @@
 #!/usr/bin/perl -I/home/phil/perl/cpan/DataTableText/lib/  -I/home/phil/perl/cpan/TreeTerm/lib/
 #-------------------------------------------------------------------------------
-# Find all 13 Unicode Mathematical Alphabets as used by Perl Zero.
+# Find all 13 Unicode Mathematical Alphabets as used by Erl.
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2021
 #-------------------------------------------------------------------------------
 use warnings FATAL => qw(all);
