@@ -6,7 +6,7 @@
 # podDocumentation
 # Finished in 13.14s, bytes: 2,655,008, execs: 465,858
 package Unisyn::Parse;
-our $VERSION = "20210828";
+our $VERSION = "20210829";
 use warnings FATAL => qw(all);
 use strict;
 use Carp qw(confess cluck);
@@ -788,8 +788,8 @@ sub ClassifyWhiteSpace(@)                                                       
       $indexVariable->setReg($index);
       getLexicalCode;                                                           # Current lexical code
 
-      Block                                                                     # Trap space before new line and detect new line after ascii
-       {my ($start, $end) = @_;
+      AndBlock                                                                  # Trap space before new line and detect new line after ascii
+       {my ($end, $start) = @_;
         Cmp $index, 0;    Je  $end;                                             # Start beyond the first character so we can look back one character.
         Cmp $eb, $Ascii;  Jne $end;                                             # Current is ascii
 
@@ -821,8 +821,8 @@ sub ClassifyWhiteSpace(@)                                                       
          }
        };
 
-      Block                                                                     # Spaces and new lines between other ascii
-       {my ($start, $end) = @_;
+      AndBlock                                                                  # Spaces and new lines between other ascii
+       {my ($end, $start) = @_;
         Cmp $s, -1;
         IfEq                                                                    # Looking for opening ascii
         Then
@@ -868,8 +868,8 @@ sub ClassifyWhiteSpace(@)                                                       
          };
        };
 
-      Block                                                                     # Note: 's' preceding 'a' are significant
-       {my ($start, $end) = @_;
+      AndBlock                                                                  # Note: 's' preceding 'a' are significant
+       {my ($end, $start) = @_;
         Cmp $S, -1;
         IfEq                                                                    # Looking for 's'
         Then
@@ -919,8 +919,8 @@ sub ClassifyWhiteSpace(@)                                                       
       $indexVariable->setReg($index);
       getLexicalCode;                                                           # Current lexical code
 
-      Block                                                                     # Invert non significant white space
-       {my ($start, $end) = @_;
+      AndBlock                                                                  # Invert non significant white space
+       {my ($end, $start) = @_;
         Cmp $eb, $Ascii;
         Jne $end;                                                               # Ascii
 
@@ -939,8 +939,8 @@ sub ClassifyWhiteSpace(@)                                                       
          };
        };
 
-      Block                                                                     # Mark significant white space
-       {my ($start, $end) = @_;
+      AndBlock                                                                  # Mark significant white space
+       {my ($end, $start) = @_;
         Cmp $eb, $WhiteSpace; Jne $end;                                         # Not significant white space
         putLexicalCode $Ascii;                                                  # Mark as ascii
        };
@@ -1749,13 +1749,15 @@ Unisyn::Parse - Parse a Unisyn expression.
 
 =head1 Synopsis
 
-Parse the Unisyn expression:
+Parse the B<Unisyn> expression:
 
     my $expr = "𝗮𝑎𝑠𝑠𝑖𝑔𝑛⌊〈❨𝗯𝗽❩〉𝐩𝐥𝐮𝐬❪𝘀𝗰❫⌋⟢𝗮𝗮𝑎𝑠𝑠𝑖𝑔𝑛❬𝗯𝗯𝐩𝐥𝐮𝐬𝗰𝗰❭⟢";
 
-to get:
+using:
 
   create (K(address, Rutf8 $expr))->print;
+
+to get:
 
   ok Assemble(debug => 0, eq => <<END);
   Semicolon
@@ -1801,7 +1803,7 @@ to get:
 Parse a Unisyn expression.
 
 
-Version "20210828".
+Version "20210829".
 
 
 The following sections describe the methods in each functional area of this
@@ -2142,9 +2144,9 @@ Test a parse.
 
 1 L<accept_a|/accept_a> - Assign.
 
-2 L<accept_B|/accept_B> - Closing parenthesis.
+2 L<accept_b|/accept_b> - Open.
 
-3 L<accept_b|/accept_b> - Open.
+3 L<accept_B|/accept_B> - Closing parenthesis.
 
 4 L<accept_d|/accept_d> - Infix but not assign or semi-colon.
 
