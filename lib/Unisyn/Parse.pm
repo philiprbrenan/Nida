@@ -1037,34 +1037,69 @@ sub parseUtf8($@)                                                               
 
 #D1 Print                                                                       # Print a parse tree
 
+sub lexicalItemLength($$$)                                                      #P Put the length of a lexical item into variable B<size>.
+ {my ($parse, $source32, $offset) = @_;                                         # Parse tree, variable address of utf32 source representation, variable offset to lexical item in utf32
+
+  my $s = Subroutine
+   {my ($p, $s) = @_;                                                           # Parameters
+    PushR zmm0, zmm1, k0, k1, k2, r14, r15;
+
+    $$p{source32}->setReg(r14);
+    $$p{offset}  ->setReg(r15);
+    Vmovdqu8 zmm0, "[r14+4*r15]";                                               # Load source to examine
+    Pextrw r15, xmm0, 1;                                                        # Extract lexical type of first element
+
+    OrBlock                                                                     # The size of a bracket or a semi colon is always 1
+     {my ($pass, $end, $start) = @_;
+      Cmp r15, $OpenBracket;
+      Je  $pass;
+      Cmp r15, $CloseBracket;
+      Je  $pass;
+      Cmp r15, $semiColon;
+      Je  $pass;
+
+      Vpbroadcastw zmm1, r15w;                                                  # Broadcast lexical type
+      Vpcmpeqw k0, zmm0, zmm1;                                                  # Check extent of first lexical item up to 16
+      Mov r15, 0x55555555;                                                      # Set odd positions to one where we know the match will fail
+      Kmovq k1, r15;
+      Korq k2, k0, k1;                                                          # Fill in odd positions
+
+      Kmovq r15, k2;
+      Not r15;                                                                  # Swap zeroes and ones
+      Tzcnt r15, r15;                                                           # Trailing zero count is a factor two too big
+      Shr r15, 1;                                                               # Normalized count of number of characters in lexical item
+      $$p{size}->getReg(r15);                                                   # Save size in supplied variable
+     }
+    Pass                                                                        # Show unitary length
+     {my ($end, $pass, $start) = @_;
+      $$p{size}->getConst(1);                                                   # Save size in supplied variable
+     };
+
+    PopR;
+   } [qw(offset source32 size)],
+  name => q(Unisyn::Parse::lexicalItemLength);
+
+  $s->call(offset => $offset, source32 => $source32, my $size = V(size));
+
+  $size
+ }
+
 sub printLexicalItem($$$)                                                       #P Print the utf8 string corresponding to a lexical item at a variable offset.
  {my ($parse, $source32, $offset) = @_;                                         # Parse tree, variable address of utf32 source representation, variable offset to lexical item in utf32
   my $t = $parse->arena->DescribeTree;
 
   my $s = Subroutine
    {my ($p, $s) = @_;                                                           # Parameters
-    PushR zmm0, zmm1, rax, r14, r15;
+    PushR r13, r14, r15;
     my $success = Label;
 
+    my $l = $parse->lexicalItemLength($$p{source32}, $$p{offset});
+
     $$p{source32}->setReg(r14);
-    $$p{offset}->setReg(r15);
-    Vmovdqu8 zmm0, "[r14+4*r15]";
-    Pextrw rax,  xmm0, 1;                                                       # Extract lexical type of first element
-    Vpbroadcastw zmm1, ax;                                                      # Broadcast
-    Vpcmpeqw k0, zmm0, zmm1;                                                    # Check extent of first lexical item up to 16
-    Shr rax, 8;                                                                 # Lexical type in lowest byte
-    Mov r15, 0x55555555;                                                        # Set odd positions to one where we know the match will fail
-    Kmovq k1, r15;
-    Korq k2, k0, k1;                                                            # Fill in odd positions
-
-    Kmovq r15, k2;
-    Not r15;                                                                    # Swap zeroes and ones
-    Tzcnt r14, r15;                                                             # Trailing zero count is a factor two too big
-    Shr r14, 1;                                                                 # Normalized count of number of characters int name
-
-    Mov r15, 0xffff;                                                            # Zero out lexical type
-    Vpbroadcastd zmm1, r15d;                                                    # Broadcast
-    Vpandd zmm1, zmm0, zmm1;                                                    # Remove lexical type to leave index into alphabet
+    $$p{offset}  ->setReg(r15);
+    Lea r13, "[r14+4*r15]";                                                     # Address lexical item
+    Mov eax, "[r13]";                                                           # First lexical item
+    Shr rax, 24;                                                                # First lexical item type in lowest byte and all else cleared
 
     Cmp rax, $variable;                                                         # Test for variable
     IfEq
@@ -1072,17 +1107,15 @@ sub printLexicalItem($$$)                                                       
      {my $b = $Lex->{alphabetsOrdered}{variable};                               # Load variable alphabet in dwords
       my @b = map {convertUtf32ToUtf8LE $_} @$b;
       my $a = Rd @b;
-      PushR zmm1;                                                               # Stack zmm1 for ready access
-      V(loop)->getReg(r14)->for(sub                                             # Write each letter out from its position on the stack
+      $l->for(sub                                                               # Write each letter out from its position on the stack
        {my ($index, $start, $next, $end) = @_;                                  # Execute body
         $index->setReg(r14);                                                    # Index stack
         ClearRegisters r15;
-        Mov r15b, "[rsp+4*r14]";                                                # Load alphabet offset from stack
+        Mov r15b, "[r13+4*r14]";                                                # Load alphabet offset from stack
         Shl r15, 2;                                                             # Each letter is 4 bytes wide in utf8
         Mov r14, $a;                                                            # Alphabet address
         Lea rax, "[r14+r15]";                                                   # Address alphabet letter as utf8
-        Mov rdi, 4;
-        PrintOutMemory;                                                         # Print letter from stack
+        PrintOutUtf8Char;
        });
       Jmp $success;
      };
@@ -1094,14 +1127,14 @@ sub printLexicalItem($$$)                                                       
       my @b = map {convertUtf32ToUtf8LE $_} @$b;
       my $a = Rd @b;
       PushR zmm1;                                                               # Stack zmm1 for ready access
-      V(loop)->getReg(r14)->for(sub                                             # Write each letter out from its position on the stack
+      $l->for(sub                                                               # Write each letter out from its position on the stack
        {my ($index, $start, $next, $end) = @_;                                  # Execute body
         $index->setReg(r14);                                                    # Index stack
         ClearRegisters r15;
-        Mov r15b, "[rsp+4*r14]";                                                # Load alphabet offset from stack
+        Mov r15b, "[r13+4*r14]";                                                # Load alphabet offset from stack
         Mov rdi, 4;                                                             # Each letter is 4 bytes wide in utf8
         Shl r15, 2;                                                             # Each utf8 representation of a code point is held in a 4 byte block
-        IfZ Then {Dec rdi};                                                     # Planck's constant is h, it is first, it is 3 bytes in utf8
+        IfZ Then {Dec rdi};                                                     # Planck's constant is h, it is first, it is 3 bytes in utf8, it is one of those errors that Unicode refuses to correct.
         Mov r14, $a;                                                            # Alphabet address
         Lea rax, "[r14+r15]";                                                   # Alphabet letter as utf8
         PrintOutMemory;                                                         # Print letter from stack
@@ -1116,11 +1149,11 @@ sub printLexicalItem($$$)                                                       
       my @b = map {convertUtf32ToUtf8LE $_} @$b;
       my $a = Rd @b;
       PushR zmm1;                                                               # Stack zmm1 for ready access
-      V(loop)->getReg(r14)->for(sub                                             # Write each letter out from its position on the stack
+      $l->for(sub                                                               # Write each letter out from its position on the stack
        {my ($index, $start, $next, $end) = @_;                                  # Execute body
         $index->setReg(r14);                                                    # Index stack
         ClearRegisters r15;
-        Mov r15b, "[rsp+4*r14]";                                                # Load alphabet offset from stack
+        Mov r15b, "[r13+4*r14]";                                                # Load alphabet offset from stack
         Shl r15, 2;                                                             # Each letter is 4 bytes wide in utf8
         Mov r14, $a;                                                            # Alphabet address
         Lea rax, "[r14+r15]";                                                   # Address alphabet letter as utf8
@@ -1137,11 +1170,11 @@ sub printLexicalItem($$$)                                                       
       my @b = map {convertUtf32ToUtf8LE $_} @$b;
       my $a = Rd @b;
       PushR zmm1;                                                               # Stack zmm1 for ready access
-      V(loop)->getReg(r14)->for(sub                                             # Write each letter out from its position on the stack
+      $l->for(sub                                                               # Write each letter out from its position on the stack
        {my ($index, $start, $next, $end) = @_;                                  # Execute body
         $index->setReg(r14);                                                    # Index stack
         ClearRegisters r15;
-        Mov r15b, "[rsp+4*r14]";                                                # Load alphabet offset from stack
+        Mov r15b, "[r13+4*r14]";                                                # Load alphabet offset from stack
         Shl r15, 2;                                                             # Each letter is 4 bytes wide in utf8
         Mov r14, $a;                                                            # Alphabet address
         Lea rax, "[r14+r15]";                                                   # Address alphabet letter as utf8
