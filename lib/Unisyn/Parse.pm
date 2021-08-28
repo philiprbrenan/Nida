@@ -8,7 +8,7 @@
 # abcdefghijklmnopqrstuvwxyz
 # 0123    456789ABCDEF
 package Unisyn::Parse;
-our $VERSION = "20210829";
+our $VERSION = "20210830";
 use warnings FATAL => qw(all);
 use strict;
 use Carp qw(confess cluck);
@@ -18,11 +18,9 @@ use Nasm::X86 qw(:all);
 use feature qw(say current_sub);
 use utf8;
 
-makeDieConfess;
-
 my  $develop = -e q(/home/phil/);                                               # Developing
-my  $arena;                                                                     # We always reload the actual arena address from rax and so this is permissible
-our $debug   = 0;                                                               # Include debug code if true - the tests will fail if you do
+our $arena;                                                                     # We always reload the actual arena address from rax and so this is permissible
+our $debug   = 0;                                                               # Print evolution of stack if true.
 
 #D1 Create                                                                      # Create a Unisyn parse of a utf8 string.
 
@@ -81,6 +79,8 @@ our $variable         = $$Lex{lexicals}{variable}        {number};              
 our $WhiteSpace       = $$Lex{lexicals}{WhiteSpace}      {number};              # Variable
 our $firstSet         = $$Lex{structure}{first};                                # First symbols allowed
 our $lastSet          = $$Lex{structure}{last};                                 # Last symbols allowed
+our $bracketsBase     = $$Lex{bracketsBase};                                    # BAse lexical item for brackets
+
 our $asciiNewLine     = ord("\n");                                              # New line in ascii
 our $asciiSpace       = ord(' ');                                               # Space in ascii
 
@@ -108,7 +108,7 @@ sub loadCurrentChar()                                                           
   Shl $element, $indexScale * $bitsPerByte;                                     # Save the index of the character in the upper half of the register so that we know where the character came from.
   getLexicalCode $r, $start, $index;                                            # Load lexical classification as lowest byte
 
-  Cmp $r, $$Lex{bracketsBase};                                                  # Brackets , due to their frequency, start after 0x10 with open even and close odd
+  Cmp $r, $bracketsBase;                                                        # Brackets , due to their frequency, start after 0x10 with open even and close odd
   IfGe                                                                          # Brackets
   Then
    {And $r, 1                                                                   # Bracket: 0 - open, 1 - close
@@ -973,9 +973,14 @@ sub parseUtf8($@)                                                               
                       u32 => $source32,    size32 => $sourceSize32,
                     count => $sourceLength32;
 
+    my sub PrintUtf32($$)                                                       # Print a utf32 string in hexadecimal
+     {my ($size, $address) = @_;                                                # Variable size, variable address
+      $address->printErrMemoryInHexNL($size);
+     }
+
     if ($debug)
      {PrintErrStringNL "After conversion from utf8 to utf32";
-      $sourceSize32   ->outNL("Output Length: ");                               # Write output length
+      $sourceSize32   ->errNL("Output Length: ");                               # Write output length
       PrintUtf32($sourceLength32, $source32);                                   # Print utf32
      }
 
@@ -1090,34 +1095,45 @@ sub printLexicalItem($$$)                                                       
 
   my $s = Subroutine
    {my ($p, $s) = @_;                                                           # Parameters
-    PushR r13, r14, r15;
-    my $success = Label;
+    PushR r12, r13, r14, r15;
 
     my $l = $parse->lexicalItemLength($$p{source32}, $$p{offset});
 
     $$p{source32}->setReg(r14);
     $$p{offset}  ->setReg(r15);
     Lea r13, "[r14+4*r15]";                                                     # Address lexical item
-    Mov eax, "[r13]";                                                           # First lexical item
+    Mov eax, "[r13]";                                                           # First lexical item clearing rax
     Shr rax, 24;                                                                # First lexical item type in lowest byte and all else cleared
 
+    my $success = Label;
+    my $print   = Label;
+
+    Cmp rax, $bracketsBase;                                                     # Test for brackets
+    IfGe
+    Then
+     {my $o = $Lex->{bracketsOpen};                                             # Opening brackets
+      my $c = $Lex->{bracketsClose};                                            # Closing brackets
+      my $O = Rutf8 map {($_, chr(0))} @$o;                                     # Brackets in 3 bytes of utf8 each, with each bracket followed by a zero to make 4 bytes which is more easily addressed
+      my $C = Rutf8 map {($_, chr(0))} @$c;                                     # Brackets in 3 bytes of utf8 each, with each bracket followed by a zero to make 4 bytes which is more easily addressed
+      Mov r14, $O;                                                              # Address open bracket
+      Mov r15, rax;                                                             # The bracket number
+      Lea rax, "[r14+4*r15 - 4*$bracketsBase-4]";                               # Index to bracket
+      PrintOutUtf8Char;                                                         # Print opening bracket
+      Mov r14, $C;                                                              # Address close bracket
+      Lea rax, "[r14+4*r15 - 4*$bracketsBase-4]";                               # Closing brackets occupy 3 bytes
+      PrintOutUtf8Char;                                                         # Print closing bracket
+      Jmp $success;
+     };
+
+    Mov r12, -1;                                                                # Alphabet to use
     Cmp rax, $variable;                                                         # Test for variable
     IfEq
     Then
      {my $b = $Lex->{alphabetsOrdered}{variable};                               # Load variable alphabet in dwords
       my @b = map {convertUtf32ToUtf8LE $_} @$b;
       my $a = Rd @b;
-      $l->for(sub                                                               # Write each letter out from its position on the stack
-       {my ($index, $start, $next, $end) = @_;                                  # Execute body
-        $index->setReg(r14);                                                    # Index stack
-        ClearRegisters r15;
-        Mov r15b, "[r13+4*r14]";                                                # Load alphabet offset from stack
-        Shl r15, 2;                                                             # Each letter is 4 bytes wide in utf8
-        Mov r14, $a;                                                            # Alphabet address
-        Lea rax, "[r14+r15]";                                                   # Address alphabet letter as utf8
-        PrintOutUtf8Char;
-       });
-      Jmp $success;
+      Mov r12, $a;
+      Jmp $print;
      };
 
     Cmp rax, $assign;                                                           # Test for assign operator
@@ -1126,20 +1142,8 @@ sub printLexicalItem($$$)                                                       
      {my $b = $Lex->{alphabetsOrdered}{assign};                                 # Load assign alphabet in dwords
       my @b = map {convertUtf32ToUtf8LE $_} @$b;
       my $a = Rd @b;
-      PushR zmm1;                                                               # Stack zmm1 for ready access
-      $l->for(sub                                                               # Write each letter out from its position on the stack
-       {my ($index, $start, $next, $end) = @_;                                  # Execute body
-        $index->setReg(r14);                                                    # Index stack
-        ClearRegisters r15;
-        Mov r15b, "[r13+4*r14]";                                                # Load alphabet offset from stack
-        Mov rdi, 4;                                                             # Each letter is 4 bytes wide in utf8
-        Shl r15, 2;                                                             # Each utf8 representation of a code point is held in a 4 byte block
-        IfZ Then {Dec rdi};                                                     # Planck's constant is h, it is first, it is 3 bytes in utf8, it is one of those errors that Unicode refuses to correct.
-        Mov r14, $a;                                                            # Alphabet address
-        Lea rax, "[r14+r15]";                                                   # Alphabet letter as utf8
-        PrintOutMemory;                                                         # Print letter from stack
-       });
-      Jmp $success;
+      Mov r12, $a;
+      Jmp $print;
      };
 
     Cmp rax, $dyad;                                                             # Test for dyad
@@ -1148,19 +1152,8 @@ sub printLexicalItem($$$)                                                       
      {my $b = $Lex->{alphabetsOrdered}{dyad};                                   # Load dyad alphabet in dwords
       my @b = map {convertUtf32ToUtf8LE $_} @$b;
       my $a = Rd @b;
-      PushR zmm1;                                                               # Stack zmm1 for ready access
-      $l->for(sub                                                               # Write each letter out from its position on the stack
-       {my ($index, $start, $next, $end) = @_;                                  # Execute body
-        $index->setReg(r14);                                                    # Index stack
-        ClearRegisters r15;
-        Mov r15b, "[r13+4*r14]";                                                # Load alphabet offset from stack
-        Shl r15, 2;                                                             # Each letter is 4 bytes wide in utf8
-        Mov r14, $a;                                                            # Alphabet address
-        Lea rax, "[r14+r15]";                                                   # Address alphabet letter as utf8
-        Mov rdi, 4;                                                             # The size of a dyad operator as utf8
-        PrintOutMemory;                                                         # Print letter from stack
-       });
-      Jmp $success;
+      Mov r12, $a;
+      Jmp $print;
      };
 
     Cmp rax, $Ascii;                                                            # Test for ascii
@@ -1169,55 +1162,32 @@ sub printLexicalItem($$$)                                                       
      {my $b = $Lex->{alphabetsOrdered}{Ascii};                                  # Load ascii alphabet in dwords
       my @b = map {convertUtf32ToUtf8LE $_} @$b;
       my $a = Rd @b;
-      PushR zmm1;                                                               # Stack zmm1 for ready access
-      $l->for(sub                                                               # Write each letter out from its position on the stack
-       {my ($index, $start, $next, $end) = @_;                                  # Execute body
-        $index->setReg(r14);                                                    # Index stack
-        ClearRegisters r15;
-        Mov r15b, "[r13+4*r14]";                                                # Load alphabet offset from stack
-        Shl r15, 2;                                                             # Each letter is 4 bytes wide in utf8
-        Mov r14, $a;                                                            # Alphabet address
-        Lea rax, "[r14+r15]";                                                   # Address alphabet letter as utf8
-        Mov rdi, 1;                                                             # Size of an ascii character in bytes
-        PrintOutMemory;                                                         # Print letter from stack
-       });
-      Jmp $success;
+      Mov r12, $a;
+      Jmp $print;
      };
 
-    SetLabel $success;
+    PrintErrTraceBack;                                                          # Unknown lexical type
+    PrintErrStringNL "Alphabet not found for unexpected lexical item";
+    PrintErrRegisterInHex rax;
+    Exit(1);
+
+    SetLabel $print;                                                            # Decoded
+
+    $l->for(sub                                                                 # Write each letter out from its position on the stack
+     {my ($index, $start, $next, $end) = @_;                                    # Execute body
+      $index->setReg(r14);                                                      # Index stack
+      ClearRegisters r15;                                                       # Next instruction does not clear the entire register
+      Mov r15b, "[r13+4*r14]";                                                  # Load alphabet offset from stack
+      Shl r15, 2;                                                               # Each letter is 4 bytes wide in utf8
+      Lea rax, "[r12+r15]";                                                     # Address alphabet letter as utf8
+      PrintOutUtf8Char;                                                         # Print utf8 character
+     });
+
+    SetLabel $success;                                                          # Done
+
     PopR;
    } [qw(offset source32)],
   name => q(Unisyn::Parse::printLexicalItem);
-
-  $s->call(offset => $offset, source32 => $source32);
- }
-
-sub printBrackets($$$)                                                          #P Print the utf8 string corresponding to a lexical item at a variable offset.
- {my ($parse, $source32, $offset) = @_;                                         # Parse tree, variable address of utf32 source representation, variable offset to lexical item in utf32
-  my $t = $parse->arena->DescribeTree;
-
-  my $s = Subroutine
-   {my ($p, $s) = @_;                                                           # Parameters
-    PushR rax, rdi, r14, r15;
-
-    $$p{source32}->setReg(r14);
-    $$p{offset}  ->setReg(r15);
-    Mov r15b, "[r14+4*r15+3]";                                                  # Bracket number
-    my $o = $Lex->{bracketsOpen};                                               # Opening brackets
-    my $c = $Lex->{bracketsClose};                                              # Closing brackets
-    my $O = Rutf8 map {($_, chr(0))} @$o;                                       # Brackets in 3 bytes of utf8 each, with each bracket followed by a zero to make 4 bytes which is more easily addressed
-    my $C = Rutf8 map {($_, chr(0))} @$c;                                       # Brackets in 3 bytes of utf8 each, with each bracket followed by a zero to make 4 bytes which is more easily addressed
-    Mov r14, $O;                                                                # Address open bracket
-    Lea rax, "[r14+4*r15]";
-    Mov rdi, 3;                                                                 # Opening brackets occupy 3 bytes
-    PrintOutMemory;                                                             # Print letter from stack
-    Mov r14, $C;                                                                # Address close bracket
-    Lea rax, "[r14+4*r15]";                                                     # Closing brackets occupy 3 bytes
-    Mov rdi, 3;
-    PrintOutMemory;                                                             # Print letter from stack
-    PopR;
-   } [qw(offset source32)],
-  name => q(Unisyn::Parse::printBrackets);
 
   $s->call(offset => $offset, source32 => $source32);
  }
@@ -1243,95 +1213,91 @@ sub print($)                                                                    
     $t->first  ->copy($$p{first});
     $t->find(K(key, 0));                                                        # Key 0 tells us the type of the element - normally a term
 
-    If ($t->found == 0,                                                         # Not found key 0
+    If $t->found == 0,                                                          # Not found key 0
     Then
      {PrintOutString "No type for node";
       Exit(1);
-     });
+     };
 
-    If ($t->data != $term,                                                      # Expected a term
+    If $t->data != $term,                                                       # Expected a term
     Then
      {PrintOutString "Expected a term";
       Exit(1);
-     });
+     };
 
     my $operands = V(operands);                                                 # Number of operands
     $t->find(K(key, 1));                                                        # Key 1 tells us the number of operands
-    If ($t->found > 0,                                                          # Found key 1
+    If $t->found > 0,                                                           # Found key 1
     Then
      {$operands->copy($t->data);                                                # Number of operands
      },
     Else
      {PrintOutString "Expected at least one operand";
       Exit(1);
-     });
+     };
 
     $operands->for(sub                                                          # Each operand
      {my ($index, $start, $next, $end) = @_;                                    # Execute body
       my $i = 2 + $index * 2; my $j = $i + 1;                                   # Operand type and value
       $t->find($i); my $key  = V(key) ->copy($t->data);
       $t->find($j); my $data = V(data)->copy($t->data);
+      $b->call;                                                                 # Indent
 
-      If ($key == $term,                                                        # Term
+      If $key == $term,                                                         # Term
       Then
-       {$b->call;
-        PrintOutStringNL "Term";
+       {PrintOutStringNL "Term";
         Inc $depthR;                                                            # Increase indentation for sub terms
         $s->call($B, first => $data, $$p{source32});                            # Print sub tree referenced by data field
         Dec $depthR;                                                            # Restore existing indentation
         $t->first  ->copy($$p{first});                                          # Re-establish addressability to the tree after the recursive call
-       });
+       },
 
-      If ($key == $variable,                                                    # Variable
+      Ef {$key == $semiColon}                                                   # Semicolon
       Then
-       {$b->call;
-        PrintOutString "Variable: ";
+       {PrintOutStringNL "Semicolon";
+       },
+
+      Else
+       {If $key == $variable,                                                   # Variable
+        Then
+         {PrintOutString "Variable: ";
+         },
+
+        Ef {$key == $assign}                                                    # Assign
+        Then
+         {PrintOutString "Assign: ";
+         },
+
+        Ef {$key == $OpenBracket}                                               # Open brackets
+        Then
+         {PrintOutString "Brackets: ";
+         },
+
+        Ef {$key == $dyad}                                                      # Dyad
+        Then
+         {PrintOutString "Dyad: ";
+         },
+
+        Ef {$key == $Ascii}                                                     # Ascii
+        Then
+         {PrintOutString "Ascii: ";
+         },
+
+        Else                                                                    # Unexpected lexical type
+         {PrintErrStringNL "Unexpected lexical type:";
+          $key->d;
+          PrintErrTraceBack;
+          Exit(1);
+         };
+
         $parse->printLexicalItem($$p{source32}, $data);                         # Print the variable name
         PrintOutNL;
-       });
+      };
 
-      If ($key == $assign,                                                      # Assign
-      Then
-       {$b->call;
-        PrintOutString "Assign: ";
-        $parse->printLexicalItem($$p{source32}, $data);                         # Print the variable name
-        PrintOutNL;
-       });
-
-      If ($key == $OpenBracket,                                                 # Open brackets
-      Then
-       {$b->call;
-        PrintOutString "Brackets: ";
-        $parse->printBrackets($$p{source32}, $data);                            # Print the variable name
-        PrintOutNL;
-       });
-
-      If ($key == $dyad,                                                        # Dyad
-      Then
-       {$b->call;
-        PrintOutString "Dyad: ";
-        $parse->printLexicalItem($$p{source32}, $data);                         # Print the variable name
-        PrintOutNL;
-       });
-
-      If ($key == $Ascii,                                                       # Ascii
-      Then
-       {$b->call;
-        PrintOutString "Ascii: ";
-        $parse->printLexicalItem($$p{source32}, $data);                         # Print the variable name
-        PrintOutNL;
-       });
-
-      If ($key == $semiColon,                                                   # Semicolon
-      Then
-       {$b->call;
-        PrintOutStringNL "Semicolon";
-       });
-
-      If ($index == 0,                                                          # Operator followed by indented operands
+      If $index == 0,                                                           # Operator followed by indented operands
       Then
        {Inc $depthR;
-       });
+       };
      });
 
     Dec $depthR;                                                                # Reset indentation after operands
@@ -1795,42 +1761,42 @@ using:
 to get:
 
   ok Assemble(debug => 0, eq => <<END);
-  Semicolon
-    Term
-      Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
-        Term
-          Variable: 𝗮
-        Term
-          Brackets: ⦉⦊
+Semicolon
+  Term
+    Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
+      Term
+        Variable: 𝗮
+      Term
+        Brackets: ⌊⌋
+          Term
             Term
-              Term
-                Dyad: 𝐩𝐥𝐮𝐬
-                  Term
-                    Brackets: ⦍⦎
+              Dyad: 𝐩𝐥𝐮𝐬
+                Term
+                  Brackets: ❨❩
+                    Term
                       Term
-                        Term
-                          Brackets: ⦑⦒
+                        Brackets: ❬❭
+                          Term
                             Term
-                              Term
-                                Variable: 𝗯𝗽
-                  Term
-                    Brackets: ⦕⦖
+                              Variable: 𝗯𝗽
+                Term
+                  Brackets: ❰❱
+                    Term
                       Term
-                        Term
-                          Variable: 𝘀𝗰
-    Term
-      Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
-        Term
-          Variable: 𝗮𝗮
-        Term
-          Brackets: ⧼⧽
+                        Variable: 𝘀𝗰
+  Term
+    Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
+      Term
+        Variable: 𝗮𝗮
+      Term
+        Brackets: ❴❵
+          Term
             Term
-              Term
-                Dyad: 𝐩𝐥𝐮𝐬
-                  Term
-                    Variable: 𝗯𝗯
-                  Term
-                    Variable: 𝗰𝗰
+              Dyad: 𝐩𝐥𝐮𝐬
+                Term
+                  Variable: 𝗯𝗯
+                Term
+                  Variable: 𝗰𝗰
   END
 
 =head1 Description
@@ -2568,7 +2534,7 @@ if (1) {
   create (K(address, Rutf8 $Lex->{sampleText}{bvB}))->print;
 
   ok Assemble(debug => 0, eq => <<END);
-Brackets: ⦍⦎
+Brackets: ❨❩
   Term
     Term
       Variable: 𝗮𝗯𝗰
@@ -2584,20 +2550,20 @@ Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
   Term
     Variable: 𝗮
   Term
-    Brackets: ⦉⦊
+    Brackets: ⌊⌋
       Term
         Term
           Dyad: 𝐩𝐥𝐮𝐬
             Term
-              Brackets: ⦍⦎
+              Brackets: ❨❩
                 Term
                   Term
-                    Brackets: ⦑⦒
+                    Brackets: ❬❭
                       Term
                         Term
                           Variable: 𝗯𝗽
             Term
-              Brackets: ⦕⦖
+              Brackets: ❰❱
                 Term
                   Term
                     Variable: 𝘀𝗰
@@ -2615,20 +2581,20 @@ Semicolon
       Term
         Variable: 𝗮
       Term
-        Brackets: ⦉⦊
+        Brackets: ⌊⌋
           Term
             Term
               Dyad: 𝐩𝐥𝐮𝐬
                 Term
-                  Brackets: ⦍⦎
+                  Brackets: ❨❩
                     Term
                       Term
-                        Brackets: ⦑⦒
+                        Brackets: ❬❭
                           Term
                             Term
                               Variable: 𝗯𝗽
                 Term
-                  Brackets: ⦕⦖
+                  Brackets: ❰❱
                     Term
                       Term
                         Variable: 𝘀𝗰
@@ -2637,7 +2603,7 @@ Semicolon
       Term
         Variable: 𝗮𝗮
       Term
-        Brackets: ⧼⧽
+        Brackets: ❴❵
           Term
             Term
               Dyad: 𝐩𝐥𝐮𝐬
