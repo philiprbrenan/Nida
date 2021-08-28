@@ -392,8 +392,8 @@ sub translateSomeText($$)                                                       
   for my $w(split /\s+/, $string)                                               # Translate to text
    {if    ($w =~ m(\A(a|d|v))) {translate $w}
     elsif ($w =~ m(\As)) {$T .= $Tables->alphabets->{semiColon}}
-    elsif ($w =~ m(\Ab)) {$T .= $Tables->bracketsOpen ->[substr($w, 1)]}
-    elsif ($w =~ m(\AB)) {$T .= $Tables->bracketsClose->[substr($w, 1)]}
+    elsif ($w =~ m(\Ab)) {$T .= $Tables->bracketsOpen ->[substr($w, 1)||0]}
+    elsif ($w =~ m(\AB)) {$T .= $Tables->bracketsClose->[substr($w, 1)||0]}
     elsif ($w =~ m(\AS)) {$T .= ' '}
     elsif ($w =~ m(\AN)) {$T .= "\n"}
     elsif ($w =~ m(\AA)) {$T .= substr($w, 1)}
