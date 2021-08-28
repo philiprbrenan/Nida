@@ -2289,7 +2289,7 @@ my $startTime = time;                                                           
 
 eval {goto latest} if !caller(0) and -e "/home/phil";                           # Go to latest test if specified
 
-sub T($$%)                                                                      #P Test a parse.
+sub T($$%)                                                                      #P Parse some text and dump the results
  {my ($key, $expected, %options) = @_;                                          # Key of text to be parsed, expected result, options
   my $source  = $$Lex{sampleText}{$key};                                        # String to be parsed in utf8
   defined $source or confess;
@@ -2303,6 +2303,13 @@ sub T($$%)                                                                      
     $t->first->copy($p->parse);
     $t->dump;
    }
+
+  Assemble(debug => 0, eq => $expected);
+ }
+
+sub C($$%)                                                                      #P Parse some text and print the results
+ {my ($key, $expected, %options) = @_;                                          # Key of text to be parsed, expected result, options
+  create (K(address, Rutf8 $Lex->{sampleText}{$key}))->print;
 
   Assemble(debug => 0, eq => $expected);
  }
@@ -2493,10 +2500,7 @@ END
  }
 
 #latest:
-if (1) {
-  create (K(address, Rutf8 $Lex->{sampleText}{vavav}))->print;
-
-  ok Assemble(debug => 0, eq => <<END);
+C(q(vavav), <<END);
 Assign: 𝑎
   Term
     Variable: 𝗮
@@ -2507,7 +2511,6 @@ Assign: 𝑎
       Term
         Variable: 𝗰
 END
- }
 
 #latest:
 ok T(q(bvB), <<END, comments=>10);
@@ -2543,22 +2546,15 @@ end
 END
 
 #latest:
-if (1) {
-  create (K(address, Rutf8 $Lex->{sampleText}{bvB}))->print;
-
-  ok Assemble(debug => 0, eq => <<END);
+C(q(bvB), <<END);
 Brackets: ❨❩
   Term
     Term
       Variable: 𝗮𝗯𝗰
 END
- }
 
 #latest:
-if (1) {
-  create (K(address, Rutf8 $Lex->{sampleText}{brackets}))->print;
-
-  ok Assemble(debug => 0, eq => <<END);
+C(q(brackets), <<END);
 Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
   Term
     Variable: 𝗮
@@ -2581,13 +2577,9 @@ Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
                   Term
                     Variable: 𝘀𝗰
 END
- }
 
 #latest:
-if (1) {
-  create (K(address, Rutf8 $Lex->{sampleText}{ws}))->print;
-
-  ok Assemble(debug => 0, eq => <<END);
+C(q(ws), <<END);
 Semicolon
   Term
     Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
@@ -2625,7 +2617,6 @@ Semicolon
                 Term
                   Variable: 𝗰𝗰
 END
- }
 
 #latest:;
 ok T(q(s), <<END, comments=>10);
@@ -2663,17 +2654,13 @@ end
 END
 
 #latest:
-if (1) {
-  create (K(address, Rutf8 $Lex->{sampleText}{s}))->print;
-
-  ok Assemble(debug => 0, eq => <<END);
+C(q(s), <<END);
 Semicolon
   Term
     Variable: 𝗮
   Term
     Variable: 𝗯
 END
- }
 
 #latest:
 ok T(q(A), <<END);
@@ -2711,17 +2698,13 @@ end
 END
 
 #latest:
-if (1) {
-  create (K(address, Rutf8 $Lex->{sampleText}{A}))->print;
-
-  ok Assemble(debug => 0, eq => <<END);
+C(q(A), <<END);
 Assign: 𝑒𝑞𝑢𝑎𝑙𝑠
   Term
     Variable: 𝗮𝗮
   Term
     Ascii: abc 123
 END
- }
 
 unlink $_ for qw(hash print2 sde-log.txt sde-ptr-check.out.txt z.txt);          # Remove incidental files
 
