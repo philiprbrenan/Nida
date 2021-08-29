@@ -2500,7 +2500,7 @@ END
  }
 
 #latest:
-C(q(vavav), <<END);
+ok C(q(vavav), <<END);
 Assign: 𝑎
   Term
     Variable: 𝗮
@@ -2546,7 +2546,7 @@ end
 END
 
 #latest:
-C(q(bvB), <<END);
+ok C(q(bvB), <<END);
 Brackets: ❨❩
   Term
     Term
@@ -2554,7 +2554,7 @@ Brackets: ❨❩
 END
 
 #latest:
-C(q(brackets), <<END);
+ok C(q(brackets), <<END);
 Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
   Term
     Variable: 𝗮
@@ -2579,7 +2579,7 @@ Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
 END
 
 #latest:
-C(q(ws), <<END);
+ok C(q(ws), <<END);
 Semicolon
   Term
     Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
@@ -2654,7 +2654,7 @@ end
 END
 
 #latest:
-C(q(s), <<END);
+ok C(q(s), <<END);
 Semicolon
   Term
     Variable: 𝗮
@@ -2698,7 +2698,7 @@ end
 END
 
 #latest:
-C(q(A), <<END);
+ok C(q(A), <<END);
 Assign: 𝑒𝑞𝑢𝑎𝑙𝑠
   Term
     Variable: 𝗮𝗮
