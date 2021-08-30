@@ -40,7 +40,7 @@ sub create($)                                                                   
     sourceLength32 => V(sourceLength32),                                        # Length of utf32 string
     parse          => V('parse'),                                               # Offset to the head of the parse tree
     fails          => V('fail'),                                                # Number of failures encountered in this parse
-    strings        => $a->createTree,                                           # Strings used in this parse.  Each string consists of its lexical type, its length and then the indices into each alphabet one per byte. A tree trek arrangement is used to deal with strings of any length which has the benefit of avoiding long string comparisons while providing some key compression.
+    strings        => $a->CreateTree,                                           # Strings used in this parse.  Each string consists of its lexical type, its length and then the indices into each alphabet one per byte. A tree trek arrangement is used to deal with strings of any length which has the benefit of avoiding long string comparisons while providing some key compression.
    );
 
   $p->parseUtf8;                                                                # Parse utf8 source string
