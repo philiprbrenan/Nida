@@ -5,8 +5,10 @@
 #-------------------------------------------------------------------------------
 # podDocumentation
 # Finished in 13.14s, bytes: 2,655,008, execs: 465,858
+# Can we remove more Pushr  by doing one big save in parseutf8 ?
 # abcdefghijklmnopqrstuvwxyz
 # 0123    456789ABCDEF
+# Waiting on quarks
 package Unisyn::Parse;
 our $VERSION = "20210830";
 use warnings FATAL => qw(all);
@@ -84,6 +86,12 @@ our $bracketsBase     = $$Lex{bracketsBase};                                    
 
 our $asciiNewLine     = ord("\n");                                              # New line in ascii
 our $asciiSpace       = ord(' ');                                               # Space in ascii
+
+our $lexItemType      = 0;                                                      # Field number of lexical item type in the description of a lexical item
+our $lexItemOffset    = 1;                                                      # Field number of the offset in the utf32 source of the lexical item in the description of a lexical item
+our $lexItemLength    = 2;                                                      # Field number of the length of the lexical item in the utf32 source in the description of a lexical item
+our $lexItemStringN   = 3;                                                      # Field number of the string number describing the string of the lexical item in the description of a lexical item
+our $lexItemWidth     = 4;                                                      # The number of fields used to describe a lexical item  in the parse tree
 
 sub getAlpha($$$)                                                               #P Load the position of a lexical item in its alphabet from the current character.
  {my ($register, $address, $index) = @_;                                        # Register to load, address of start of string, index into string
@@ -176,7 +184,7 @@ sub lexicalItemLength($$)                                                       
 
   my $s = Subroutine
    {my ($p, $s) = @_;                                                           # Parameters
-    PushR r14, r15;                                                             # We do not need to save the zmm and mask registers because they are only used as temporary work registers and they have been saved in L<parseUtf8>
+#   PushR r14, r15;                                                             # We do not need to save the zmm and mask registers because they are only used as temporary work registers and they have been saved in L<parseUtf8>
 
     $$p{source32}->setReg(r14);
     $$p{offset}  ->setReg(r15);
@@ -209,7 +217,7 @@ sub lexicalItemLength($$)                                                       
       $$p{size}->getConst(1);                                                   # Save size in supplied variable
      };
 
-    PopR;
+#   PopR;
    } [qw(offset source32 size)],
   name => q(Unisyn::Parse::lexicalItemLength);
 
@@ -222,9 +230,9 @@ sub new($$)                                                                     
  {my ($depth, $description) = @_;                                               # Stack depth to be converted, text reason why we are creating a new term
   PrintErrStringNL "New: $description" if $debug;
 
-  $arena->bs->getReg($arenaReg);                                                # Address arena
+  LoadRegFromMm(zmm0, 0, $arenaReg);                                            # Load arena register
   my $t = $arena->CreateTree;                                                   # Create a tree in the arena to hold the details of the lexical elements on the stack
-  my $d = V(data);
+  my $d = V(data);                                                              # Data to insert into tree
   $t->insert(V(key, 0), V(data, $term));                                        # Create a term - we only have terms at the moment in the parse tee - but that might change in the future
   $t->insert(V(key, 1), V(data, $depth));                                       # The number of elements in the term
 
@@ -257,10 +265,12 @@ sub new($$)                                                                     
     IfNe
     Then                                                                        # Not a term
      {my $size = lexicalItemLength(V(address, $start), $d);                     # Get the size of the lexical item
-         $size->setReg($w2);
+#    addString($d, $size);                                                     # Add the text of the lexical item to the string table
+      $size->setReg($w2);
       Shl $w2, 8;                                                               # Place length of lexical item in bytes 4-2
       Or  $w1, $w2;                                                             # Length above lexical type
      };
+
     $d->getReg($w1);                                                            # Lexical type
     $t->insert      (V(key, 2 * $j    ), $d);                                   # Save lexical type in parse tree
    }
@@ -271,7 +281,7 @@ sub new($$)                                                                     
   Push $w1;                                                                     # Place new term on stack
  }
 
-sub error($)                                                                    #P Die.
+sub error($)                                                                    #P Write an error message and stop.
  {my ($message) = @_;                                                           # Error message
   PrintOutStringNL "Error: $message";
   PrintOutString "Element: ";
@@ -507,7 +517,7 @@ sub accept_v                                                                    
     });
   }
 
-sub parseExpressionCode()                                                       #P Parse the string of classified lexical items addressed by register $start of length $length.  The resulting parse tree (if any) is returned in r15.
+sub parseExpression()                                                           #P Parse the string of classified lexical items addressed by register $start of length $length.  The resulting parse tree (if any) is returned in r15.
  {my $end = Label;
   my $eb  = $element."b";                                                       # Contains a byte from the item being parsed
 
@@ -608,31 +618,7 @@ END
   Pop r15;                                                                      # The resulting parse tree
   Shr r15, 32;                                                                  # The offset of the resulting parse tree
   SetLabel $end;
- } # parseExpressionCode
-
-sub parseExpression(@)                                                          #P Create a parser for an expression described by variables.
- {my (@parameters) = @_;                                                        # Parameters describing expression
-
-  my $s = Subroutine
-   {my ($p) = @_;                                                               # Parameters
-    PushR $parseStackBase, map {"r$_"} 8..15;
-    $$p{source}->setReg($start);                                                # Start of expression string after it has been classified
-    $$p{size}  ->setReg($size);                                                 # Number of characters in the expression
-
-    Mov $parseStackBase, rsp;                                                   # Set base of parse stack
-
-    parseExpressionCode;
-
-    $$p{parse}->getReg(r15);                                                    # Number of characters in the expression
-
-    Mov rsp, $parseStackBase;                                                   # Remove parse stack
-                                                                                # Remove new frame
-    PopR;
-   } [qw(source size parse)], name => q(Unisyn::Parse::parse);
-
-
-  $s->call(@parameters);
- } # parse
+ } # parseExpression
 
 sub MatchBrackets(@)                                                            #P Replace the low three bytes of a utf32 bracket character with 24 bits of offset to the matching opening or closing bracket. Opening brackets have even codes from 0x10 to 0x4e while the corresponding closing bracket has a code one higher.
  {my (@parameters) = @_;                                                        # Parameters
@@ -1020,7 +1006,8 @@ sub parseUtf8($@)                                                               
 
     PrintErrStringNL "ParseUtf8" if $debug;
 
-    PushR $arenaReg; PushZmm 0..1; PushMask 0..2;                               # Used to hold arena and classifiers. Zmm0 is used to pass global parameters to the many parsing routines. The mask registers are used to get the length of lexical items.
+    PushR $arenaReg, $parseStackBase, map {"r$_"} 8..15;
+    PushZmm 0..1; PushMask 0..2;                                                # Used to hold arena and classifiers. Zmm0 is used to pass global parameters to the many parsing routines. The mask registers are used to get the length of lexical items.
 
     my $source32       = $$p{source32};
     my $sourceSize32   = $$p{sourceSize32};
@@ -1078,13 +1065,23 @@ sub parseUtf8($@)                                                               
       PrintUtf32($sourceLength32, $source32);
      }
 
-    $$p{arena}->setReg($arenaReg);                                              # Rather than passing the arena as a parameter to all the parsing routines we put it in rax and access it from there when needed
-    parseExpression source=>$source32, size=>$sourceLength32, $$p{parse};
+    $$p{arena}  ->putQIntoZmm(0, 0, $w1);                                       # Rather than passing the arena as a parameter to all the parsing routines we put it in zmm0.7:0 and access it from there when needed
+    $$p{strings}->putQIntoZmm(0, 8, $w1);                                       # Rather than passing the strings tree as a parameter to all the parsing routines we put it in zmm0.15:8 and access it from there when needed
+
+    $$p{source32}      ->setReg($start);                                        # Start of expression string after it has been classified
+    $$p{sourceLength32}->setReg($size);                                         # Number of characters in the expression
+    Mov $parseStackBase, rsp;                                                   # Set base of parse stack
+
+    parseExpression;                                                            # Parse the expression
+
+    $$p{parse}->getReg(r15);                                                    # Number of characters in the expression
+    Mov rsp, $parseStackBase;                                                   # Remove parse stack
 
     $$p{parse}->errNL if $debug;
 
     PopMask; PopZmm; PopR;
-   } [qw(arena address size parse fail source32 sourceSize32 sourceLength32)],
+   }
+  [qw(arena address size parse fail strings source32 sourceSize32 sourceLength32)],
   name => q(Unisyn::Parse::parseUtf8);
 
   $s->call(arena          => $p->arena->bs,                                     # Parameterize the parse
@@ -1092,6 +1089,7 @@ sub parseUtf8($@)                                                               
            fail           => $p->fails,
            parse          => $p->parse,
            size           => $p->size8,
+           strings        => $p->strings->first,
            source32       => $p->source32,
            sourceLength32 => $p->sourceLength32,
            sourceSize32   => $p->sourceSize32,
