@@ -20,9 +20,10 @@ use Nasm::X86 qw(:all);
 use feature qw(say current_sub);
 use utf8;
 
-my  $develop = -e q(/home/phil/);                                               # Developing
-our $arena;                                                                     # We always reload the actual arena address from rax and so this is permissible
-our $debug   = 0;                                                               # Print evolution of stack if true.
+my  $develop    = -e q(/home/phil/);                                            # Developing
+#our $arena;                                                                    # We always reload the actual arena address from rax and so this is permissible
+our %parameters;                                                                # A copy of the parameter list parsed into the parser so that all the related subroutines can see it. The alternative would have been to code these subroutines as my subs but this makes it much harder to test them.  As parses are not interrupted by other parses reentrancy is not a problem.
+our $debug      = 0;                                                            # Print evolution of stack if true.
 
 #D1 Create                                                                      # Create a Unisyn parse of a utf8 string.
 
@@ -30,7 +31,8 @@ sub create($)                                                                   
  {my ($address) = @_;                                                           # Address of utf8 source string to parse as a variable
   @_ == 1 or confess;
 
-  my $a    = $arena = CreateArena;                                              # Arena to hold parse tree - every parse tree gets its own arena so that we can free parses separately
+# my $a    = $arena = CreateArena;                                              # Arena to hold parse tree - every parse tree gets its own arena so that we can free parses separately
+  my $a    =          CreateArena;                                              # Arena to hold parse tree - every parse tree gets its own arena so that we can free parses separately
   my $size = StringLength string => $address;                                   # Length of input utf8
 
   my $p = genHash(__PACKAGE__,                                                  # Description of parse
@@ -232,7 +234,8 @@ sub new($$)                                                                     
   PrintErrStringNL "New: $description" if $debug;
 
 # LoadRegFromMm(zmm0, 0, $arenaReg);   ### Where is arenaReg used??                                         # Load arena register
-  my $t = $arena->CreateTree;                                                   # Create a tree in the arena to hold the details of the lexical elements on the stack
+  my $a = DescribeArena->reload($parameters{bs});                               # Create a tree in the arena to hold the details of the lexical elements on the stack
+  my $t = $a->CreateTree;                                                       # Create a tree in the arena to hold the details of the lexical elements on the stack
   my $o = V(offset);                                                            # Offset into source for lexical item
   $t->insert(V(key, 0), V(data, $term));                                        # Create a term - we only have terms at the moment in the parse tree - but that might change in the future
   $t->insert(V(key, 1), V(data, $depth));                                       # The number of elements in the term
@@ -1008,6 +1011,7 @@ sub parseUtf8($@)                                                               
 
   my $s = Subroutine
    {my ($p) = @_;                                                               # Parameters
+    %parameters = %$p;                                                          # Make the parameters available in all the called parse subroutines.
 
     PrintErrStringNL "ParseUtf8" if $debug;
 
@@ -1087,12 +1091,12 @@ sub parseUtf8($@)                                                               
 
     PopMask; PopZmm; PopR;
    }
-  [qw(arena address size parse fail source32 sourceSize32 sourceLength32),
+  [qw(bs address size parse fail source32 sourceSize32 sourceLength32),
    qw(numbersToStringsFirst stringsToNumbersFirst)],
   name => q(Unisyn::Parse::parseUtf8);
 
   $s->call                                                                      # Parameterize the parse
-   (arena                 => $p->arena->bs,
+   (bs                    => $p->arena->bs,
     address               => $p->address8,
     fail                  => $p->fails,
     parse                 => $p->parse,
@@ -2307,7 +2311,7 @@ sub T($$%)                                                                      
   my $p = create V(address, $address);
 
   if (1)                                                                        # Print the parse tree if requested
-   {my $t = $arena->DescribeTree;
+   {my $t = $p->arena->DescribeTree;
     $t->first->copy($p->parse);
     $t->dump;
    }
