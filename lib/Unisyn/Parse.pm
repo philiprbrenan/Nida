@@ -42,7 +42,7 @@ sub create($)                                                                   
     sourceLength32 => V(sourceLength32),                                        # Length of utf32 string
     parse          => V('parse'),                                               # Offset to the head of the parse tree
     fails          => V('fail'),                                                # Number of failures encountered in this parse
-    strings        => $a->CreateTree,                                           # Strings used in this parse.  Each string consists of its lexical type, its length and then the indices into each alphabet one per byte. A tree trek arrangement is used to deal with strings of any length which has the benefit of avoiding long string comparisons while providing some key compression.
+#   strings        => $a->CreateTree,                                           # Strings used in this parse.  Each string consists of its lexical type, its length and then the indices into each alphabet one per byte. A tree trek arrangement is used to deal with strings of any length which has the benefit of avoiding long string comparisons while providing some key compression.
     quarks         => $a->CreateQuarks,                                         # Quarks representing the strinsg used in this parse
    );
 
@@ -233,53 +233,57 @@ sub new($$)                                                                     
 
 # LoadRegFromMm(zmm0, 0, $arenaReg);   ### Where is arenaReg used??                                         # Load arena register
   my $t = $arena->CreateTree;                                                   # Create a tree in the arena to hold the details of the lexical elements on the stack
-  my $d = V(data);                                                              # Data to insert into tree
-  $t->insert(V(key, 0), V(data, $term));                                        # Create a term - we only have terms at the moment in the parse tee - but that might change in the future
+  my $o = V(offset);                                                            # Offset into source for lexical item
+  $t->insert(V(key, 0), V(data, $term));                                        # Create a term - we only have terms at the moment in the parse tree - but that might change in the future
   $t->insert(V(key, 1), V(data, $depth));                                       # The number of elements in the term
+
+  my $liOnStack = $w1;                                                          # The lexical item as it appears on the stack
+  my $liType    = $w2;                                                          # The lexical item type
+  my $liOffset  = $w3;                                                          # The lexical item offset in the source
 
   for my $i(1..$depth)                                                          # Each term,
    {my $j = $depth + 1 - $i;
-    Pop $w1;                                                                    # Unload stack
-    PrintErrRegisterInHex $w1 if $debug;
+    Pop $liOnStack;                                                             # Unload stack
+    PrintErrRegisterInHex $liOnStack if $debug;
 
-    Mov $w2, $w1;
-    Shr $w2, 32;                                                                # Offset in source
-    $d->getReg($w2);                                                            # Offset in source in lower dword
+    Mov $liOffset, $liOnStack;                                                  # Offset of either the text in the source or the offset of the first block of the tree describing a term
+    Shr $liOffset, 32;                                                          # Offset in source: either the actual text of the offset of the first block of the tree containing a term shifted over to look as if it were an offset in the source
+    $o->getReg($liOffset);                                                      # Offset of lexical item in source or offset of first block in tree describing a term
 
-    Cmp $w1."b", $term;                                                         # Check whether the lexical item on the stack is a term
+    ClearRegisters $liType;
+    Mov $liType."b", $liOnStack."b";                                            # The lexical item type in the lowest byte, the rest clear.
+
+    Cmp $liType, $term;                                                         # Check whether the lexical item on the stack is a term
     IfEq                                                                        # Insert a sub tree if we are inserting a term
     Then
-     {$t->insertTree(V(key, 2 * $j + 1), $d);                                   # A reference to another term
+     {$t->insertTree(V(key, $lexItemWidth * $j + $lexItemOffset), $o);          # Offset of first block in the tree representing the term
      },
     Else                                                                        # Insert the offset in the utf32 source if we are not on a term
-     {$t->insert    (V(key, 2 * $j + 1), $d);                                   # Offset in source
+     {$t->insert    (V(key, $lexItemWidth * $j + $lexItemOffset), $o);          # Offset in source of non term
      };
 
-    Cmp $w1."b", $variable;                                                     # Check whether the lexical item is a variable which can also represent ascii
+    Cmp $liType, $variable;                                                     # Check whether the lexical item is a variable which can also represent ascii
     IfEq                                                                        # Insert a sub tree if we are inserting a term
     Then
-     {ClearRegisters $w1;
-      Mov $w1."b", "[$start+4*$w2+3]";                                          # Load lexical type from source
+     {Mov $liType."b", "[$start+4*$liOffset+3]";                                # Load lexical type from source
      };
 
-    Cmp $w1."b", $term;                                                         # Lexical items other then terms have their length encoded above the lexical type
+    Cmp $liType, $term;                                                         # Length of lexical item that is not a term
     IfNe
     Then                                                                        # Not a term
-     {my $size = lexicalItemLength(V(address, $start), $d);                     # Get the size of the lexical item
-#    addString($d, $size);                                                     # Add the text of the lexical item to the string table
-      $size->setReg($w2);
-      Shl $w2, 8;                                                               # Place length of lexical item in bytes 4-2
-      Or  $w1, $w2;                                                             # Length above lexical type
+     {my $size = lexicalItemLength(V(address, $start), $o);                     # Get the size of the lexical item at the offset indicated on the stack
+      $t->insert(V(key, $lexItemWidth * $j + $lexItemLength), $size);           # Save size of lexical item in parse tree
+#    addString($d, $size);                                                      # Add the text of the lexical item to the string table
      };
 
-    $d->getReg($w1);                                                            # Lexical type
-    $t->insert      (V(key, 2 * $j    ), $d);                                   # Save lexical type in parse tree
+    $t->insert  (V(key, $lexItemWidth * $j + $lexItemType),                     # Save lexical type in parse tree
+                 V(data)->getReg($liType));
    }
-
-  $t->first->setReg($w1);                                                       # Term
-  Shl $w1, 32;                                                                  # Push offset to tree into the upper dword
-  Or  $w1."b", $term;                                                           # Mark as a term tree
-  Push $w1;                                                                     # Place new term on stack
+                                                                                # Push new term onto the stack in place of the items popped off
+  $t->first->setReg($liOffset);                                                 # Offset of new term tree
+  Shl $liOffset, 32;                                                            # Push offset to term tree into the upper dword to make it look like a source offset
+  Or  $liOffset."b", $term;                                                     # Mark as a term tree
+  Push $liOffset;                                                               # Place new term on stack
  }
 
 sub error($)                                                                    #P Write an error message and stop.
@@ -1067,8 +1071,8 @@ sub parseUtf8($@)                                                               
       PrintUtf32($sourceLength32, $source32);
      }
 
-    $$p{arena}  ->putQIntoZmm(0, 0, $w1);                                       # Rather than passing the arena as a parameter to all the parsing routines we put it in zmm0.7:0 and access it from there when needed
-    $$p{strings}->putQIntoZmm(0, 8, $w1);                                       # Rather than passing the strings tree as a parameter to all the parsing routines we put it in zmm0.15:8 and access it from there when needed
+#    $$p{arena}  ->putQIntoZmm(0, 0, $w1);                                       # Rather than passing the arena as a parameter to all the parsing routines we put it in zmm0.7:0 and access it from there when needed
+#    $$p{strings}->putQIntoZmm(0, 8, $w1);                                       # Rather than passing the strings tree as a parameter to all the parsing routines we put it in zmm0.15:8 and access it from there when needed
 
     $$p{source32}      ->setReg($start);                                        # Start of expression string after it has been classified
     $$p{sourceLength32}->setReg($size);                                         # Number of characters in the expression
@@ -1083,19 +1087,23 @@ sub parseUtf8($@)                                                               
 
     PopMask; PopZmm; PopR;
    }
-  [qw(arena address size parse fail strings source32 sourceSize32 sourceLength32)],
+  [qw(arena address size parse fail source32 sourceSize32 sourceLength32),
+   qw(numbersToStringsFirst stringsToNumbersFirst)],
   name => q(Unisyn::Parse::parseUtf8);
 
-  $s->call(arena          => $p->arena->bs,                                     # Parameterize the parse
-           address        => $p->address8,
-           fail           => $p->fails,
-           parse          => $p->parse,
-           size           => $p->size8,
-           strings        => $p->strings->first,
-           source32       => $p->source32,
-           sourceLength32 => $p->sourceLength32,
-           sourceSize32   => $p->sourceSize32,
-          );
+  $s->call                                                                      # Parameterize the parse
+   (arena                 => $p->arena->bs,
+    address               => $p->address8,
+    fail                  => $p->fails,
+    parse                 => $p->parse,
+    size                  => $p->size8,
+#   strings               => $p->strings->first,
+    source32              => $p->source32,
+    sourceLength32        => $p->sourceLength32,
+    sourceSize32          => $p->sourceSize32,
+    numbersToStringsFirst => $p->quarks->numbersToStrings->first,
+    stringsToNumbersFirst => $p->quarks->stringsToNumbers->first,
+   );
  } # parseUtf8
 
 #D1 Print                                                                       # Print a parse tree
@@ -1249,19 +1257,18 @@ sub print($)                                                                    
 
     $operands->for(sub                                                          # Each operand
      {my ($index, $start, $next, $end) = @_;                                    # Execute body
-      my $i = 2 + $index * 2; my $j = $i + 1;                                   # Operand type and value
-      $t->find($i); my $key  = V(key) ->copy($t->data);
-      $t->find($j); my $data = V(data)->copy($t->data);
+      my $i = (1 + $index) * $lexItemWidth;                                     # Operand detail
+      $t->find($i+$lexItemType);   my $lex = V(key) ->copy($t->data);           # Lexical type
+      $t->find($i+$lexItemOffset); my $off = V(data)->copy($t->data);           # Offset in source
+      $t->find($i+$lexItemLength); my $len = V(data)->copy($t->data);           # Length in source
 
       $b->call;                                                                 # Indent
-
-      $key->setReg($w1); And $w1, 0xff; my $lex = V(lex)->getReg($w1);          # Load lexical item
 
       If $lex == $term,                                                         # Term
       Then
        {PrintOutStringNL "Term";
         Inc $depthR;                                                            # Increase indentation for sub terms
-        $s->call($B, first => $data, $$p{source32});                            # Print sub tree referenced by data field
+        $s->call($B, first => $off, $$p{source32});                             # Print sub tree referenced by offset field
         Dec $depthR;                                                            # Restore existing indentation
         $t->first  ->copy($$p{first});                                          # Re-establish addressability to the tree after the recursive call
        },
@@ -1299,13 +1306,12 @@ sub print($)                                                                    
 
         Else                                                                    # Unexpected lexical type
          {PrintErrStringNL "Unexpected lexical type:";
-          $key->d;
+          $lex->d;
           PrintErrTraceBack;
           Exit(1);
          };
 
-        $key->setReg($w1); Shr $w1, 8; my $s = V(size)->getReg($w1);            # Load length of lexical item
-        $parse->printLexicalItem($$p{source32}, $data, $s);                     # Print the variable name
+        $parse->printLexicalItem($$p{source32}, $off, $len);                    # Print the variable name
         PrintOutNL;
       };
 
@@ -2317,133 +2323,142 @@ sub C($$%)                                                                      
  }
 
 #latest:
-ok T(q(brackets), <<END, comments=>10, debug => 0) if 0;
-Tree at:  0000 0000 0000 0698  length: 0000 0000 0000 0008
+ok T(q(brackets), <<END, comments=>10, debug => 0) if 1;
+Tree at:  0000 0000 0000 06D8  length: 0000 0000 0000 0009
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-  0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0618 0000 0009   0000 0098 0000 0009   0000 0001 0000 0605   0000 0003 0000 0009
-  0000 06D8 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+  0000 0000 0000 0012   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0658   0000 0009 0000 00D8   0000 0009 0000 0006   0000 0001 0000 0005   0000 0003 0000 0009
+  0000 0718 0140 0009   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 000D   0000 000C 0000 0009   0000 0008 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
     index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
     index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
-    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0605
-    index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0001
-    index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0098 subTree
-    index: 0000 0000 0000 0006   key: 0000 0000 0000 0006   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0618 subTree
-  Tree at:  0000 0000 0000 0098  length: 0000 0000 0000 0004
+    index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0005
+    index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0006
+    index: 0000 0000 0000 0005   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0006   key: 0000 0000 0000 0009   data: 0000 0000 0000 00D8 subTree
+    index: 0000 0000 0000 0007   key: 0000 0000 0000 000C   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0008   key: 0000 0000 0000 000D   data: 0000 0000 0000 0658 subTree
+  Tree at:  0000 0000 0000 00D8  length: 0000 0000 0000 0005
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0106   0000 0001 0000 0009
-    0000 00D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+    0000 0000 0000 000A   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0000 0000 0006   0000 0001 0000 0009
+    0000 0118 0000 0005   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0106
-      index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0000
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0000
+      index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
   end
-  Tree at:  0000 0000 0000 0618  length: 0000 0000 0000 0006
+  Tree at:  0000 0000 0000 0658  length: 0000 0000 0000 0007
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 000C   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0598 0000 0009   0000 0007 0000 0100   0000 0002 0000 0009
-    0000 0658 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+    0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 05D8   0000 0009 0000 0001   0000 0007 0000 0000   0000 0002 0000 0009
+    0000 0698 0040 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0009   0000 0008 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0100
-      index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0007
-      index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
-      index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0598 subTree
-    Tree at:  0000 0000 0000 0598  length: 0000 0000 0000 0004
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0000
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0007
+      index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
+      index: 0000 0000 0000 0005   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
+      index: 0000 0000 0000 0006   key: 0000 0000 0000 0009   data: 0000 0000 0000 05D8 subTree
+    Tree at:  0000 0000 0000 05D8  length: 0000 0000 0000 0004
       0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-      0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0518 0000 0009   0000 0001 0000 0009
-      0000 05D8 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+      0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0558 0000 0009   0000 0001 0000 0009
+      0000 0618 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0001 0000 0000
         index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
         index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-        index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0009
-        index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0518 subTree
-      Tree at:  0000 0000 0000 0518  length: 0000 0000 0000 0008
+        index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
+        index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0558 subTree
+      Tree at:  0000 0000 0000 0558  length: 0000 0000 0000 0009
         0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-        0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0498 0000 0009   0000 0318 0000 0009   0000 000E 0000 0403   0000 0003 0000 0009
-        0000 0558 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+        0000 0000 0000 0012   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 04D8   0000 0009 0000 0358   0000 0009 0000 0004   0000 000E 0000 0003   0000 0003 0000 0009
+        0000 0598 0140 0009   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 000D   0000 000C 0000 0009   0000 0008 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
           index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
           index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
-          index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0403
-          index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 000E
-          index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
-          index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0318 subTree
-          index: 0000 0000 0000 0006   key: 0000 0000 0000 0006   data: 0000 0000 0000 0009
-          index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0498 subTree
-        Tree at:  0000 0000 0000 0318  length: 0000 0000 0000 0006
+          index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0003
+          index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 000E
+          index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0004
+          index: 0000 0000 0000 0005   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
+          index: 0000 0000 0000 0006   key: 0000 0000 0000 0009   data: 0000 0000 0000 0358 subTree
+          index: 0000 0000 0000 0007   key: 0000 0000 0000 000C   data: 0000 0000 0000 0009
+          index: 0000 0000 0000 0008   key: 0000 0000 0000 000D   data: 0000 0000 0000 04D8 subTree
+        Tree at:  0000 0000 0000 0358  length: 0000 0000 0000 0007
           0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-          0000 0000 0000 000C   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0298 0000 0009   0000 0008 0000 0100   0000 0002 0000 0009
-          0000 0358 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+          0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 02D8   0000 0009 0000 0001   0000 0008 0000 0000   0000 0002 0000 0009
+          0000 0398 0040 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0009   0000 0008 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
             index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
             index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
-            index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0100
-            index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0008
-            index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
-            index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0298 subTree
-          Tree at:  0000 0000 0000 0298  length: 0000 0000 0000 0004
+            index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0000
+            index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0008
+            index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
+            index: 0000 0000 0000 0005   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
+            index: 0000 0000 0000 0006   key: 0000 0000 0000 0009   data: 0000 0000 0000 02D8 subTree
+          Tree at:  0000 0000 0000 02D8  length: 0000 0000 0000 0004
             0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-            0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0218 0000 0009   0000 0001 0000 0009
-            0000 02D8 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+            0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0258 0000 0009   0000 0001 0000 0009
+            0000 0318 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0001 0000 0000
               index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
               index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-              index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0009
-              index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0218 subTree
-            Tree at:  0000 0000 0000 0218  length: 0000 0000 0000 0006
+              index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
+              index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0258 subTree
+            Tree at:  0000 0000 0000 0258  length: 0000 0000 0000 0007
               0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-              0000 0000 0000 000C   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0198 0000 0009   0000 0009 0000 0100   0000 0002 0000 0009
-              0000 0258 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+              0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 01D8   0000 0009 0000 0001   0000 0009 0000 0000   0000 0002 0000 0009
+              0000 0298 0040 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0009   0000 0008 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
                 index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
                 index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
-                index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0100
-                index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0009
-                index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
-                index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0198 subTree
-              Tree at:  0000 0000 0000 0198  length: 0000 0000 0000 0004
+                index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0000
+                index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0009
+                index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
+                index: 0000 0000 0000 0005   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
+                index: 0000 0000 0000 0006   key: 0000 0000 0000 0009   data: 0000 0000 0000 01D8 subTree
+              Tree at:  0000 0000 0000 01D8  length: 0000 0000 0000 0004
                 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-                0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0118 0000 0009   0000 0001 0000 0009
-                0000 01D8 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+                0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0158 0000 0009   0000 0001 0000 0009
+                0000 0218 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0001 0000 0000
                   index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
                   index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-                  index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0009
-                  index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0118 subTree
-                Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0004
+                  index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
+                  index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0158 subTree
+                Tree at:  0000 0000 0000 0158  length: 0000 0000 0000 0005
                   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-                  0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 000A 0000 0206   0000 0001 0000 0009
-                  0000 0158 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+                  0000 0000 0000 000A   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0002   0000 000A 0000 0006   0000 0001 0000 0009
+                  0000 0198 0000 0005   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
                     index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
                     index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-                    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0206
-                    index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 000A
+                    index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
+                    index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 000A
+                    index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0002
                 end
               end
             end
           end
         end
-        Tree at:  0000 0000 0000 0498  length: 0000 0000 0000 0006
+        Tree at:  0000 0000 0000 04D8  length: 0000 0000 0000 0007
           0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-          0000 0000 0000 000C   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0418 0000 0009   0000 0012 0000 0100   0000 0002 0000 0009
-          0000 04D8 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+          0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0458   0000 0009 0000 0001   0000 0012 0000 0000   0000 0002 0000 0009
+          0000 0518 0040 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0009   0000 0008 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
             index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
             index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
-            index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0100
-            index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0012
-            index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
-            index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0418 subTree
-          Tree at:  0000 0000 0000 0418  length: 0000 0000 0000 0004
+            index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0000
+            index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0012
+            index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
+            index: 0000 0000 0000 0005   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
+            index: 0000 0000 0000 0006   key: 0000 0000 0000 0009   data: 0000 0000 0000 0458 subTree
+          Tree at:  0000 0000 0000 0458  length: 0000 0000 0000 0004
             0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-            0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0398 0000 0009   0000 0001 0000 0009
-            0000 0458 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+            0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 03D8 0000 0009   0000 0001 0000 0009
+            0000 0498 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0001 0000 0000
               index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
               index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-              index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0009
-              index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0398 subTree
-            Tree at:  0000 0000 0000 0398  length: 0000 0000 0000 0004
+              index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
+              index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 03D8 subTree
+            Tree at:  0000 0000 0000 03D8  length: 0000 0000 0000 0005
               0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-              0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0013 0000 0206   0000 0001 0000 0009
-              0000 03D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+              0000 0000 0000 000A   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0002   0000 0013 0000 0006   0000 0001 0000 0009
+              0000 0418 0000 0005   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
                 index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
                 index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-                index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0206
-                index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0013
+                index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
+                index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0013
+                index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0002
             end
           end
         end
@@ -2454,43 +2469,45 @@ end
 END
 
 #latest:
-ok T(q(vav), <<END) if 0;
-Tree at:  0000 0000 0000 0198  length: 0000 0000 0000 0008
+ok T(q(vav), <<END) if 1;
+Tree at:  0000 0000 0000 01D8  length: 0000 0000 0000 0009
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-  0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0118 0000 0009   0000 0098 0000 0009   0000 0001 0000 0105   0000 0003 0000 0009
-  0000 01D8 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+  0000 0000 0000 0012   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0158   0000 0009 0000 00D8   0000 0009 0000 0001   0000 0001 0000 0005   0000 0003 0000 0009
+  0000 0218 0140 0009   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 000D   0000 000C 0000 0009   0000 0008 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
     index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
     index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
-    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0105
-    index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0001
-    index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0098 subTree
-    index: 0000 0000 0000 0006   key: 0000 0000 0000 0006   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0118 subTree
-  Tree at:  0000 0000 0000 0098  length: 0000 0000 0000 0004
+    index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0005
+    index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0005   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0006   key: 0000 0000 0000 0009   data: 0000 0000 0000 00D8 subTree
+    index: 0000 0000 0000 0007   key: 0000 0000 0000 000C   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0008   key: 0000 0000 0000 000D   data: 0000 0000 0000 0158 subTree
+  Tree at:  0000 0000 0000 00D8  length: 0000 0000 0000 0005
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0106   0000 0001 0000 0009
-    0000 00D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+    0000 0000 0000 000A   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0000 0000 0006   0000 0001 0000 0009
+    0000 0118 0000 0005   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0106
-      index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0000
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0000
+      index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
   end
-  Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0004
+  Tree at:  0000 0000 0000 0158  length: 0000 0000 0000 0005
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0002 0000 0106   0000 0001 0000 0009
-    0000 0158 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+    0000 0000 0000 000A   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0002 0000 0006   0000 0001 0000 0009
+    0000 0198 0000 0005   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0106
-      index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0002
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0002
+      index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
   end
 end
 END
 
-#latest:
 if (1) {                                                                        #Tcreate #Tprint
-  create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with  zero
+  create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with zero
 
   ok Assemble(debug => 0, eq => <<END);
 Assign: 𝑎
@@ -2515,33 +2532,35 @@ Assign: 𝑎
 END
 
 #latest:
-ok T(q(bvB), <<END) if 0;
-Tree at:  0000 0000 0000 0198  length: 0000 0000 0000 0006
+ok T(q(bvB), <<END) if 1;
+Tree at:  0000 0000 0000 01D8  length: 0000 0000 0000 0007
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-  0000 0000 0000 000C   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0118 0000 0009   0000 0000 0000 0100   0000 0002 0000 0009
-  0000 01D8 0020 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+  0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0158   0000 0009 0000 0001   0000 0000 0000 0000   0000 0002 0000 0009
+  0000 0218 0040 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0009   0000 0008 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
     index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
     index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
-    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0100
-    index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0000
-    index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0118 subTree
-  Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0004
+    index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0000
+    index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0000
+    index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0005   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0006   key: 0000 0000 0000 0009   data: 0000 0000 0000 0158 subTree
+  Tree at:  0000 0000 0000 0158  length: 0000 0000 0000 0004
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0098 0000 0009   0000 0001 0000 0009
-    0000 0158 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+    0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 00D8 0000 0009   0000 0001 0000 0009
+    0000 0198 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0001 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0009
-      index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0098 subTree
-    Tree at:  0000 0000 0000 0098  length: 0000 0000 0000 0004
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 00D8 subTree
+    Tree at:  0000 0000 0000 00D8  length: 0000 0000 0000 0005
       0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-      0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0001 0000 0306   0000 0001 0000 0009
-      0000 00D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+      0000 0000 0000 000A   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0003   0000 0001 0000 0006   0000 0001 0000 0009
+      0000 0118 0000 0005   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
         index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
         index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-        index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0306
-        index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0001
+        index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
+        index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0001
+        index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0003
     end
   end
 end
@@ -2621,36 +2640,39 @@ Semicolon
 END
 
 #latest:;
-ok T(q(s), <<END) if 0;
-Tree at:  0000 0000 0000 0198  length: 0000 0000 0000 0008
+ok T(q(s), <<END) if 1;
+Tree at:  0000 0000 0000 01D8  length: 0000 0000 0000 0009
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-  0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0118 0000 0009   0000 0098 0000 0009   0000 0001 0000 0108   0000 0003 0000 0009
-  0000 01D8 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+  0000 0000 0000 0012   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0158   0000 0009 0000 00D8   0000 0009 0000 0001   0000 0001 0000 0008   0000 0003 0000 0009
+  0000 0218 0140 0009   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 000D   0000 000C 0000 0009   0000 0008 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
     index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
     index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
-    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0108
-    index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0001
-    index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0098 subTree
-    index: 0000 0000 0000 0006   key: 0000 0000 0000 0006   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0118 subTree
-  Tree at:  0000 0000 0000 0098  length: 0000 0000 0000 0004
+    index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0008
+    index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0005   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0006   key: 0000 0000 0000 0009   data: 0000 0000 0000 00D8 subTree
+    index: 0000 0000 0000 0007   key: 0000 0000 0000 000C   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0008   key: 0000 0000 0000 000D   data: 0000 0000 0000 0158 subTree
+  Tree at:  0000 0000 0000 00D8  length: 0000 0000 0000 0005
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0106   0000 0001 0000 0009
-    0000 00D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+    0000 0000 0000 000A   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0000 0000 0006   0000 0001 0000 0009
+    0000 0118 0000 0005   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0106
-      index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0000
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0000
+      index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
   end
-  Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0004
+  Tree at:  0000 0000 0000 0158  length: 0000 0000 0000 0005
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0002 0000 0106   0000 0001 0000 0009
-    0000 0158 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+    0000 0000 0000 000A   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0002 0000 0006   0000 0001 0000 0009
+    0000 0198 0000 0005   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0106
-      index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0002
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0002
+      index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
   end
 end
 END
@@ -2665,36 +2687,39 @@ Semicolon
 END
 
 #latest:
-ok T(q(A), <<END) if 0;
-Tree at:  0000 0000 0000 0198  length: 0000 0000 0000 0008
+ok T(q(A), <<END) if 1;
+Tree at:  0000 0000 0000 01D8  length: 0000 0000 0000 0009
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-  0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0118 0000 0009   0000 0098 0000 0009   0000 0002 0000 0605   0000 0003 0000 0009
-  0000 01D8 00A0 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+  0000 0000 0000 0012   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0158   0000 0009 0000 00D8   0000 0009 0000 0006   0000 0002 0000 0005   0000 0003 0000 0009
+  0000 0218 0140 0009   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 000D   0000 000C 0000 0009   0000 0008 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
     index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
     index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
-    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0605
-    index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0002
-    index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0098 subTree
-    index: 0000 0000 0000 0006   key: 0000 0000 0000 0006   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0118 subTree
-  Tree at:  0000 0000 0000 0098  length: 0000 0000 0000 0004
+    index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0005
+    index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0002
+    index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0006
+    index: 0000 0000 0000 0005   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0006   key: 0000 0000 0000 0009   data: 0000 0000 0000 00D8 subTree
+    index: 0000 0000 0000 0007   key: 0000 0000 0000 000C   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0008   key: 0000 0000 0000 000D   data: 0000 0000 0000 0158 subTree
+  Tree at:  0000 0000 0000 00D8  length: 0000 0000 0000 0005
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0206   0000 0001 0000 0009
-    0000 00D8 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+    0000 0000 0000 000A   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0002   0000 0000 0000 0006   0000 0001 0000 0009
+    0000 0118 0000 0005   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0206
-      index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0000
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0000
+      index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0002
   end
-  Tree at:  0000 0000 0000 0118  length: 0000 0000 0000 0004
+  Tree at:  0000 0000 0000 0158  length: 0000 0000 0000 0005
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0008 0000 0702   0000 0001 0000 0009
-    0000 0158 0000 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0003 0000 0002   0000 0001 0000 0000
+    0000 0000 0000 000A   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0008 0000 0002   0000 0001 0000 0009
+    0000 0198 0000 0005   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0702
-      index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0008
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0002
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0008
+      index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0007
   end
 end
 END
