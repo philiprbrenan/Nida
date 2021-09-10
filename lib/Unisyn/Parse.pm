@@ -279,11 +279,13 @@ sub new($$)                                                                     
 
       my $s = CreateShortString(0);                                             # Short string to hold text of lexical item so we can load it into a quark
       PushR r15;
-      r15 ne $start && r15 ne $liOffset or confess "f15 in use";
+      r15 ne $start && r15 ne $liOffset or confess "r15 in use";
       Lea r15, "[$start+4*$liOffset]";                                          # Start address of lexical item
       my $start = V(address, r15);                                              # Save start address of lexical item
       PopR;
-      $s->loadDwordBytes(0, $start, $size);                                     # Load text of lexical item into short string
+#     $s->loadDwordBytes(0, $start, $size);                                     # Load text of lexical item into short string
+      $s->loadDwordBytes(0, $start, $size, 1);                                  # Load text of lexical item into short string
+      Pinsrb "xmm0", $liType."b", 1;                                            # Set lexical type as the first byte of the short string
 
       my $q = $Quarks->quarkFromShortString($s);
       $t->insert(V(key, $lexItemWidth * $j + $lexItemQuark), $q);               # Save quark number of lexical item in parse tree
@@ -2334,8 +2336,8 @@ sub C($$%)                                                                      
  }
 
 #latest:
-ok T(q(brackets), <<END, comments=>10, debug => 0) if 1;
-Tree at:  0000 0000 0000 0A58  length: 0000 0000 0000 000A
+ok T(q(brackets), <<END, debug => 0) if 1;
+Tree at:  0000 0000 0000 0AD8  length: 0000 0000 0000 000A
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
   0000 0000 0000 0014   0000 0000 0000 0000   0000 0000 0000 0000   0000 0998 0000 0009   0000 00D8 0000 0009   0000 0008 0000 0006   0000 0001 0000 0005   0000 0003 0000 0009
   0000 0A98 0280 000A   0000 0000 0000 0000   0000 0000 0000 0000   0000 000D 0000 000C   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
