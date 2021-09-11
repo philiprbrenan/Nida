@@ -1344,6 +1344,69 @@ sub print($)                                                                    
   PopR;
  } # print
 
+#D1 Alphabets                                                                   # Translate between alphabets
+
+
+sub showAlphabet($)                                                             #P Show an alphabet
+ {my ($alphabet) = @_;                                                          # Alphabet name
+  my $out;
+  my $lex = &lexicalData;
+  my $abc = $lex->{alphabetsOrdered}{$alphabet};
+  for my $a(@$abc)
+   {$out .= chr($a);
+   }
+  $out
+ }
+
+sub asciiToDyadLatin($)                                                         # Translate ascii to the corresponding letters in the dyad latin alphabet
+ {my ($in) = @_;                                                                # A string of ascii
+  $in =~ tr/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/𝐀𝐁𝐂𝐃𝐄𝐅𝐆𝐇𝐈𝐉𝐊𝐋𝐌𝐍𝐎𝐏𝐐𝐑𝐒𝐓𝐔𝐕𝐖𝐗𝐘𝐙𝐚𝐛𝐜𝐝𝐞𝐟𝐠𝐡𝐢𝐣𝐤𝐥𝐦𝐧𝐨𝐩𝐪𝐫𝐬𝐭𝐮𝐯𝐰𝐱𝐲𝐳/r;
+ }
+
+sub asciiToDyadGreek($)                                                         # Translate ascii to the corresponding letters in the dyad greek alphabet
+ {my ($in) = @_;                                                                # A string of ascii
+  $in =~ tr/ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw/𝚨𝚩𝚪𝚫𝚬𝚭𝚮𝚯𝚰𝚱𝚲𝚳𝚴𝚵𝚶𝚷𝚸𝚹𝚺𝚻𝚼𝚽𝚾𝚿𝛀𝛂𝛃𝛄𝛅𝛆𝛇𝛈𝛉𝛊𝛋𝛌𝛍𝛎𝛏𝛐𝛑𝛒𝛓𝛔𝛕𝛖𝛗𝛘𝛙𝛚/r;
+ }
+
+sub asciiToPrefixLatin($)                                                       # Translate ascii to the corresponding letters in the prefix latin alphabet
+ {my ($in) = @_;                                                                # A string of ascii
+  $in =~ tr/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/𝑨𝑩𝑪𝑫𝑬𝑭𝑮𝑯𝑰𝑱𝑲𝑳𝑴𝑵𝑶𝑷𝑸𝑹𝑺𝑻𝑼𝑽𝑾𝑿𝒀𝒁𝒂𝒃𝒄𝒅𝒆𝒇𝒈𝒉𝒊𝒋𝒌𝒍𝒎𝒏𝒐𝒑𝒒𝒓𝒔𝒕𝒖𝒗𝒘𝒙𝒚𝒛/r;
+ }
+
+sub asciiToPrefixGreek($)                                                       # Translate ascii to the corresponding letters in the prefix greek alphabet
+ {my ($in) = @_;                                                                # A string of ascii
+  $in =~ tr/ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw/𝜜𝜝𝜞𝜟𝜠𝜡𝜢𝜣𝜤𝜥𝜦𝜧𝜨𝜩𝜪𝜫𝜬𝜭𝜮𝜯𝜰𝜱𝜲𝜳𝜴𝜶𝜷𝜸𝜹𝜺𝜻𝜼𝜽𝜾𝜿𝝀𝝁𝝂𝝃𝝄𝝅𝝆𝝇𝝈𝝉𝝊𝝋𝝌𝝍𝝎/r;
+ }
+
+sub asciiToSuffixLatin($)                                                       # Translate ascii to the corresponding letters in the suffix latin alphabet
+ {my ($in) = @_;                                                                # A string of ascii
+  $in =~ tr/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/𝘼𝘽𝘾𝘿𝙀𝙁𝙂𝙃𝙄𝙅𝙆𝙇𝙈𝙉𝙊𝙋𝙌𝙍𝙎𝙏𝙐𝙑𝙒𝙓𝙔𝙕𝙖𝙗𝙘𝙙𝙚𝙛𝙜𝙝𝙞𝙟𝙠𝙡𝙢𝙣𝙤𝙥𝙦𝙧𝙨𝙩𝙪𝙫𝙬𝙭𝙮𝙯/r;
+ }
+
+sub asciiToSuffixGreek($)                                                       # Translate ascii to the corresponding letters in the suffix greek alphabet
+ {my ($in) = @_;                                                                # A string of ascii
+  $in =~ tr/ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw/𝞐𝞑𝞒𝞓𝞔𝞕𝞖𝞗𝞘𝞙𝞚𝞛𝞜𝞝𝞞𝞟𝞠𝞡𝞢𝞣𝞤𝞥𝞦𝞧𝞨𝞪𝞫𝞬𝞭𝞮𝞯𝞰𝞱𝞲𝞳𝞴𝞵𝞶𝞷𝞸𝞹𝞺𝞻𝞼𝞽𝞾𝞿𝟀𝟁𝟂/r;
+ }
+
+sub asciiToVariableLatin($)                                                     # Translate ascii to the corresponding letters in the suffix latin alphabet
+ {my ($in) = @_;                                                                # A string of ascii
+  $in =~ tr/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/𝗔𝗕𝗖𝗗𝗘𝗙𝗚𝗛𝗜𝗝𝗞𝗟𝗠𝗡𝗢𝗣𝗤𝗥𝗦𝗧𝗨𝗩𝗪𝗫𝗬𝗭𝗮𝗯𝗰𝗱𝗲𝗳𝗴𝗵𝗶𝗷𝗸𝗹𝗺𝗻𝗼𝗽𝗾𝗿𝘀𝘁𝘂𝘃𝘄𝘅𝘆𝘇/r;
+ }
+
+sub asciiToVariableGreek($)                                                     # Translate ascii to the corresponding letters in the suffix greek alphabet
+ {my ($in) = @_;                                                                # A string of ascii
+  $in =~ tr/ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw/𝝖𝝗𝝘𝝙𝝚𝝛𝝜𝝝𝝞𝝟𝝠𝝡𝝢𝝣𝝤𝝥𝝦𝝧𝝨𝝩𝝪𝝫𝝬𝝭𝝮𝝰𝝱𝝲𝝳𝝴𝝵𝝶𝝷𝝸𝝹𝝺𝝻𝝼𝝽𝝾𝝿𝞀𝞁𝞂𝞃𝞄𝞅𝞆𝞇𝞈/r;
+ }
+
+sub asciiToEscaped($)                                                           # Translate ascii to the corresponding letters in the escaped ascii alphabet
+ {my ($in) = @_;                                                                # A string of ascii
+  $in =~ tr/abcdefghijklmnopqrstuvwxyz/🅐🅑🅒🅓🅔🅕🅖🅗🅘🅙🅚🅛🅜🅝🅞🅟🅠🅡🅢🅣🅤🅥🅦🅧🅨🅩/r;
+ }
+
+sub semiColon()                                                           # Translate ascii to the corresponding letters in the escaped ascii alphabet
+ {chr(10210)
+ }
+
 #d
 sub lexicalData {do {
   my $a = bless({
@@ -2296,7 +2359,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 12;
+   {plan tests => 22;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -2339,8 +2402,8 @@ sub C($$%)                                                                      
 ok T(q(brackets), <<END, debug => 0) if 1;
 Tree at:  0000 0000 0000 0AD8  length: 0000 0000 0000 000A
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-  0000 0000 0000 0014   0000 0000 0000 0000   0000 0000 0000 0000   0000 0998 0000 0009   0000 00D8 0000 0009   0000 0008 0000 0006   0000 0001 0000 0005   0000 0003 0000 0009
-  0000 0A98 0280 000A   0000 0000 0000 0000   0000 0000 0000 0000   0000 000D 0000 000C   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
+  0000 0000 0000 0014   0000 0000 0000 0000   0000 0000 0000 0000   0000 0A18 0000 0009   0000 00D8 0000 0009   0000 0008 0000 0006   0000 0001 0000 0005   0000 0003 0000 0009
+  0000 0B18 0280 000A   0000 0000 0000 0000   0000 0000 0000 0000   0000 000D 0000 000C   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
     index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
     index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
     index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0005
@@ -2350,7 +2413,7 @@ Tree at:  0000 0000 0000 0AD8  length: 0000 0000 0000 000A
     index: 0000 0000 0000 0006   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
     index: 0000 0000 0000 0007   key: 0000 0000 0000 0009   data: 0000 0000 0000 00D8 subTree
     index: 0000 0000 0000 0008   key: 0000 0000 0000 000C   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 0009   key: 0000 0000 0000 000D   data: 0000 0000 0000 0998 subTree
+    index: 0000 0000 0000 0009   key: 0000 0000 0000 000D   data: 0000 0000 0000 0A18 subTree
   Tree at:  0000 0000 0000 00D8  length: 0000 0000 0000 0006
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
     0000 0000 0000 000C   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0000 0000 0006   0000 0001 0000 0009
@@ -2362,10 +2425,10 @@ Tree at:  0000 0000 0000 0AD8  length: 0000 0000 0000 000A
       index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
       index: 0000 0000 0000 0005   key: 0000 0000 0000 0007   data: 0000 0000 0000 0000
   end
-  Tree at:  0000 0000 0000 0998  length: 0000 0000 0000 0008
+  Tree at:  0000 0000 0000 0A18  length: 0000 0000 0000 0008
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0918 0000 0009   0000 0007 0000 0001   0000 0007 0000 0000   0000 0002 0000 0009
-    0000 09D8 0080 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
+    0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0998 0000 0009   0000 0007 0000 0001   0000 0007 0000 0000   0000 0002 0000 0009
+    0000 0A58 0080 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
       index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0000
@@ -2373,11 +2436,11 @@ Tree at:  0000 0000 0000 0AD8  length: 0000 0000 0000 000A
       index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
       index: 0000 0000 0000 0005   key: 0000 0000 0000 0007   data: 0000 0000 0000 0007
       index: 0000 0000 0000 0006   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
-      index: 0000 0000 0000 0007   key: 0000 0000 0000 0009   data: 0000 0000 0000 0918 subTree
-    Tree at:  0000 0000 0000 0918  length: 0000 0000 0000 0004
+      index: 0000 0000 0000 0007   key: 0000 0000 0000 0009   data: 0000 0000 0000 0998 subTree
+    Tree at:  0000 0000 0000 0998  length: 0000 0000 0000 0004
       0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
       0000 0000 0000 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 07D8 0000 0009   0000 0001 0000 0009
-      0000 0958 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0001 0000 0000
+      0000 09D8 0008 0004   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0005 0000 0004   0000 0001 0000 0000
         index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
         index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
         index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0009
@@ -2494,14 +2557,14 @@ END
 ok T(q(vav), <<END) if 1;
 Tree at:  0000 0000 0000 02D8  length: 0000 0000 0000 000A
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-  0000 0000 0000 0014   0000 0000 0000 0000   0000 0000 0000 0000   0000 0218 0000 0009   0000 00D8 0000 0009   0000 0001 0000 0001   0000 0001 0000 0005   0000 0003 0000 0009
+  0000 0000 0000 0014   0000 0000 0000 0000   0000 0000 0000 0000   0000 0218 0000 0009   0000 00D8 0000 0009   0000 0002 0000 0001   0000 0001 0000 0005   0000 0003 0000 0009
   0000 0318 0280 000A   0000 0000 0000 0000   0000 0000 0000 0000   0000 000D 0000 000C   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
     index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
     index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
     index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0005
     index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0001
     index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
-    index: 0000 0000 0000 0005   key: 0000 0000 0000 0007   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0005   key: 0000 0000 0000 0007   data: 0000 0000 0000 0002
     index: 0000 0000 0000 0006   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
     index: 0000 0000 0000 0007   key: 0000 0000 0000 0009   data: 0000 0000 0000 00D8 subTree
     index: 0000 0000 0000 0008   key: 0000 0000 0000 000C   data: 0000 0000 0000 0009
@@ -2765,6 +2828,18 @@ Assign: 𝑒𝑞𝑢𝑎𝑙𝑠
   Term
     Ascii: abc 123
 END
+
+#latest:
+is_deeply asciiToDyadLatin    ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"), q(𝐀𝐁𝐂𝐃𝐄𝐅𝐆𝐇𝐈𝐉𝐊𝐋𝐌𝐍𝐎𝐏𝐐𝐑𝐒𝐓𝐔𝐕𝐖𝐗𝐘𝐙𝐚𝐛𝐜𝐝𝐞𝐟𝐠𝐡𝐢𝐣𝐤𝐥𝐦𝐧𝐨𝐩𝐪𝐫𝐬𝐭𝐮𝐯𝐰𝐱𝐲𝐳);
+is_deeply asciiToDyadGreek    ("ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw"),   q(𝚨𝚩𝚪𝚫𝚬𝚭𝚮𝚯𝚰𝚱𝚲𝚳𝚴𝚵𝚶𝚷𝚸𝚹𝚺𝚻𝚼𝚽𝚾𝚿𝛀𝛂𝛃𝛄𝛅𝛆𝛇𝛈𝛉𝛊𝛋𝛌𝛍𝛎𝛏𝛐𝛑𝛒𝛓𝛔𝛕𝛖𝛗𝛘𝛙𝛚); #q(𝚨𝚩𝚾𝚫𝚬𝚽𝚪𝚯𝚰J𝚱𝚲𝚳𝚮𝚶𝚷𝚹𝚸𝚺𝚻𝚼𝚴𝛀𝚵𝚿𝚭𝛂𝛃𝛘𝛅𝛆𝛗𝛄𝛉𝛊j𝛋𝛌𝛍𝛈𝛐𝛑𝛓𝛒𝛔𝛕𝛖𝛎𝛚𝛏𝛙𝛇);
+is_deeply asciiToPrefixLatin  ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"), q(𝑨𝑩𝑪𝑫𝑬𝑭𝑮𝑯𝑰𝑱𝑲𝑳𝑴𝑵𝑶𝑷𝑸𝑹𝑺𝑻𝑼𝑽𝑾𝑿𝒀𝒁𝒂𝒃𝒄𝒅𝒆𝒇𝒈𝒉𝒊𝒋𝒌𝒍𝒎𝒏𝒐𝒑𝒒𝒓𝒔𝒕𝒖𝒗𝒘𝒙𝒚𝒛);
+is_deeply asciiToPrefixGreek  ("ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw"),   q(𝜜𝜝𝜞𝜟𝜠𝜡𝜢𝜣𝜤𝜥𝜦𝜧𝜨𝜩𝜪𝜫𝜬𝜭𝜮𝜯𝜰𝜱𝜲𝜳𝜴𝜶𝜷𝜸𝜹𝜺𝜻𝜼𝜽𝜾𝜿𝝀𝝁𝝂𝝃𝝄𝝅𝝆𝝇𝝈𝝉𝝊𝝋𝝌𝝍𝝎);# q(𝜜𝜝𝜲𝜟𝜠𝜱𝜞𝜣𝜤J𝜥𝜦𝜧𝜢𝜪𝜫𝜭𝜬𝜮𝜯𝜰𝜨𝜴𝜩𝜳𝜡𝜶𝜷𝝌𝜹𝜺𝝋𝜸𝜽𝜾j𝜿𝝀𝝁𝜼𝝄𝝅𝝇𝝆𝝈𝝉𝝊𝝂𝝎𝝃𝝍𝜻)
+is_deeply asciiToSuffixLatin  ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"), q(𝘼𝘽𝘾𝘿𝙀𝙁𝙂𝙃𝙄𝙅𝙆𝙇𝙈𝙉𝙊𝙋𝙌𝙍𝙎𝙏𝙐𝙑𝙒𝙓𝙔𝙕𝙖𝙗𝙘𝙙𝙚𝙛𝙜𝙝𝙞𝙟𝙠𝙡𝙢𝙣𝙤𝙥𝙦𝙧𝙨𝙩𝙪𝙫𝙬𝙭𝙮𝙯);
+is_deeply asciiToSuffixGreek  ("ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw"),   q(𝞐𝞑𝞒𝞓𝞔𝞕𝞖𝞗𝞘𝞙𝞚𝞛𝞜𝞝𝞞𝞟𝞠𝞡𝞢𝞣𝞤𝞥𝞦𝞧𝞨𝞪𝞫𝞬𝞭𝞮𝞯𝞰𝞱𝞲𝞳𝞴𝞵𝞶𝞷𝞸𝞹𝞺𝞻𝞼𝞽𝞾𝞿𝟀𝟁𝟂); #q(𝞐𝞑𝞦𝞓𝞔𝞥𝞒𝞗𝞘J𝞙𝞚𝞛𝞖𝞞𝞟𝞡𝞠𝞢𝞣𝞤𝞜𝞨𝞝𝞧𝞕𝞪𝞫𝟀𝞭𝞮𝞿𝞬𝞱𝞲j𝞳𝞴𝞵𝞰𝞸𝞹𝞻𝞺𝞼𝞽𝞾𝞶𝟂𝞷𝟁𝞯)
+is_deeply asciiToVariableLatin("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"), q(𝗔𝗕𝗖𝗗𝗘𝗙𝗚𝗛𝗜𝗝𝗞𝗟𝗠𝗡𝗢𝗣𝗤𝗥𝗦𝗧𝗨𝗩𝗪𝗫𝗬𝗭𝗮𝗯𝗰𝗱𝗲𝗳𝗴𝗵𝗶𝗷𝗸𝗹𝗺𝗻𝗼𝗽𝗾𝗿𝘀𝘁𝘂𝘃𝘄𝘅𝘆𝘇);
+is_deeply asciiToVariableGreek("ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw"),   q(𝝖𝝗𝝘𝝙𝝚𝝛𝝜𝝝𝝞𝝟𝝠𝝡𝝢𝝣𝝤𝝥𝝦𝝧𝝨𝝩𝝪𝝫𝝬𝝭𝝮𝝰𝝱𝝲𝝳𝝴𝝵𝝶𝝷𝝸𝝹𝝺𝝻𝝼𝝽𝝾𝝿𝞀𝞁𝞂𝞃𝞄𝞅𝞆𝞇𝞈); #q(𝝖𝝗𝝬𝝙𝝚𝝫𝝘𝝝𝝞J𝝟𝝠𝝡𝝜𝝤𝝥𝝧𝝦𝝨𝝩𝝪𝝢𝝮𝝣𝝭𝝛𝝰𝝱𝞆𝝳𝝴𝞅𝝲𝝷𝝸j𝝹𝝺𝝻𝝶𝝾𝝿𝞁𝞀𝞂𝞃𝞄𝝼𝞈𝝽𝞇𝝵)
+is_deeply asciiToEscaped      ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"), q(ABCDEFGHIJKLMNOPQRSTUVWXYZ🅐🅑🅒🅓🅔🅕🅖🅗🅘🅙🅚🅛🅜🅝🅞🅟🅠🅡🅢🅣🅤🅥🅦🅧🅨🅩);
+is_deeply semiColon, q(⟢);
 
 unlink $_ for qw(hash print2 sde-log.txt sde-ptr-check.out.txt z.txt);          # Remove incidental files
 
