@@ -38,7 +38,7 @@ loops and if statements with nested expressions:
 ```
      is
  sub          as
-        array             then
+        [array](https://en.wikipedia.org/wiki/Dynamic_array)             then
                     ==                    else
                  v1    v2         plus                  then
                                v3      v4         ==                     else
@@ -58,7 +58,7 @@ clearly within the three levels of operator precedence provided.
 ## Minimalism through Unicode
 
 This [module](https://en.wikipedia.org/wiki/Modular_programming) is part of the Earl Zero project: using Perl 5 to create a minimal,
-modern scripting language which generates x86 assembler [code](https://en.wikipedia.org/wiki/Computer_program) directly. An
+modern [Unicode](https://en.wikipedia.org/wiki/Unicode) based scripting language which generates x86 assembler [code](https://en.wikipedia.org/wiki/Computer_program) directly. An
 Earl Zero [program](https://en.wikipedia.org/wiki/Computer_program) is a single [Unicode](https://en.wikipedia.org/wiki/Unicode) expression with no key words: only expressions
 constructed from [user](https://en.wikipedia.org/wiki/User_(computing)) defined
 [unary](https://en.wikipedia.org/wiki/Unary_operation)
