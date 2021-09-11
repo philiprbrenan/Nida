@@ -67,7 +67,7 @@ and
 [operators](https://en.wikipedia.org/wiki/Operator_(mathematics))
 are used to construct programs.
 
-Minimalism is an important part of Earl Zero, the "Hello World" [program](https://en.wikipedia.org/wiki/Computer_program) is:
+Minimalism is an important part of Earl Zero; the "Hello World" [program](https://en.wikipedia.org/wiki/Computer_program) is:
 
 ```
 Hello World
