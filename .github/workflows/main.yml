@@ -1,0 +1,38 @@
+# Test UnisynParse 2021-09-11 at 01:53:50
+
+name: Test
+
+on:
+  push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        ref: 'main'
+
+    - name: Install Data::Table::Text
+      run: |
+        sudo cpan install -T Data::Table::Text GitHub::Crud Test::Most Nasm::X86
+
+    - name: Install Nasm
+      run: |
+        sudo apt-get install -y nasm
+
+    - name: Download Intel Sde
+      run: |
+        curl https://software.intel.com/content/dam/develop/external/us/en/documents/downloads/sde-external-8.63.0-2021-01-18-lin.tar.bz2 > sde.tar.bz2
+        tree
+
+    - name: Install Intel Sde
+      run: |
+        tar -xf sde.tar.bz2
+        mv sde-external-8.63.0-2021-01-18-lin/ sde/
+        tree
+
+    - name: Test
+      run: |
+        perl lib/Unisyn/Parse.pm
