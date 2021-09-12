@@ -10,7 +10,7 @@
 # 0123    456789ABCDEF
 # Waiting on quarks
 package Unisyn::Parse;
-our $VERSION = "20210830";
+our $VERSION = "20210912";
 use warnings FATAL => qw(all);
 use strict;
 use Carp qw(confess cluck);
@@ -1401,7 +1401,7 @@ sub Unisyn::Parse::SubQuarks::reload($%)                                        
   $q                                                                            # Return upgraded quarks descriptor
  }
 
-sub Unisyn::Parse::SubQuarks::put($$$)                                          # Put a new subroutine definition into the sub quarks
+sub Unisyn::Parse::SubQuarks::put($$$)                                          # Put a new subroutine definition into the sub quarks.
  {my ($q, $string, $sub) = @_;                                                  # Subquarks, string containing operator type and method name, variable offset to subroutine
   @_ == 3 or confess "3 parameters";
   ref($sub) && ref($sub) =~ m(Nasm::X86::Sub) or
@@ -1414,7 +1414,7 @@ sub Unisyn::Parse::SubQuarks::put($$$)                                          
   $N                                                                            # Created quark number for subroutine
  }
 
-sub Unisyn::Parse::SubQuarks::subFromQuark($$$)                                 # Given the quark number for a lexical item and the quark set of lexical items get the offset of the associated method
+sub Unisyn::Parse::SubQuarks::subFromQuark($$$)                                 # Given the quark number for a lexical item and the quark set of lexical items get the offset of the associated method.
  {my ($q, $lexicals, $number) = @_;                                             # Sub quarks, lexical item quarks, lexical item quark
   @_ == 3 or confess "3 parameters";
 
@@ -1426,7 +1426,7 @@ sub Unisyn::Parse::SubQuarks::subFromQuark($$$)                                 
   $e
  }
 
-sub Unisyn::Parse::SubQuarks::lexToString($$)                                   # Convert a lexical item to a string
+sub Unisyn::Parse::SubQuarks::lexToString($$)                                   # Convert a lexical item to a string.
  {my ($q, $alphabet, $op) = @_;                                                 # The alphabet number, the operator name in that alphabet
   my $a = &lexicalData->{alphabetsOrdered}{$alphabet};                          # Alphabet
   my $n = $$Lex{lexicals}{$alphabet}{number};                                   # Number of lexical type
@@ -1435,26 +1435,26 @@ sub Unisyn::Parse::SubQuarks::lexToString($$)                                   
   join '', map {chr $_} @b                                                      # String representation
  }
 
-sub Unisyn::Parse::SubQuarks::dyad($$$)                                         # Define a method for a dyadic operator
- {my ($q, $text, $sub) = @_;                                                    # Sub quarks, the name of the operator as a uitf8 string, variable associated subroutine offset
+sub Unisyn::Parse::SubQuarks::dyad($$$)                                         # Define a method for a dyadic operator.
+ {my ($q, $text, $sub) = @_;                                                    # Sub quarks, the name of the operator as a utf8 string, variable associated subroutine offset
   my $s = $q->lexToString("dyad", $text);                                       # Operator name in operator alphabet preceded by alphabet number
   $q->put($s, $sub);                                                            # Add the named dyad to the sub quarks
  }
 
-sub Unisyn::Parse::SubQuarks::assign($$$)                                       # Define a method for an assign operator
- {my ($q, $text, $sub) = @_;                                                    # Sub quarks, the name of the operator as a uitf8 string, variable associated subroutine offset
+sub Unisyn::Parse::SubQuarks::assign($$$)                                       # Define a method for an assign operator.
+ {my ($q, $text, $sub) = @_;                                                    # Sub quarks, the name of the operator as a utf8 string, variable associated subroutine offset
   my $s = $q->lexToString("assign", $text);                                     # Operator name in operator alphabet preceded by alphabet number
   $q->put($s, $sub);                                                            # Add the named dyad to the sub quarks
  }
 
-sub assignToShortString($$)                                                     # Create a short string representing a dyad and put it in the specified short string
+sub assignToShortString($$)                                                     # Create a short string representing a dyad and put it in the specified short string.
  {my ($short, $text) = @_;                                                      # The number of the short string, the text of the operator in the assign alphabet
   lexToShortString($short, "assign", $text);
  }
 
 #D1 Alphabets                                                                   # Translate between alphabets
 
-sub showAlphabet($)                                                             #P Show an alphabet
+sub showAlphabet($)                                                             #P Show an alphabet.
  {my ($alphabet) = @_;                                                          # Alphabet name
   my $out;
   my $lex = &lexicalData;
@@ -1465,62 +1465,62 @@ sub showAlphabet($)                                                             
   $out
  }
 
-sub asciiToAssignLatin($)                                                       # Translate ascii to the corresponding letters in the assign latin alphabet
+sub asciiToAssignLatin($)                                                       # Translate ascii to the corresponding letters in the assign latin alphabet.
  {my ($in) = @_;                                                                # A string of ascii
   $in =~ tr/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/𝐴𝐵𝐶𝐷𝐸𝐹𝐺𝐻𝐼𝐽𝐾𝐿𝑀𝑁𝑂𝑃𝑄𝑅𝑆𝑇𝑈𝑉𝑊𝑋𝑌𝑍𝑎𝑏𝑐𝑑𝑒𝑓𝑔ℎ𝑖𝑗𝑘𝑙𝑚𝑛𝑜𝑝𝑞𝑟𝑠𝑡𝑢𝑣𝑤𝑥𝑦𝑧/r;
  }
 
-sub asciiToAssignGreek($)                                                       # Translate ascii to the corresponding letters in the assign greek alphabet
+sub asciiToAssignGreek($)                                                       # Translate ascii to the corresponding letters in the assign greek alphabet.
  {my ($in) = @_;                                                                # A string of ascii
   $in =~ tr/ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw/𝛢𝛣𝛤𝛥𝛦𝛧𝛨𝛩𝛪𝛫𝛬𝛭𝛮𝛯𝛰𝛱𝛲𝛳𝛴𝛵𝛶𝛷𝛸𝛹𝛺𝛼𝛽𝛾𝛿𝜀𝜁𝜂𝜃𝜄𝜅𝜆𝜇𝜈𝜉𝜊𝜋𝜌𝜍𝜎𝜏𝜐𝜑𝜒𝜓𝜔/r;
  }
 
-sub asciiToDyadLatin($)                                                         # Translate ascii to the corresponding letters in the dyad latin alphabet
+sub asciiToDyadLatin($)                                                         # Translate ascii to the corresponding letters in the dyad latin alphabet.
  {my ($in) = @_;                                                                # A string of ascii
   $in =~ tr/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/𝐀𝐁𝐂𝐃𝐄𝐅𝐆𝐇𝐈𝐉𝐊𝐋𝐌𝐍𝐎𝐏𝐐𝐑𝐒𝐓𝐔𝐕𝐖𝐗𝐘𝐙𝐚𝐛𝐜𝐝𝐞𝐟𝐠𝐡𝐢𝐣𝐤𝐥𝐦𝐧𝐨𝐩𝐪𝐫𝐬𝐭𝐮𝐯𝐰𝐱𝐲𝐳/r;
  }
 
-sub asciiToDyadGreek($)                                                         # Translate ascii to the corresponding letters in the dyad greek alphabet
+sub asciiToDyadGreek($)                                                         # Translate ascii to the corresponding letters in the dyad greek alphabet.
  {my ($in) = @_;                                                                # A string of ascii
   $in =~ tr/ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw/𝚨𝚩𝚪𝚫𝚬𝚭𝚮𝚯𝚰𝚱𝚲𝚳𝚴𝚵𝚶𝚷𝚸𝚹𝚺𝚻𝚼𝚽𝚾𝚿𝛀𝛂𝛃𝛄𝛅𝛆𝛇𝛈𝛉𝛊𝛋𝛌𝛍𝛎𝛏𝛐𝛑𝛒𝛓𝛔𝛕𝛖𝛗𝛘𝛙𝛚/r;
  }
 
-sub asciiToPrefixLatin($)                                                       # Translate ascii to the corresponding letters in the prefix latin alphabet
+sub asciiToPrefixLatin($)                                                       # Translate ascii to the corresponding letters in the prefix latin alphabet.
  {my ($in) = @_;                                                                # A string of ascii
   $in =~ tr/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/𝑨𝑩𝑪𝑫𝑬𝑭𝑮𝑯𝑰𝑱𝑲𝑳𝑴𝑵𝑶𝑷𝑸𝑹𝑺𝑻𝑼𝑽𝑾𝑿𝒀𝒁𝒂𝒃𝒄𝒅𝒆𝒇𝒈𝒉𝒊𝒋𝒌𝒍𝒎𝒏𝒐𝒑𝒒𝒓𝒔𝒕𝒖𝒗𝒘𝒙𝒚𝒛/r;
  }
 
-sub asciiToPrefixGreek($)                                                       # Translate ascii to the corresponding letters in the prefix greek alphabet
+sub asciiToPrefixGreek($)                                                       # Translate ascii to the corresponding letters in the prefix greek alphabet.
  {my ($in) = @_;                                                                # A string of ascii
   $in =~ tr/ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw/𝜜𝜝𝜞𝜟𝜠𝜡𝜢𝜣𝜤𝜥𝜦𝜧𝜨𝜩𝜪𝜫𝜬𝜭𝜮𝜯𝜰𝜱𝜲𝜳𝜴𝜶𝜷𝜸𝜹𝜺𝜻𝜼𝜽𝜾𝜿𝝀𝝁𝝂𝝃𝝄𝝅𝝆𝝇𝝈𝝉𝝊𝝋𝝌𝝍𝝎/r;
  }
 
-sub asciiToSuffixLatin($)                                                       # Translate ascii to the corresponding letters in the suffix latin alphabet
+sub asciiToSuffixLatin($)                                                       # Translate ascii to the corresponding letters in the suffix latin alphabet.
  {my ($in) = @_;                                                                # A string of ascii
   $in =~ tr/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/𝘼𝘽𝘾𝘿𝙀𝙁𝙂𝙃𝙄𝙅𝙆𝙇𝙈𝙉𝙊𝙋𝙌𝙍𝙎𝙏𝙐𝙑𝙒𝙓𝙔𝙕𝙖𝙗𝙘𝙙𝙚𝙛𝙜𝙝𝙞𝙟𝙠𝙡𝙢𝙣𝙤𝙥𝙦𝙧𝙨𝙩𝙪𝙫𝙬𝙭𝙮𝙯/r;
  }
 
-sub asciiToSuffixGreek($)                                                       # Translate ascii to the corresponding letters in the suffix greek alphabet
+sub asciiToSuffixGreek($)                                                       # Translate ascii to the corresponding letters in the suffix greek alphabet.
  {my ($in) = @_;                                                                # A string of ascii
   $in =~ tr/ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw/𝞐𝞑𝞒𝞓𝞔𝞕𝞖𝞗𝞘𝞙𝞚𝞛𝞜𝞝𝞞𝞟𝞠𝞡𝞢𝞣𝞤𝞥𝞦𝞧𝞨𝞪𝞫𝞬𝞭𝞮𝞯𝞰𝞱𝞲𝞳𝞴𝞵𝞶𝞷𝞸𝞹𝞺𝞻𝞼𝞽𝞾𝞿𝟀𝟁𝟂/r;
  }
 
-sub asciiToVariableLatin($)                                                     # Translate ascii to the corresponding letters in the suffix latin alphabet
+sub asciiToVariableLatin($)                                                     # Translate ascii to the corresponding letters in the suffix latin alphabet.
  {my ($in) = @_;                                                                # A string of ascii
   $in =~ tr/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/𝗔𝗕𝗖𝗗𝗘𝗙𝗚𝗛𝗜𝗝𝗞𝗟𝗠𝗡𝗢𝗣𝗤𝗥𝗦𝗧𝗨𝗩𝗪𝗫𝗬𝗭𝗮𝗯𝗰𝗱𝗲𝗳𝗴𝗵𝗶𝗷𝗸𝗹𝗺𝗻𝗼𝗽𝗾𝗿𝘀𝘁𝘂𝘃𝘄𝘅𝘆𝘇/r;
  }
 
-sub asciiToVariableGreek($)                                                     # Translate ascii to the corresponding letters in the suffix greek alphabet
+sub asciiToVariableGreek($)                                                     # Translate ascii to the corresponding letters in the suffix greek alphabet.
  {my ($in) = @_;                                                                # A string of ascii
   $in =~ tr/ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw/𝝖𝝗𝝘𝝙𝝚𝝛𝝜𝝝𝝞𝝟𝝠𝝡𝝢𝝣𝝤𝝥𝝦𝝧𝝨𝝩𝝪𝝫𝝬𝝭𝝮𝝰𝝱𝝲𝝳𝝴𝝵𝝶𝝷𝝸𝝹𝝺𝝻𝝼𝝽𝝾𝝿𝞀𝞁𝞂𝞃𝞄𝞅𝞆𝞇𝞈/r;
  }
 
-sub asciiToEscaped($)                                                           # Translate ascii to the corresponding letters in the escaped ascii alphabet
+sub asciiToEscaped($)                                                           # Translate ascii to the corresponding letters in the escaped ascii alphabet.
  {my ($in) = @_;                                                                # A string of ascii
   $in =~ tr/abcdefghijklmnopqrstuvwxyz/🅐🅑🅒🅓🅔🅕🅖🅗🅘🅙🅚🅛🅜🅝🅞🅟🅠🅡🅢🅣🅤🅥🅦🅧🅨🅩/r;
  }
 
-sub semiColon()                                                                 # Translate ascii to the corresponding letters in the escaped ascii alphabet
+sub semiColon()                                                                 # Translate ascii to the corresponding letters in the escaped ascii alphabet.
  {chr(10210)
  }
 
@@ -2476,7 +2476,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 22;
+   {plan tests => 23;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -2946,32 +2946,23 @@ Assign: 𝑒𝑞𝑢𝑎𝑙𝑠
     Ascii: abc 123
 END
 
+=pod
+# q(𝚨𝚩𝚾𝚫𝚬𝚽𝚪𝚯𝚰J𝚱𝚲𝚳𝚮𝚶𝚷𝚹𝚸𝚺𝚻𝚼𝚴𝛀𝚵𝚿𝚭𝛂𝛃𝛘𝛅𝛆𝛗𝛄𝛉𝛊j𝛋𝛌𝛍𝛈𝛐𝛑𝛓𝛒𝛔𝛕𝛖𝛎𝛚𝛏𝛙𝛇)
+# q(𝜜𝜝𝜲𝜟𝜠𝜱𝜞𝜣𝜤J𝜥𝜦𝜧𝜢𝜪𝜫𝜭𝜬𝜮𝜯𝜰𝜨𝜴𝜩𝜳𝜡𝜶𝜷𝝌𝜹𝜺𝝋𝜸𝜽𝜾j𝜿𝝀𝝁𝜼𝝄𝝅𝝇𝝆𝝈𝝉𝝊𝝂𝝎𝝃𝝍𝜻)
+# q(𝞐𝞑𝞦𝞓𝞔𝞥𝞒𝞗𝞘J𝞙𝞚𝞛𝞖𝞞𝞟𝞡𝞠𝞢𝞣𝞤𝞜𝞨𝞝𝞧𝞕𝞪𝞫𝟀𝞭𝞮𝞿𝞬𝞱𝞲j𝞳𝞴𝞵𝞰𝞸𝞹𝞻𝞺𝞼𝞽𝞾𝞶𝟂𝞷𝟁𝞯)
+# q(𝝖𝝗𝝬𝝙𝝚𝝫𝝘𝝝𝝞J𝝟𝝠𝝡𝝜𝝤𝝥𝝧𝝦𝝨𝝩𝝪𝝢𝝮𝝣𝝭𝝛𝝰𝝱𝞆𝝳𝝴𝞅𝝲𝝷𝝸j𝝹𝝺𝝻𝝶𝝾𝝿𝞁𝞀𝞂𝞃𝞄𝝼𝞈𝝽𝞇𝝵)
+=cut
 #latest:
 is_deeply asciiToDyadLatin    ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"), q(𝐀𝐁𝐂𝐃𝐄𝐅𝐆𝐇𝐈𝐉𝐊𝐋𝐌𝐍𝐎𝐏𝐐𝐑𝐒𝐓𝐔𝐕𝐖𝐗𝐘𝐙𝐚𝐛𝐜𝐝𝐞𝐟𝐠𝐡𝐢𝐣𝐤𝐥𝐦𝐧𝐨𝐩𝐪𝐫𝐬𝐭𝐮𝐯𝐰𝐱𝐲𝐳);
-is_deeply asciiToDyadGreek    ("ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw"),   q(𝚨𝚩𝚪𝚫𝚬𝚭𝚮𝚯𝚰𝚱𝚲𝚳𝚴𝚵𝚶𝚷𝚸𝚹𝚺𝚻𝚼𝚽𝚾𝚿𝛀𝛂𝛃𝛄𝛅𝛆𝛇𝛈𝛉𝛊𝛋𝛌𝛍𝛎𝛏𝛐𝛑𝛒𝛓𝛔𝛕𝛖𝛗𝛘𝛙𝛚); #q(𝚨𝚩𝚾𝚫𝚬𝚽𝚪𝚯𝚰J𝚱𝚲𝚳𝚮𝚶𝚷𝚹𝚸𝚺𝚻𝚼𝚴𝛀𝚵𝚿𝚭𝛂𝛃𝛘𝛅𝛆𝛗𝛄𝛉𝛊j𝛋𝛌𝛍𝛈𝛐𝛑𝛓𝛒𝛔𝛕𝛖𝛎𝛚𝛏𝛙𝛇);
+is_deeply asciiToDyadGreek    ("ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw"),   q(𝚨𝚩𝚪𝚫𝚬𝚭𝚮𝚯𝚰𝚱𝚲𝚳𝚴𝚵𝚶𝚷𝚸𝚹𝚺𝚻𝚼𝚽𝚾𝚿𝛀𝛂𝛃𝛄𝛅𝛆𝛇𝛈𝛉𝛊𝛋𝛌𝛍𝛎𝛏𝛐𝛑𝛒𝛓𝛔𝛕𝛖𝛗𝛘𝛙𝛚);
 is_deeply asciiToPrefixLatin  ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"), q(𝑨𝑩𝑪𝑫𝑬𝑭𝑮𝑯𝑰𝑱𝑲𝑳𝑴𝑵𝑶𝑷𝑸𝑹𝑺𝑻𝑼𝑽𝑾𝑿𝒀𝒁𝒂𝒃𝒄𝒅𝒆𝒇𝒈𝒉𝒊𝒋𝒌𝒍𝒎𝒏𝒐𝒑𝒒𝒓𝒔𝒕𝒖𝒗𝒘𝒙𝒚𝒛);
-is_deeply asciiToPrefixGreek  ("ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw"),   q(𝜜𝜝𝜞𝜟𝜠𝜡𝜢𝜣𝜤𝜥𝜦𝜧𝜨𝜩𝜪𝜫𝜬𝜭𝜮𝜯𝜰𝜱𝜲𝜳𝜴𝜶𝜷𝜸𝜹𝜺𝜻𝜼𝜽𝜾𝜿𝝀𝝁𝝂𝝃𝝄𝝅𝝆𝝇𝝈𝝉𝝊𝝋𝝌𝝍𝝎);# q(𝜜𝜝𝜲𝜟𝜠𝜱𝜞𝜣𝜤J𝜥𝜦𝜧𝜢𝜪𝜫𝜭𝜬𝜮𝜯𝜰𝜨𝜴𝜩𝜳𝜡𝜶𝜷𝝌𝜹𝜺𝝋𝜸𝜽𝜾j𝜿𝝀𝝁𝜼𝝄𝝅𝝇𝝆𝝈𝝉𝝊𝝂𝝎𝝃𝝍𝜻)
+is_deeply asciiToPrefixGreek  ("ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw"),   q(𝜜𝜝𝜞𝜟𝜠𝜡𝜢𝜣𝜤𝜥𝜦𝜧𝜨𝜩𝜪𝜫𝜬𝜭𝜮𝜯𝜰𝜱𝜲𝜳𝜴𝜶𝜷𝜸𝜹𝜺𝜻𝜼𝜽𝜾𝜿𝝀𝝁𝝂𝝃𝝄𝝅𝝆𝝇𝝈𝝉𝝊𝝋𝝌𝝍𝝎);
 is_deeply asciiToSuffixLatin  ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"), q(𝘼𝘽𝘾𝘿𝙀𝙁𝙂𝙃𝙄𝙅𝙆𝙇𝙈𝙉𝙊𝙋𝙌𝙍𝙎𝙏𝙐𝙑𝙒𝙓𝙔𝙕𝙖𝙗𝙘𝙙𝙚𝙛𝙜𝙝𝙞𝙟𝙠𝙡𝙢𝙣𝙤𝙥𝙦𝙧𝙨𝙩𝙪𝙫𝙬𝙭𝙮𝙯);
-is_deeply asciiToSuffixGreek  ("ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw"),   q(𝞐𝞑𝞒𝞓𝞔𝞕𝞖𝞗𝞘𝞙𝞚𝞛𝞜𝞝𝞞𝞟𝞠𝞡𝞢𝞣𝞤𝞥𝞦𝞧𝞨𝞪𝞫𝞬𝞭𝞮𝞯𝞰𝞱𝞲𝞳𝞴𝞵𝞶𝞷𝞸𝞹𝞺𝞻𝞼𝞽𝞾𝞿𝟀𝟁𝟂); #q(𝞐𝞑𝞦𝞓𝞔𝞥𝞒𝞗𝞘J𝞙𝞚𝞛𝞖𝞞𝞟𝞡𝞠𝞢𝞣𝞤𝞜𝞨𝞝𝞧𝞕𝞪𝞫𝟀𝞭𝞮𝞿𝞬𝞱𝞲j𝞳𝞴𝞵𝞰𝞸𝞹𝞻𝞺𝞼𝞽𝞾𝞶𝟂𝞷𝟁𝞯)
+is_deeply asciiToSuffixGreek  ("ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw"),   q(𝞐𝞑𝞒𝞓𝞔𝞕𝞖𝞗𝞘𝞙𝞚𝞛𝞜𝞝𝞞𝞟𝞠𝞡𝞢𝞣𝞤𝞥𝞦𝞧𝞨𝞪𝞫𝞬𝞭𝞮𝞯𝞰𝞱𝞲𝞳𝞴𝞵𝞶𝞷𝞸𝞹𝞺𝞻𝞼𝞽𝞾𝞿𝟀𝟁𝟂);
 is_deeply asciiToVariableLatin("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"), q(𝗔𝗕𝗖𝗗𝗘𝗙𝗚𝗛𝗜𝗝𝗞𝗟𝗠𝗡𝗢𝗣𝗤𝗥𝗦𝗧𝗨𝗩𝗪𝗫𝗬𝗭𝗮𝗯𝗰𝗱𝗲𝗳𝗴𝗵𝗶𝗷𝗸𝗹𝗺𝗻𝗼𝗽𝗾𝗿𝘀𝘁𝘂𝘃𝘄𝘅𝘆𝘇);
-is_deeply asciiToVariableGreek("ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw"),   q(𝝖𝝗𝝘𝝙𝝚𝝛𝝜𝝝𝝞𝝟𝝠𝝡𝝢𝝣𝝤𝝥𝝦𝝧𝝨𝝩𝝪𝝫𝝬𝝭𝝮𝝰𝝱𝝲𝝳𝝴𝝵𝝶𝝷𝝸𝝹𝝺𝝻𝝼𝝽𝝾𝝿𝞀𝞁𝞂𝞃𝞄𝞅𝞆𝞇𝞈); #q(𝝖𝝗𝝬𝝙𝝚𝝫𝝘𝝝𝝞J𝝟𝝠𝝡𝝜𝝤𝝥𝝧𝝦𝝨𝝩𝝪𝝢𝝮𝝣𝝭𝝛𝝰𝝱𝞆𝝳𝝴𝞅𝝲𝝷𝝸j𝝹𝝺𝝻𝝶𝝾𝝿𝞁𝞀𝞂𝞃𝞄𝝼𝞈𝝽𝞇𝝵)
+is_deeply asciiToVariableGreek("ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw"),   q(𝝖𝝗𝝘𝝙𝝚𝝛𝝜𝝝𝝞𝝟𝝠𝝡𝝢𝝣𝝤𝝥𝝦𝝧𝝨𝝩𝝪𝝫𝝬𝝭𝝮𝝰𝝱𝝲𝝳𝝴𝝵𝝶𝝷𝝸𝝹𝝺𝝻𝝼𝝽𝝾𝝿𝞀𝞁𝞂𝞃𝞄𝞅𝞆𝞇𝞈);
 is_deeply asciiToEscaped      ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"), q(ABCDEFGHIJKLMNOPQRSTUVWXYZ🅐🅑🅒🅓🅔🅕🅖🅗🅘🅙🅚🅛🅜🅝🅞🅟🅠🅡🅢🅣🅤🅥🅦🅧🅨🅩);
 is_deeply semiColon, q(⟢);
-
-#latest:
-if (1) {                                                                        #TNasm::X86::Quarks::quarkFromSub #TNasm::X86::Quarks::subFromQuark #TNasm::X86::Quarks::loadConstantString
-  my $s = Nasm::X86::CreateShortString(0);
-  dyadToShortString  ($s, asciiToDyadLatin("assign"));
-  PrintOutRegisterInHex xmm0;
-
-  assignToShortString($s, asciiToAssignLatin("assign"));
-  PrintOutRegisterInHex xmm0;
-
-  ok Assemble(debug => 0, trace => 0, eq => <<END);
-  xmm0: 0000 0000 0000 0000   2720 222C 2C1A 0307
-  xmm0: 0000 0000 0000 0000   2821 232D 2D1B 0307
-END
- }
 
 #latest:
 ok T(q(A), <<END,
