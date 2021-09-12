@@ -302,11 +302,13 @@ sub new($$)                                                                     
 
       if ($Operators)                                                           # The parse has operator definitions
        {if ($j == 1)                                                            # The operator quark is always first
-          {my $N = $Operators->subFromQuark($Quarks, $q);                       # Look up the subroutine associated with this operator
-            $t->insert(V(key, $opSub), $N);                                     # Save offset to subroutine associated with this lexical item
-          }
+         {my $N = $Operators->subFromQuark($Quarks, $q);                        # Look up the subroutine associated with this operator
+          If $N >= 0,                                                           # Found a matching operator subroutine
+          Then
+           {$t->insert(V(key, $opSub), $N);                                     # Save offset to subroutine associated with this lexical item
+           };
+         }
        }
-
      };
 
     $t->insert  (V(key, $lexItemWidth * $j + $lexItemType),                     # Save lexical type in parse tree
@@ -1048,7 +1050,7 @@ sub parseUtf8($@)                                                               
 
     $Operators =  $parse->operators->reload(arena => $$p{bs},                   # Reload the subQuarks because the subQuarks used to create this subroutine might not be the same as the subQuarks that are reusing it now.
       array => $$p{opNumbersToStringsFirst},
-      tree  => $$p{opStringsToNumbersFirst});
+      tree  => $$p{opStringsToNumbersFirst}) if $parse->operators;
 
     PrintErrStringNL "ParseUtf8" if $debug;
 
@@ -1144,8 +1146,8 @@ sub parseUtf8($@)                                                               
     sourceSize32            => $parse->sourceSize32,
     numbersToStringsFirst   => $parse->quarks->numbersToStrings->first,
     stringsToNumbersFirst   => $parse->quarks->stringsToNumbers->first,
-    opNumbersToStringsFirst => $op->subQuarks->numbersToStrings->first // $zero,
-    opStringsToNumbersFirst => $op->subQuarks->stringsToNumbers->first // $zero,
+    opNumbersToStringsFirst => $op ? $op->subQuarks->numbersToStrings->first : $zero,
+    opStringsToNumbersFirst => $op ? $op->subQuarks->stringsToNumbers->first : $zero,
    );
  } # parseUtf8
 
@@ -1407,8 +1409,7 @@ sub Unisyn::Parse::SubQuarks::put($$$)                                          
 
   PushR zmm0;
   my $s = CreateShortString(0)->loadConstantString($string);                    # Load the operator name in its alphabet with the alphabet number on the first byte
-  my $N = $q->subQuarks->quarkFromShortString($s);                              # Create quark
-  $q->subQuarks->numbersToStrings->put(index => $N, element => $sub->V);        # Reuse the array component to point to the sub
+  my $N = $q->subQuarks->quarkFromSub($sub, $s);                                # Create quark from sub
   PopR;
   $N                                                                            # Created quark number for subroutine
  }
@@ -1420,7 +1421,9 @@ sub Unisyn::Parse::SubQuarks::subFromQuark($$$)                                 
   ref($lexicals) && ref($lexicals) =~ m(Nasm::X86::Quarks) or                   # Check that we have been given a quark set as expected
     confess "Quarks expected";
 
-  $lexicals->quarkToQuark($number, $q->subQuarks);                              # Either the offset to the specified method or -1.
+  my $Q = $lexicals->quarkToQuark($number, $q->subQuarks);                      # Either the offset to the specified method or -1.
+  $q->subQuarks->numbersToStrings->get(index=>$Q, my $e = V(element));
+  $e
  }
 
 sub Unisyn::Parse::SubQuarks::lexToString($$)                                   # Convert a lexical item to a string
@@ -2970,15 +2973,17 @@ if (1) {                                                                        
 END
  }
 
-latest:
+#latest:
 ok T(q(A), <<END,
+Quark : 0000 0000 0000 0000 = 0000 0000 0040 207B
+Quark : 0000 0000 0000 0001 = 0000 0000 0040 20EF
 Tree at:  0000 0000 0000 0698  length: 0000 0000 0000 000B
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-  0000 0000 0000 0016   0000 0000 0000 0000   0000 0000 0000 04D8   0000 0009 0000 0398   0000 0009 0000 0002   0000 0006 0000 0002   0000 0005 0000 0001   0000 0003 0000 0009
+  0000 0000 0000 0016   0000 0000 0000 0000   0000 0000 0000 04D8   0000 0009 0000 0398   0000 0009 0000 0002   0000 0006 0000 0002   0000 0005 0040 20EF   0000 0003 0000 0009
   0000 06D8 0500 000B   0000 0000 0000 0000   0000 0000 0000 000D   0000 000C 0000 0009   0000 0008 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
     index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
     index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
-    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 20EF
     index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0005
     index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0002
     index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0006
@@ -2989,11 +2994,11 @@ Tree at:  0000 0000 0000 0698  length: 0000 0000 0000 000B
     index: 0000 0000 0000 000A   key: 0000 0000 0000 000D   data: 0000 0000 0000 04D8 subTree
   Tree at:  0000 0000 0000 0398  length: 0000 0000 0000 0007
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0002 0000 0000   0000 0006 FFFF FFFE   0000 0001 0000 0009
+    0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0002 0000 0000   0000 0006 0000 0000   0000 0001 0000 0009
     0000 03D8 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 FFFF FFFE
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0000
       index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
       index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0000
       index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0002
@@ -3001,11 +3006,11 @@ Tree at:  0000 0000 0000 0698  length: 0000 0000 0000 000B
   end
   Tree at:  0000 0000 0000 04D8  length: 0000 0000 0000 0007
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0007 0000 0008   0000 0002 FFFF FFFE   0000 0001 0000 0009
+    0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0007 0000 0008   0000 0002 0000 0008   0000 0001 0000 0009
     0000 0518 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 FFFF FFFE
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0008
       index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0002
       index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0008
       index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0007
@@ -3027,6 +3032,7 @@ operators => sub                                                                
 
   $o->assign(asciiToAssignLatin("assign"), $assign);
   $o->assign(asciiToAssignLatin("equals"), $equals);
+  $parse->operators->subQuarks->dumpSubs;
  });
 
 unlink $_ for qw(hash print2 sde-log.txt sde-ptr-check.out.txt z.txt);          # Remove incidental files
