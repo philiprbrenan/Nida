@@ -31,7 +31,7 @@ our $debug      = 0;                                                            
 #D1 Create                                                                      # Create a Unisyn parse of a utf8 string.
 
 sub create($%)                                                                  # Create a new unisyn parse from a utf8 string.
- {my ($address, %options) = @_;                                                 # Address of utf8 source string to parse as a variable, parse options
+ {my ($address, %options) = @_;                                                 # Address of a zero terminated utf8 source string to parse as a variable, parse options.
   @_ >= 1 or confess;
 
   my $a    = CreateArena;                                                       # Arena to hold parse tree - every parse tree gets its own arena so that we can free parses separately
@@ -194,7 +194,7 @@ sub lexicalNumberFromLetter($)                                                  
  }
 
 sub lexicalItemLength($$)                                                       #P Put the length of a lexical item into variable B<size>.
- {my ($source32, $offset) = @_;                                                 # Parse tree, B<address> of utf32 source representation, B<offset> to lexical item in utf32
+ {my ($source32, $offset) = @_;                                                 # B<address> of utf32 source representation, B<offset> to lexical item in utf32
 
   my $s = Subroutine
    {my ($p, $s) = @_;                                                           # Parameters
@@ -1426,8 +1426,8 @@ sub Unisyn::Parse::SubQuarks::subFromQuark($$$)                                 
   $e
  }
 
-sub Unisyn::Parse::SubQuarks::lexToString($$)                                   # Convert a lexical item to a string.
- {my ($q, $alphabet, $op) = @_;                                                 # The alphabet number, the operator name in that alphabet
+sub Unisyn::Parse::SubQuarks::lexToString($$$)                                  # Convert a lexical item to a string.
+ {my ($q, $alphabet, $op) = @_;                                                 # Sub quarks, the alphabet number, the operator name in that alphabet
   my $a = &lexicalData->{alphabetsOrdered}{$alphabet};                          # Alphabet
   my $n = $$Lex{lexicals}{$alphabet}{number};                                   # Number of lexical type
   my %i = map {$$a[$_]=>$_} keys @$a;
@@ -1436,7 +1436,7 @@ sub Unisyn::Parse::SubQuarks::lexToString($$)                                   
  }
 
 sub Unisyn::Parse::SubQuarks::dyad($$$)                                         # Define a method for a dyadic operator.
- {my ($q, $text, $sub) = @_;                                                    # Sub quarks, the name of the operator as a utf8 string, variable associated subroutine offset
+ {my ($q, $text, $sub) = @_;                                                    # Sub quarks, sub quarks, the name of the operator as a utf8 string, variable associated subroutine offset
   my $s = $q->lexToString("dyad", $text);                                       # Operator name in operator alphabet preceded by alphabet number
   $q->put($s, $sub);                                                            # Add the named dyad to the sub quarks
  }
@@ -2018,7 +2018,7 @@ Semicolon
 Parse a Unisyn expression.
 
 
-Version "20210829".
+Version "20210912".
 
 
 The following sections describe the methods in each functional area of this
@@ -2030,20 +2030,21 @@ module.  For an alphabetic listing of all methods by name see L<Index|/Index>.
 
 Create a Unisyn parse of a utf8 string.
 
-=head2 create($address)
+=head2 create($address, %options)
 
 Create a new unisyn parse from a utf8 string.
 
      Parameter  Description
-  1  $address   Address of utf8 source string to parse as a variable
+  1  $address   Address of a zero terminated utf8 source string to parse as a variable
+  2  %options   Parse options.
 
 B<Example:>
 
 
+  
+    create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-    create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with  zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
-
-
+  
     ok Assemble(debug => 0, eq => <<END);
   Assign: 𝑎
     Term
@@ -2051,7 +2052,7 @@ B<Example:>
     Term
       Variable: 𝗯
   END
-
+  
 
 =head1 Parse
 
@@ -2071,10 +2072,10 @@ Create a parser for an expression described by variables.
 B<Example:>
 
 
+  
+    create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-    create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with  zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
-
-
+  
     ok Assemble(debug => 0, eq => <<END);
   Assign: 𝑎
     Term
@@ -2082,6 +2083,171 @@ B<Example:>
     Term
       Variable: 𝗯
   END
+  
+
+=head1 SubQuark
+
+A set of quarks describing the method to be called for each lexical operator.  These routines specialize the general purpose quark methods for use on parse methods.
+
+=head2 Nasm::X86::Arena::DescribeSubQuarks($arena)
+
+Return a descriptor for a subQuarks in the specified arena.
+
+     Parameter  Description
+  1  $arena     Arena descriptor
+
+=head2 Nasm::X86::Arena::CreateSubQuarks($arena)
+
+Create quarks in a specified arena.
+
+     Parameter  Description
+  1  $arena     Arena description optional arena address
+
+=head2 Unisyn::Parse::SubQuarks::reload($q, %options)
+
+Reload the description of a set of sub quarks.
+
+     Parameter  Description
+  1  $q         Subquarks
+  2  %options   {arena=>arena to use; tree => first tree block; array => first array block}
+
+=head2 Unisyn::Parse::SubQuarks::put($q, $string, $sub)
+
+Put a new subroutine definition into the sub quarks.
+
+     Parameter  Description
+  1  $q         Subquarks
+  2  $string    String containing operator type and method name
+  3  $sub       Variable offset to subroutine
+
+=head2 Unisyn::Parse::SubQuarks::subFromQuark($q, $lexicals, $number)
+
+Given the quark number for a lexical item and the quark set of lexical items get the offset of the associated method.
+
+     Parameter  Description
+  1  $q         Sub quarks
+  2  $lexicals  Lexical item quarks
+  3  $number    Lexical item quark
+
+=head2 Unisyn::Parse::SubQuarks::lexToString($q, $alphabet, $op)
+
+Convert a lexical item to a string.
+
+     Parameter  Description
+  1  $q         Sub quarks
+  2  $alphabet  The alphabet number
+  3  $op        The operator name in that alphabet
+
+=head2 Unisyn::Parse::SubQuarks::dyad($q, $text, $sub)
+
+Define a method for a dyadic operator.
+
+     Parameter  Description
+  1  $q         Sub quarks
+  2  $text      Sub quarks
+  3  $sub       The name of the operator as a utf8 string
+
+=head2 Unisyn::Parse::SubQuarks::assign($q, $text, $sub)
+
+Define a method for an assign operator.
+
+     Parameter  Description
+  1  $q         Sub quarks
+  2  $text      The name of the operator as a utf8 string
+  3  $sub       Variable associated subroutine offset
+
+=head2 assignToShortString($short, $text)
+
+Create a short string representing a dyad and put it in the specified short string.
+
+     Parameter  Description
+  1  $short     The number of the short string
+  2  $text      The text of the operator in the assign alphabet
+
+=head1 Alphabets
+
+Translate between alphabets
+
+=head2 asciiToAssignLatin($in)
+
+Translate ascii to the corresponding letters in the assign latin alphabet.
+
+     Parameter  Description
+  1  $in        A string of ascii
+
+=head2 asciiToAssignGreek($in)
+
+Translate ascii to the corresponding letters in the assign greek alphabet.
+
+     Parameter  Description
+  1  $in        A string of ascii
+
+=head2 asciiToDyadLatin($in)
+
+Translate ascii to the corresponding letters in the dyad latin alphabet.
+
+     Parameter  Description
+  1  $in        A string of ascii
+
+=head2 asciiToDyadGreek($in)
+
+Translate ascii to the corresponding letters in the dyad greek alphabet.
+
+     Parameter  Description
+  1  $in        A string of ascii
+
+=head2 asciiToPrefixLatin($in)
+
+Translate ascii to the corresponding letters in the prefix latin alphabet.
+
+     Parameter  Description
+  1  $in        A string of ascii
+
+=head2 asciiToPrefixGreek($in)
+
+Translate ascii to the corresponding letters in the prefix greek alphabet.
+
+     Parameter  Description
+  1  $in        A string of ascii
+
+=head2 asciiToSuffixLatin($in)
+
+Translate ascii to the corresponding letters in the suffix latin alphabet.
+
+     Parameter  Description
+  1  $in        A string of ascii
+
+=head2 asciiToSuffixGreek($in)
+
+Translate ascii to the corresponding letters in the suffix greek alphabet.
+
+     Parameter  Description
+  1  $in        A string of ascii
+
+=head2 asciiToVariableLatin($in)
+
+Translate ascii to the corresponding letters in the suffix latin alphabet.
+
+     Parameter  Description
+  1  $in        A string of ascii
+
+=head2 asciiToVariableGreek($in)
+
+Translate ascii to the corresponding letters in the suffix greek alphabet.
+
+     Parameter  Description
+  1  $in        A string of ascii
+
+=head2 asciiToEscaped($in)
+
+Translate ascii to the corresponding letters in the escaped ascii alphabet.
+
+     Parameter  Description
+  1  $in        A string of ascii
+
+=head2 semiColon()
+
+Translate ascii to the corresponding letters in the escaped ascii alphabet.
 
 
 
@@ -2093,7 +2259,7 @@ B<Example:>
 =head2 Unisyn::Parse Definition
 
 
-Description of parse
+Sub quarks
 
 
 
@@ -2113,9 +2279,17 @@ Arena containing tree
 
 Number of failures encountered in this parse
 
+=head4 operators
+
+Methods implementing each lexical operator
+
 =head4 parse
 
 Offset to the head of the parse tree
+
+=head4 quarks
+
+Quarks representing the strings used in this parse
 
 =head4 size8
 
@@ -2132,6 +2306,10 @@ Length of utf32 string
 =head4 sourceSize32
 
 Size of utf32 allocation
+
+=head4 subQuarks
+
+The quarks used to map a subroutine name to an offset
 
 
 
@@ -2201,6 +2379,14 @@ Lexical number for a lexical item described by its letter.
      Parameter  Description
   1  $l         Letter of the lexical item
 
+=head2 lexicalItemLength($source32, $offset)
+
+Put the length of a lexical item into variable B<size>.
+
+     Parameter  Description
+  1  $source32  B<address> of utf32 source representation
+  2  $offset    B<offset> to lexical item in utf32
+
 =head2 new($depth, $description)
 
 Create a new term in the parse tree rooted on the stack.
@@ -2211,7 +2397,7 @@ Create a new term in the parse tree rooted on the stack.
 
 =head2 error($message)
 
-Die.
+Write an error message and stop.
 
      Parameter  Description
   1  $message   Error message
@@ -2285,17 +2471,10 @@ Semi colon.
 Variable.
 
 
-=head2 parseExpressionCode()
+=head2 parseExpression()
 
 Parse the string of classified lexical items addressed by register $start of length $length.  The resulting parse tree (if any) is returned in r15.
 
-
-=head2 parseExpression(@parameters)
-
-Create a parser for an expression described by variables.
-
-     Parameter    Description
-  1  @parameters  Parameters describing expression
 
 =head2 MatchBrackets(@parameters)
 
@@ -2318,35 +2497,43 @@ Classify white space per: "lib/Unisyn/whiteSpace/whiteSpaceClassification.pl".
      Parameter    Description
   1  @parameters  Parameters
 
-=head2 parseUtf8($p, @parameters)
+=head2 parseUtf8($parse, @parameters)
 
 Parse a unisyn expression encoded as utf8 and return the parse tree.
 
      Parameter    Description
-  1  $p           Parse
+  1  $parse       Parse
   2  @parameters  Parameters
 
-=head2 printLexicalItem($parse, $source32, $offset)
+=head2 printLexicalItem($parse, $source32, $offset, $size)
 
 Print the utf8 string corresponding to a lexical item at a variable offset.
 
      Parameter  Description
   1  $parse     Parse tree
-  2  $source32  Variable address of utf32 source representation
-  3  $offset    Variable offset to lexical item in utf32
+  2  $source32  B<address> of utf32 source representation
+  3  $offset    B<offset> to lexical item in utf32
+  4  $size      B<size> in utf32 chars of item
 
-=head2 printBrackets($parse, $source32, $offset)
+=head2 showAlphabet($alphabet)
 
-Print the utf8 string corresponding to a lexical item at a variable offset.
+Show an alphabet.
 
      Parameter  Description
-  1  $parse     Parse tree
-  2  $source32  Variable address of utf32 source representation
-  3  $offset    Variable offset to lexical item in utf32
+  1  $alphabet  Alphabet name
 
 =head2 T($key, $expected, %options)
 
-Test a parse.
+Parse some text and dump the results.
+
+     Parameter  Description
+  1  $key       Key of text to be parsed
+  2  $expected  Expected result
+  3  %options   Options
+
+=head2 C($key, $expected, %options)
+
+Parse some text and print the results.
 
      Parameter  Description
   1  $key       Key of text to be parsed
@@ -2359,9 +2546,9 @@ Test a parse.
 
 1 L<accept_a|/accept_a> - Assign.
 
-2 L<accept_b|/accept_b> - Open.
+2 L<accept_B|/accept_B> - Closing parenthesis.
 
-3 L<accept_B|/accept_B> - Closing parenthesis.
+3 L<accept_b|/accept_b> - Open.
 
 4 L<accept_d|/accept_d> - Infix but not assign or semi-colon.
 
@@ -2373,57 +2560,101 @@ Test a parse.
 
 8 L<accept_v|/accept_v> - Variable.
 
-9 L<checkSet|/checkSet> - Check that one of a set of items is on the top of the stack or complain if it is not.
+9 L<asciiToAssignGreek|/asciiToAssignGreek> - Translate ascii to the corresponding letters in the assign greek alphabet.
 
-10 L<checkStackHas|/checkStackHas> - Check that we have at least the specified number of elements on the stack.
+10 L<asciiToAssignLatin|/asciiToAssignLatin> - Translate ascii to the corresponding letters in the assign latin alphabet.
 
-11 L<ClassifyNewLines|/ClassifyNewLines> - Scan input string looking for opportunities to convert new lines into semi colons.
+11 L<asciiToDyadGreek|/asciiToDyadGreek> - Translate ascii to the corresponding letters in the dyad greek alphabet.
 
-12 L<ClassifyWhiteSpace|/ClassifyWhiteSpace> - Classify white space per: "lib/Unisyn/whiteSpace/whiteSpaceClassification.
+12 L<asciiToDyadLatin|/asciiToDyadLatin> - Translate ascii to the corresponding letters in the dyad latin alphabet.
 
-13 L<create|/create> - Create a new unisyn parse from a utf8 string.
+13 L<asciiToEscaped|/asciiToEscaped> - Translate ascii to the corresponding letters in the escaped ascii alphabet.
 
-14 L<error|/error> - Die.
+14 L<asciiToPrefixGreek|/asciiToPrefixGreek> - Translate ascii to the corresponding letters in the prefix greek alphabet.
 
-15 L<getAlpha|/getAlpha> - Load the position of a lexical item in its alphabet from the current character.
+15 L<asciiToPrefixLatin|/asciiToPrefixLatin> - Translate ascii to the corresponding letters in the prefix latin alphabet.
 
-16 L<getLexicalCode|/getLexicalCode> - Load the lexical code of the current character in memory into the specified register.
+16 L<asciiToSuffixGreek|/asciiToSuffixGreek> - Translate ascii to the corresponding letters in the suffix greek alphabet.
 
-17 L<lexicalNameFromLetter|/lexicalNameFromLetter> - Lexical name for a lexical item described by its letter.
+17 L<asciiToSuffixLatin|/asciiToSuffixLatin> - Translate ascii to the corresponding letters in the suffix latin alphabet.
 
-18 L<lexicalNumberFromLetter|/lexicalNumberFromLetter> - Lexical number for a lexical item described by its letter.
+18 L<asciiToVariableGreek|/asciiToVariableGreek> - Translate ascii to the corresponding letters in the suffix greek alphabet.
 
-19 L<loadCurrentChar|/loadCurrentChar> - Load the details of the character currently being processed so that we have the index of the character in the upper half of the current character and the lexical type of the character in the lowest byte.
+19 L<asciiToVariableLatin|/asciiToVariableLatin> - Translate ascii to the corresponding letters in the suffix latin alphabet.
 
-20 L<MatchBrackets|/MatchBrackets> - Replace the low three bytes of a utf32 bracket character with 24 bits of offset to the matching opening or closing bracket.
+20 L<assignToShortString|/assignToShortString> - Create a short string representing a dyad and put it in the specified short string.
 
-21 L<new|/new> - Create a new term in the parse tree rooted on the stack.
+21 L<C|/C> - Parse some text and print the results.
 
-22 L<parseExpression|/parseExpression> - Create a parser for an expression described by variables.
+22 L<checkSet|/checkSet> - Check that one of a set of items is on the top of the stack or complain if it is not.
 
-23 L<parseExpressionCode|/parseExpressionCode> - Parse the string of classified lexical items addressed by register $start of length $length.
+23 L<checkStackHas|/checkStackHas> - Check that we have at least the specified number of elements on the stack.
 
-24 L<parseUtf8|/parseUtf8> - Parse a unisyn expression encoded as utf8 and return the parse tree.
+24 L<ClassifyNewLines|/ClassifyNewLines> - Scan input string looking for opportunities to convert new lines into semi colons.
 
-25 L<print|/print> - Create a parser for an expression described by variables.
+25 L<ClassifyWhiteSpace|/ClassifyWhiteSpace> - Classify white space per: "lib/Unisyn/whiteSpace/whiteSpaceClassification.
 
-26 L<printBrackets|/printBrackets> - Print the utf8 string corresponding to a lexical item at a variable offset.
+26 L<create|/create> - Create a new unisyn parse from a utf8 string.
 
-27 L<printLexicalItem|/printLexicalItem> - Print the utf8 string corresponding to a lexical item at a variable offset.
+27 L<error|/error> - Write an error message and stop.
 
-28 L<pushElement|/pushElement> - Push the current element on to the stack.
+28 L<getAlpha|/getAlpha> - Load the position of a lexical item in its alphabet from the current character.
 
-29 L<pushEmpty|/pushEmpty> - Push the empty element on to the stack.
+29 L<getLexicalCode|/getLexicalCode> - Load the lexical code of the current character in memory into the specified register.
 
-30 L<putLexicalCode|/putLexicalCode> - Put the specified lexical code into the current character in memory.
+30 L<lexicalItemLength|/lexicalItemLength> - Put the length of a lexical item into variable B<size>.
 
-31 L<reduce|/reduce> - Convert the longest possible expression on top of the stack into a term  at the specified priority.
+31 L<lexicalNameFromLetter|/lexicalNameFromLetter> - Lexical name for a lexical item described by its letter.
 
-32 L<reduceMultiple|/reduceMultiple> - Reduce existing operators on the stack.
+32 L<lexicalNumberFromLetter|/lexicalNumberFromLetter> - Lexical number for a lexical item described by its letter.
 
-33 L<T|/T> - Test a parse.
+33 L<loadCurrentChar|/loadCurrentChar> - Load the details of the character currently being processed so that we have the index of the character in the upper half of the current character and the lexical type of the character in the lowest byte.
 
-34 L<testSet|/testSet> - Test a set of items, setting the Zero Flag is one matches else clear the Zero flag.
+34 L<MatchBrackets|/MatchBrackets> - Replace the low three bytes of a utf32 bracket character with 24 bits of offset to the matching opening or closing bracket.
+
+35 L<Nasm::X86::Arena::CreateSubQuarks|/Nasm::X86::Arena::CreateSubQuarks> - Create quarks in a specified arena.
+
+36 L<Nasm::X86::Arena::DescribeSubQuarks|/Nasm::X86::Arena::DescribeSubQuarks> - Return a descriptor for a subQuarks in the specified arena.
+
+37 L<new|/new> - Create a new term in the parse tree rooted on the stack.
+
+38 L<parseExpression|/parseExpression> - Parse the string of classified lexical items addressed by register $start of length $length.
+
+39 L<parseUtf8|/parseUtf8> - Parse a unisyn expression encoded as utf8 and return the parse tree.
+
+40 L<print|/print> - Create a parser for an expression described by variables.
+
+41 L<printLexicalItem|/printLexicalItem> - Print the utf8 string corresponding to a lexical item at a variable offset.
+
+42 L<pushElement|/pushElement> - Push the current element on to the stack.
+
+43 L<pushEmpty|/pushEmpty> - Push the empty element on to the stack.
+
+44 L<putLexicalCode|/putLexicalCode> - Put the specified lexical code into the current character in memory.
+
+45 L<reduce|/reduce> - Convert the longest possible expression on top of the stack into a term  at the specified priority.
+
+46 L<reduceMultiple|/reduceMultiple> - Reduce existing operators on the stack.
+
+47 L<semiColon|/semiColon> - Translate ascii to the corresponding letters in the escaped ascii alphabet.
+
+48 L<showAlphabet|/showAlphabet> - Show an alphabet.
+
+49 L<T|/T> - Parse some text and dump the results.
+
+50 L<testSet|/testSet> - Test a set of items, setting the Zero Flag is one matches else clear the Zero flag.
+
+51 L<Unisyn::Parse::SubQuarks::assign|/Unisyn::Parse::SubQuarks::assign> - Define a method for an assign operator.
+
+52 L<Unisyn::Parse::SubQuarks::dyad|/Unisyn::Parse::SubQuarks::dyad> - Define a method for a dyadic operator.
+
+53 L<Unisyn::Parse::SubQuarks::lexToString|/Unisyn::Parse::SubQuarks::lexToString> - Convert a lexical item to a string.
+
+54 L<Unisyn::Parse::SubQuarks::put|/Unisyn::Parse::SubQuarks::put> - Put a new subroutine definition into the sub quarks.
+
+55 L<Unisyn::Parse::SubQuarks::reload|/Unisyn::Parse::SubQuarks::reload> - Reload the description of a set of sub quarks.
+
+56 L<Unisyn::Parse::SubQuarks::subFromQuark|/Unisyn::Parse::SubQuarks::subFromQuark> - Given the quark number for a lexical item and the quark set of lexical items get the offset of the associated method.
 
 =head1 Installation
 
