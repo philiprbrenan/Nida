@@ -23,20 +23,21 @@ use utf8;
 my  $develop    = -e q(/home/phil/);                                            # Developing
 #our $arena;                                                                    # We always reload the actual arena address from rax and so this is permissible
 our %parameters;                                                                # A copy of the parameter list parsed into the parser so that all the related subroutines can see it. The alternative would have been to code these subroutines as my subs but this makes it much harder to test them.  As parses are not interrupted by other parses reentrancy is not a problem.
+our $Parse;                                                                     # The latest parse request
 our $Quarks;                                                                    # The quarks associated with this parse
+our $Operators;                                                                 # The subQuarks associated with this parse
 our $debug      = 0;                                                            # Print evolution of stack if true.
 
 #D1 Create                                                                      # Create a Unisyn parse of a utf8 string.
 
-sub create($)                                                                   # Create a new unisyn parse from a utf8 string.
- {my ($address) = @_;                                                           # Address of utf8 source string to parse as a variable
-  @_ == 1 or confess;
+sub create($%)                                                                  # Create a new unisyn parse from a utf8 string.
+ {my ($address, %options) = @_;                                                 # Address of utf8 source string to parse as a variable, parse options
+  @_ >= 1 or confess;
 
-# my $a    = $arena = CreateArena;                                              # Arena to hold parse tree - every parse tree gets its own arena so that we can free parses separately
-  my $a    =          CreateArena;                                              # Arena to hold parse tree - every parse tree gets its own arena so that we can free parses separately
+  my $a    = CreateArena;                                                       # Arena to hold parse tree - every parse tree gets its own arena so that we can free parses separately
   my $size = StringLength string => $address;                                   # Length of input utf8
 
-  my $p = genHash(__PACKAGE__,                                                  # Description of parse
+  my $p = $Parse   = genHash(__PACKAGE__,                                       # Description of parse
     arena          => $a,                                                       # Arena containing tree
     size8          => $size,                                                    # Size of source string as utf8
     address8       => $address,                                                 # Address of source string as utf8
@@ -45,9 +46,14 @@ sub create($)                                                                   
     sourceLength32 => V(sourceLength32),                                        # Length of utf32 string
     parse          => V('parse'),                                               # Offset to the head of the parse tree
     fails          => V('fail'),                                                # Number of failures encountered in this parse
-#   strings        => $a->CreateTree,                                           # Strings used in this parse.  Each string consists of its lexical type, its length and then the indices into each alphabet one per byte. A tree trek arrangement is used to deal with strings of any length which has the benefit of avoiding long string comparisons while providing some key compression.
-    quarks         => $a->CreateQuarks,                                         # Quarks representing the strinsg used in this parse
+    quarks         => $a->CreateQuarks,                                         # Quarks representing the strings used in this parse
+    operators      => undef,                                                    # Methods implementing each lexical operator
    );
+
+  if (my $o = $options{operators})                                              # Operator methods for lexical items
+   {$p->operators = $a->CreateSubQuarks;                                        # Create quark set to translate operator names to offsets
+    $o->($p);
+   }
 
   $p->parseUtf8;                                                                # Parse utf8 source string
 
@@ -96,6 +102,10 @@ our $lexItemOffset    = 1;                                                      
 our $lexItemLength    = 2;                                                      # Field number of the length of the lexical item in the utf32 source in the description of a lexical item
 our $lexItemQuark     = 3;                                                      # Quark containing the text of this lexical item.
 our $lexItemWidth     = 4;                                                      # The number of fields used to describe a lexical item  in the parse tree
+
+our $opType           = 0;                                                      # Operator type field - currently always a term
+our $opCount          = 1;                                                      # Number of operands for this operator
+our $opSub            = 2;                                                      # Offset of sub associated with this lexical item
 
 sub getAlpha($$$)                                                               #P Load the position of a lexical item in its alphabet from the current character.
  {my ($register, $address, $index) = @_;                                        # Register to load, address of start of string, index into string
@@ -237,8 +247,8 @@ sub new($$)                                                                     
   my $a = DescribeArena $parameters{bs};                                        # Create a tree in the arena to hold the details of the lexical elements on the stack
   my $t = $a->CreateTree;                                                       # Create a tree in the arena to hold the details of the lexical elements on the stack
   my $o = V(offset);                                                            # Offset into source for lexical item
-  $t->insert(V(key, 0), V(data, $term));                                        # Create a term - we only have terms at the moment in the parse tree - but that might change in the future
-  $t->insert(V(key, 1), V(data, $depth));                                       # The number of elements in the term
+  $t->insert(V(key, $opType),  V(data, $term));                                 # Create a term - we only have terms at the moment in the parse tree - but that might change in the future
+  $t->insert(V(key, $opCount), V(data, $depth));                                # The number of elements in the term which is the number of operands for the operator
 
   my $liOnStack = $w1;                                                          # The lexical item as it appears on the stack
   my $liType    = $w2;                                                          # The lexical item type
@@ -289,6 +299,14 @@ sub new($$)                                                                     
 
       my $q = $Quarks->quarkFromShortString($s);
       $t->insert(V(key, $lexItemWidth * $j + $lexItemQuark), $q);               # Save quark number of lexical item in parse tree
+
+      if ($Operators)                                                           # The parse has operator definitions
+       {if ($j == 1)                                                            # The operator quark is always first
+          {my $N = $Operators->subFromQuark($Quarks, $q);                       # Look up the subroutine associated with this operator
+            $t->insert(V(key, $opSub), $N);                                     # Save offset to subroutine associated with this lexical item
+          }
+       }
+
      };
 
     $t->insert  (V(key, $lexItemWidth * $j + $lexItemType),                     # Save lexical type in parse tree
@@ -1028,6 +1046,10 @@ sub parseUtf8($@)                                                               
       array => $$p{numbersToStringsFirst},
       tree  => $$p{stringsToNumbersFirst});
 
+    $Operators =  $parse->operators->reload(arena => $$p{bs},                   # Reload the subQuarks because the subQuarks used to create this subroutine might not be the same as the subQuarks that are reusing it now.
+      array => $$p{opNumbersToStringsFirst},
+      tree  => $$p{opStringsToNumbersFirst});
+
     PrintErrStringNL "ParseUtf8" if $debug;
 
     PushR $parseStackBase, map {"r$_"} 8..15;
@@ -1104,20 +1126,26 @@ sub parseUtf8($@)                                                               
 
    }
   [qw(bs address size parse fail source32 sourceSize32 sourceLength32),
-   qw(numbersToStringsFirst stringsToNumbersFirst)],
+   qw(numbersToStringsFirst stringsToNumbersFirst),
+   qw(opNumbersToStringsFirst opStringsToNumbersFirst)],
   name => q(Unisyn::Parse::parseUtf8);
 
+  my $op = $parse->operators;                                                   # The operator methods if supplied
+  my $zero = K(zero, 0);
+
   $s->call                                                                      # Parameterize the parse
-   (bs                    => $parse->arena->bs,
-    address               => $parse->address8,
-    fail                  => $parse->fails,
-    parse                 => $parse->parse,
-    size                  => $parse->size8,
-    source32              => $parse->source32,
-    sourceLength32        => $parse->sourceLength32,
-    sourceSize32          => $parse->sourceSize32,
-    numbersToStringsFirst => $parse->quarks->numbersToStrings->first,
-    stringsToNumbersFirst => $parse->quarks->stringsToNumbers->first,
+   (bs                      => $parse->arena->bs,
+    address                 => $parse->address8,
+    fail                    => $parse->fails,
+    parse                   => $parse->parse,
+    size                    => $parse->size8,
+    source32                => $parse->source32,
+    sourceLength32          => $parse->sourceLength32,
+    sourceSize32            => $parse->sourceSize32,
+    numbersToStringsFirst   => $parse->quarks->numbersToStrings->first,
+    stringsToNumbersFirst   => $parse->quarks->stringsToNumbers->first,
+    opNumbersToStringsFirst => $op->subQuarks->numbersToStrings->first // $zero,
+    opStringsToNumbersFirst => $op->subQuarks->stringsToNumbers->first // $zero,
    );
  } # parseUtf8
 
@@ -1344,8 +1372,84 @@ sub print($)                                                                    
   PopR;
  } # print
 
-#D1 Alphabets                                                                   # Translate between alphabets
+#D1 SubQuark                                                                    # A set of quarks describing the method to be called for each lexical operator.  These routines specialize the general purpose quark methods for use on parse methods.
 
+sub Nasm::X86::Arena::DescribeSubQuarks($)                                      # Return a descriptor for a subQuarks in the specified arena.
+ {my ($arena) = @_;                                                             # Arena descriptor
+
+  genHash(__PACKAGE__."::SubQuarks",                                            # Sub quarks
+    subQuarks => undef,                                                         # The quarks used to map a subroutine name to an offset
+   );
+ }
+
+sub Nasm::X86::Arena::CreateSubQuarks($)                                        # Create quarks in a specified arena.
+ {my ($arena) = @_;                                                             # Arena description optional arena address
+  @_ == 1 or confess "One parameter";
+
+  my $q = $arena->DescribeSubQuarks;                                            # Return a descriptor for a tree at the specified offset in the specified arena
+  $q->subQuarks = $arena->CreateQuarks;
+  $q                                                                            # Description of array
+ }
+
+sub Unisyn::Parse::SubQuarks::reload($%)                                        # Reload the description of a set of sub quarks.
+ {my ($q, %options) = @_;                                                       # Subquarks, {arena=>arena to use; tree => first tree block; array => first array block}
+  @_ >= 1 or confess "One or more parameters";
+
+  $q->subQuarks(%options);
+  $q                                                                            # Return upgraded quarks descriptor
+ }
+
+sub Unisyn::Parse::SubQuarks::put($$$)                                          # Put a new subroutine definition into the sub quarks
+ {my ($q, $string, $sub) = @_;                                                  # Subquarks, string containing operator type and method name, variable offset to subroutine
+  @_ == 3 or confess "3 parameters";
+  ref($sub) && ref($sub) =~ m(Nasm::X86::Sub) or
+    confess "Subroutine definition required";
+
+  PushR zmm0;
+  my $s = CreateShortString(0)->loadConstantString($string);                    # Load the operator name in its alphabet with the alphabet number on the first byte
+  my $N = $q->subQuarks->quarkFromShortString($s);                              # Create quark
+  $q->subQuarks->numbersToStrings->put(index => $N, element => $sub->V);        # Reuse the array component to point to the sub
+  PopR;
+  $N                                                                            # Created quark number for subroutine
+ }
+
+sub Unisyn::Parse::SubQuarks::subFromQuark($$$)                                 # Given the quark number for a lexical item and the quark set of lexical items get the offset of the associated method
+ {my ($q, $lexicals, $number) = @_;                                             # Sub quarks, lexical item quarks, lexical item quark
+  @_ == 3 or confess "3 parameters";
+
+  ref($lexicals) && ref($lexicals) =~ m(Nasm::X86::Quarks) or                   # Check that we have been given a quark set as expected
+    confess "Quarks expected";
+
+  $lexicals->quarkToQuark($number, $q->subQuarks);                              # Either the offset to the specified method or -1.
+ }
+
+sub Unisyn::Parse::SubQuarks::lexToString($$)                                   # Convert a lexical item to a string
+ {my ($q, $alphabet, $op) = @_;                                                 # The alphabet number, the operator name in that alphabet
+  my $a = &lexicalData->{alphabetsOrdered}{$alphabet};                          # Alphabet
+  my $n = $$Lex{lexicals}{$alphabet}{number};                                   # Number of lexical type
+  my %i = map {$$a[$_]=>$_} keys @$a;
+  my @b = ($n, map {$i{ord $_}} split //, $op);                                 # Bytes representing the operator name
+  join '', map {chr $_} @b                                                      # String representation
+ }
+
+sub Unisyn::Parse::SubQuarks::dyad($$$)                                         # Define a method for a dyadic operator
+ {my ($q, $text, $sub) = @_;                                                    # Sub quarks, the name of the operator as a uitf8 string, variable associated subroutine offset
+  my $s = $q->lexToString("dyad", $text);                                       # Operator name in operator alphabet preceded by alphabet number
+  $q->put($s, $sub);                                                            # Add the named dyad to the sub quarks
+ }
+
+sub Unisyn::Parse::SubQuarks::assign($$$)                                       # Define a method for an assign operator
+ {my ($q, $text, $sub) = @_;                                                    # Sub quarks, the name of the operator as a uitf8 string, variable associated subroutine offset
+  my $s = $q->lexToString("assign", $text);                                     # Operator name in operator alphabet preceded by alphabet number
+  $q->put($s, $sub);                                                            # Add the named dyad to the sub quarks
+ }
+
+sub assignToShortString($$)                                                     # Create a short string representing a dyad and put it in the specified short string
+ {my ($short, $text) = @_;                                                      # The number of the short string, the text of the operator in the assign alphabet
+  lexToShortString($short, "assign", $text);
+ }
+
+#D1 Alphabets                                                                   # Translate between alphabets
 
 sub showAlphabet($)                                                             #P Show an alphabet
  {my ($alphabet) = @_;                                                          # Alphabet name
@@ -1356,6 +1460,16 @@ sub showAlphabet($)                                                             
    {$out .= chr($a);
    }
   $out
+ }
+
+sub asciiToAssignLatin($)                                                       # Translate ascii to the corresponding letters in the assign latin alphabet
+ {my ($in) = @_;                                                                # A string of ascii
+  $in =~ tr/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/𝐴𝐵𝐶𝐷𝐸𝐹𝐺𝐻𝐼𝐽𝐾𝐿𝑀𝑁𝑂𝑃𝑄𝑅𝑆𝑇𝑈𝑉𝑊𝑋𝑌𝑍𝑎𝑏𝑐𝑑𝑒𝑓𝑔ℎ𝑖𝑗𝑘𝑙𝑚𝑛𝑜𝑝𝑞𝑟𝑠𝑡𝑢𝑣𝑤𝑥𝑦𝑧/r;
+ }
+
+sub asciiToAssignGreek($)                                                       # Translate ascii to the corresponding letters in the assign greek alphabet
+ {my ($in) = @_;                                                                # A string of ascii
+  $in =~ tr/ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw/𝛢𝛣𝛤𝛥𝛦𝛧𝛨𝛩𝛪𝛫𝛬𝛭𝛮𝛯𝛰𝛱𝛲𝛳𝛴𝛵𝛶𝛷𝛸𝛹𝛺𝛼𝛽𝛾𝛿𝜀𝜁𝜂𝜃𝜄𝜅𝜆𝜇𝜈𝜉𝜊𝜋𝜌𝜍𝜎𝜏𝜐𝜑𝜒𝜓𝜔/r;
  }
 
 sub asciiToDyadLatin($)                                                         # Translate ascii to the corresponding letters in the dyad latin alphabet
@@ -1403,7 +1517,7 @@ sub asciiToEscaped($)                                                           
   $in =~ tr/abcdefghijklmnopqrstuvwxyz/🅐🅑🅒🅓🅔🅕🅖🅗🅘🅙🅚🅛🅜🅝🅞🅟🅠🅡🅢🅣🅤🅥🅦🅧🅨🅩/r;
  }
 
-sub semiColon()                                                           # Translate ascii to the corresponding letters in the escaped ascii alphabet
+sub semiColon()                                                                 # Translate ascii to the corresponding letters in the escaped ascii alphabet
  {chr(10210)
  }
 
@@ -2380,7 +2494,7 @@ sub T($$%)                                                                      
   my $address = Rutf8 $source;
   my $size    = StringLength V(string, $address);
 
-  my $p = create V(address, $address);
+  my $p = create V(address, $address), %options;                                # Parse
 
   if (1)                                                                        # Print the parse tree if requested
    {my $t = $p->arena->DescribeTree;
@@ -2393,7 +2507,7 @@ sub T($$%)                                                                      
 
 sub C($$%)                                                                      #P Parse some text and print the results.
  {my ($key, $expected, %options) = @_;                                          # Key of text to be parsed, expected result, options
-  create (K(address, Rutf8 $Lex->{sampleText}{$key}))->print;
+  create (K(address, Rutf8 $Lex->{sampleText}{$key}), %options)->print;
 
   Assemble(debug => 0, eq => $expected);
  }
@@ -2840,6 +2954,80 @@ is_deeply asciiToVariableLatin("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuv
 is_deeply asciiToVariableGreek("ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufcyw"),   q(𝝖𝝗𝝘𝝙𝝚𝝛𝝜𝝝𝝞𝝟𝝠𝝡𝝢𝝣𝝤𝝥𝝦𝝧𝝨𝝩𝝪𝝫𝝬𝝭𝝮𝝰𝝱𝝲𝝳𝝴𝝵𝝶𝝷𝝸𝝹𝝺𝝻𝝼𝝽𝝾𝝿𝞀𝞁𝞂𝞃𝞄𝞅𝞆𝞇𝞈); #q(𝝖𝝗𝝬𝝙𝝚𝝫𝝘𝝝𝝞J𝝟𝝠𝝡𝝜𝝤𝝥𝝧𝝦𝝨𝝩𝝪𝝢𝝮𝝣𝝭𝝛𝝰𝝱𝞆𝝳𝝴𝞅𝝲𝝷𝝸j𝝹𝝺𝝻𝝶𝝾𝝿𝞁𝞀𝞂𝞃𝞄𝝼𝞈𝝽𝞇𝝵)
 is_deeply asciiToEscaped      ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"), q(ABCDEFGHIJKLMNOPQRSTUVWXYZ🅐🅑🅒🅓🅔🅕🅖🅗🅘🅙🅚🅛🅜🅝🅞🅟🅠🅡🅢🅣🅤🅥🅦🅧🅨🅩);
 is_deeply semiColon, q(⟢);
+
+#latest:
+if (1) {                                                                        #TNasm::X86::Quarks::quarkFromSub #TNasm::X86::Quarks::subFromQuark #TNasm::X86::Quarks::loadConstantString
+  my $s = Nasm::X86::CreateShortString(0);
+  dyadToShortString  ($s, asciiToDyadLatin("assign"));
+  PrintOutRegisterInHex xmm0;
+
+  assignToShortString($s, asciiToAssignLatin("assign"));
+  PrintOutRegisterInHex xmm0;
+
+  ok Assemble(debug => 0, trace => 0, eq => <<END);
+  xmm0: 0000 0000 0000 0000   2720 222C 2C1A 0307
+  xmm0: 0000 0000 0000 0000   2821 232D 2D1B 0307
+END
+ }
+
+latest:
+ok T(q(A), <<END,
+Tree at:  0000 0000 0000 0698  length: 0000 0000 0000 000B
+  0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+  0000 0000 0000 0016   0000 0000 0000 0000   0000 0000 0000 04D8   0000 0009 0000 0398   0000 0009 0000 0002   0000 0006 0000 0002   0000 0005 0000 0001   0000 0003 0000 0009
+  0000 06D8 0500 000B   0000 0000 0000 0000   0000 0000 0000 000D   0000 000C 0000 0009   0000 0008 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
+    index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
+    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0005
+    index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0002
+    index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0006
+    index: 0000 0000 0000 0006   key: 0000 0000 0000 0007   data: 0000 0000 0000 0002
+    index: 0000 0000 0000 0007   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0008   key: 0000 0000 0000 0009   data: 0000 0000 0000 0398 subTree
+    index: 0000 0000 0000 0009   key: 0000 0000 0000 000C   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 000A   key: 0000 0000 0000 000D   data: 0000 0000 0000 04D8 subTree
+  Tree at:  0000 0000 0000 0398  length: 0000 0000 0000 0007
+    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+    0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0002 0000 0000   0000 0006 FFFF FFFE   0000 0001 0000 0009
+    0000 03D8 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
+      index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+      index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 FFFF FFFE
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
+      index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0000
+      index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0002
+      index: 0000 0000 0000 0006   key: 0000 0000 0000 0007   data: 0000 0000 0000 0000
+  end
+  Tree at:  0000 0000 0000 04D8  length: 0000 0000 0000 0007
+    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+    0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0007 0000 0008   0000 0002 FFFF FFFE   0000 0001 0000 0009
+    0000 0518 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
+      index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+      index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 FFFF FFFE
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0002
+      index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0008
+      index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0007
+      index: 0000 0000 0000 0006   key: 0000 0000 0000 0007   data: 0000 0000 0000 0001
+  end
+end
+END
+operators => sub                                                                # Define lexical operator methods
+ {my ($parse) = @_;                                                             # Parse definition
+  my $o = $parse->operators;                                                    # Sub quarks describing operators
+
+  my $assign = Subroutine
+   {PrintOutStringNL "call assign";
+   } [], name=>"UnisynParse::assign";
+
+  my $equals = Subroutine
+   {PrintOutStringNL "call equals";
+   } [], name=>"UnisynParse::equals";
+
+  $o->assign(asciiToAssignLatin("assign"), $assign);
+  $o->assign(asciiToAssignLatin("equals"), $equals);
+ });
 
 unlink $_ for qw(hash print2 sde-log.txt sde-ptr-check.out.txt z.txt);          # Remove incidental files
 
