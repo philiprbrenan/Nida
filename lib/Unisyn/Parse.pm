@@ -32,7 +32,7 @@ our $debug      = 0;                                                            
 
 sub create($%)                                                                  # Create a new unisyn parse from a utf8 string.
  {my ($address, %options) = @_;                                                 # Address of a zero terminated utf8 source string to parse as a variable, parse options.
-  @_ >= 1 or confess;
+  @_ >= 1 or confess "One or more parameters";
 
   my $a    = CreateArena;                                                       # Arena to hold parse tree - every parse tree gets its own arena so that we can free parses separately
   my $size = StringLength string => $address;                                   # Length of input utf8
@@ -119,7 +119,6 @@ sub getLexicalCode($$$)                                                         
 
 sub putLexicalCode($$$$)                                                        #P Put the specified lexical code into the current character in memory.
  {my ($register, $address, $index, $code) = @_;                                 # Register used to load code, address of string, index into string, code to put
-  defined($code) or confess;
   Mov $register, $code;
   Mov "[$address+$indexScale*$index+$lexCodeOffset]", $register;                # Save lexical code
  }
@@ -663,7 +662,7 @@ END
 
 sub MatchBrackets(@)                                                            #P Replace the low three bytes of a utf32 bracket character with 24 bits of offset to the matching opening or closing bracket. Opening brackets have even codes from 0x10 to 0x4e while the corresponding closing bracket has a code one higher.
  {my (@parameters) = @_;                                                        # Parameters
-  @_ >= 1 or confess;
+  @_ >= 1 or confess "One or more parameters";
 
   my $s = Subroutine
    {my ($p) = @_;                                                               # Parameters
@@ -735,7 +734,7 @@ sub MatchBrackets(@)                                                            
 
 sub ClassifyNewLines(@)                                                         #P Scan input string looking for opportunities to convert new lines into semi colons.
  {my (@parameters) = @_;                                                        # Parameters
-  @_ >= 1 or confess;
+  @_ >= 1 or confess "One or more parameters";
 
   my $s = Subroutine
    {my ($p) = @_;                                                               # Parameters
@@ -837,7 +836,7 @@ sub ClassifyNewLines(@)                                                         
 
 sub ClassifyWhiteSpace(@)                                                       #P Classify white space per: "lib/Unisyn/whiteSpace/whiteSpaceClassification.pl".
  {my (@parameters) = @_;                                                        # Parameters
-  @_ >= 1 or confess;
+  @_ >= 1 or confess "One or more parameters";
 
   my $s = Subroutine
    {my ($p) = @_;                                                               # Parameters
@@ -1040,7 +1039,7 @@ sub ClassifyWhiteSpace(@)                                                       
 
 sub parseUtf8($@)                                                               #P Parse a unisyn expression encoded as utf8 and return the parse tree.
  {my ($parse, @parameters) = @_;                                                # Parse, parameters
-  @_ >= 1 or confess;
+  @_ >= 1 or confess "One or more parameters";
 
   my $s = Subroutine
    {my ($p) = @_;                                                               # Parameters
@@ -2804,7 +2803,7 @@ eval {goto latest} if !caller(0) and -e "/home/phil";                           
 sub T($$%)                                                                      #P Parse some text and dump the results.
  {my ($key, $expected, %options) = @_;                                          # Key of text to be parsed, expected result, options
   my $source  = $$Lex{sampleText}{$key};                                        # String to be parsed in utf8
-  defined $source or confess;
+  defined $source or confess "No such source";
   my $address = Rutf8 $source;
   my $size    = StringLength V(string, $address);
 
