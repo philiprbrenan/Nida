@@ -92,13 +92,13 @@ our $variable         = $$Lex{lexicals}{variable}        {number};              
 our $WhiteSpace       = $$Lex{lexicals}{WhiteSpace}      {number};              # Variable
 our $firstSet         = $$Lex{structure}{first};                                # First symbols allowed
 our $lastSet          = $$Lex{structure}{last};                                 # Last symbols allowed
-our $bracketsBase     = $$Lex{bracketsBase};                                    # BAse lexical item for brackets
+our $bracketsBase     = $$Lex{bracketsBase};                                    # Base lexical item for brackets
 
 our $asciiNewLine     = ord("\n");                                              # New line in ascii
 our $asciiSpace       = ord(' ');                                               # Space in ascii
 
 our $lexItemType      = 0;                                                      # Field number of lexical item type in the description of a lexical item
-our $lexItemOffset    = 1;                                                      # Field number of the offset in the utf32 source of the lexical item in the description of a lexical item
+our $lexItemOffset    = 1;                                                      # Field number of the offset in the utf32 source of the lexical item in the description of a lexical item or - if this a term - the offset of the invariant first block of the sub tree
 our $lexItemLength    = 2;                                                      # Field number of the length of the lexical item in the utf32 source in the description of a lexical item
 our $lexItemQuark     = 3;                                                      # Quark containing the text of this lexical item.
 our $lexItemWidth     = 4;                                                      # The number of fields used to describe a lexical item  in the parse tree
@@ -242,6 +242,7 @@ sub lexicalItemLength($$)                                                       
 
 sub new($$)                                                                     #P Create a new term in the parse tree rooted on the stack.
  {my ($depth, $description) = @_;                                               # Stack depth to be converted, text reason why we are creating a new term
+  Comment "New start";
   PrintErrStringNL "New: $description" if $debug;
 
   my $a = DescribeArena $parameters{bs};                                        # Create a tree in the arena to hold the details of the lexical elements on the stack
@@ -319,6 +320,7 @@ sub new($$)                                                                     
   Shl $liOffset, 32;                                                            # Push offset to term tree into the upper dword to make it look like a source offset
   Or  $liOffset."b", $term;                                                     # Mark as a term tree
   Push $liOffset;                                                               # Place new term on stack
+  Comment "New end";
  }
 
 sub error($)                                                                    #P Write an error message and stop.
@@ -1151,6 +1153,80 @@ sub parseUtf8($@)                                                               
    );
  } # parseUtf8
 
+#D1 Traverse                                                                    # Traverse the parse tree
+
+sub traverseTermsAndCall($)                                                     # Traverse the terms in parse tree in post order and call the operator subroutine associated with each term
+ {my ($parse) = @_;                                                             # Parse tree
+
+  my $s = Subroutine                                                            # Print a tree
+   {my ($p, $s) = @_;                                                           # Parameters, sub definition
+    my $t = Nasm::X86::DescribeTree (arena=>$$p{bs}, first=>$$p{first});
+
+    $t->find(K(key, $opType));                                                  # The lexical type of the element - normally a term
+
+    If $t->found == 0,                                                          # Not found lexical type of element
+    Then
+     {PrintOutString "No type for node";
+      Exit(1);
+     };
+
+    If $t->data != $term,                                                       # Expected a term
+    Then
+     {PrintOutString "Expected a term";
+      Exit(1);
+     };
+
+    my $operands = V(operands);                                                 # Number of operands
+    $t->find(K(key, 1));                                                        # Key 1 tells us the number of operands
+    If $t->found > 0,                                                           # Found key 1
+    Then
+     {$operands->copy($t->data);                                                # Number of operands
+     },
+    Else
+     {PrintOutString "Expected at least one operand";
+      Exit(1);
+     };
+
+    $operands->for(sub                                                          # Each operand
+     {my ($index, $start, $next, $end) = @_;                                    # Execute body
+      my $i = (1 + $index) * $lexItemWidth;                                     # Operand detail
+      $t->find($i+$lexItemType);   my $lex = V(key) ->copy($t->data);           # Lexical type
+      $t->find($i+$lexItemOffset); my $off = V(key) ->copy($t->data);           # Offset of first block of sub tree
+
+      If $lex == $term,                                                         # Term
+      Then
+       {$s->call($$p{bs}, first => $off);                                       # Traverse sub tree referenced by offset field
+        $t->first  ->copy($$p{first});                                          # Re-establish addressability to the tree after the recursive call
+       },
+     });
+
+
+    $t->find(K(key, $opSub));                                                   # The subroutine for the term
+    If $t->found > 0,                                                           # Found subroutine for term
+    Then                                                                        # Call subroutine for this term
+     {PushR r15, zmm0;
+      my $l = RegisterSize rax;
+      $$p{bs}   ->putQIntoZmm(0, 0*$l, r15);
+      $$p{first}->putQIntoZmm(0, 1*$l, r15);
+      $t->data  ->setReg(r15);
+      Cmp r15, 0;
+      IfGt
+      Then
+       {Call r15;
+       };
+      PopR;
+     },
+    Else                                                                        # Missing subroutine for term
+     {#PrintOutStringNL "No sub for term";
+     };
+
+   } [qw(bs first)], name => "Nasm::X86::Tree::traverseTermsAndCall";
+
+  $s->call($parse->arena->bs, first => $parse->parse);
+
+  $a
+ } # traverseTermsAndCall
+
 #D1 Print                                                                       # Print a parse tree
 
 sub printLexicalItem($$$$)                                                      #P Print the utf8 string corresponding to a lexical item at a variable offset.
@@ -1254,7 +1330,7 @@ sub printLexicalItem($$$$)                                                      
   $s->call(offset => $offset, source32 => $source32, size => $size);
  }
 
-sub print($)                                                                    # Create a parser for an expression described by variables.
+sub print($)                                                                    # Print a parse tree.
  {my ($parse) = @_;                                                             # Parse tree
   my $t = $parse->arena->DescribeTree;
 
@@ -1422,8 +1498,12 @@ sub Unisyn::Parse::SubQuarks::subFromQuark($$$)                                 
     confess "Quarks expected";
 
   my $Q = $lexicals->quarkToQuark($number, $q->subQuarks);                      # Either the offset to the specified method or -1.
-  $q->subQuarks->numbersToStrings->get(index=>$Q, my $e = V(element));
-  $e
+  my $r = V('sub', -1);                                                         # Matching routine not found
+  If $Q >= 0,                                                                   # Quark found
+   Then
+    {$q->subQuarks->numbersToStrings->get(index=>$Q, element=>$r);              # Load subroutine offset
+    };
+  $r                                                                            # Return sub routine offset
  }
 
 sub Unisyn::Parse::SubQuarks::lexToString($$$)                                  # Convert a lexical item to a string.
@@ -2041,10 +2121,10 @@ Create a new unisyn parse from a utf8 string.
 B<Example:>
 
 
-  
+
     create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-  
+
     ok Assemble(debug => 0, eq => <<END);
   Assign: 𝑎
     Term
@@ -2052,7 +2132,7 @@ B<Example:>
     Term
       Variable: 𝗯
   END
-  
+
 
 =head1 Parse
 
@@ -2072,10 +2152,10 @@ Create a parser for an expression described by variables.
 B<Example:>
 
 
-  
+
     create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-  
+
     ok Assemble(debug => 0, eq => <<END);
   Assign: 𝑎
     Term
@@ -2083,7 +2163,7 @@ B<Example:>
     Term
       Variable: 𝗯
   END
-  
+
 
 =head1 SubQuark
 
@@ -3256,6 +3336,31 @@ operators => sub                                                                
   $o->assign(asciiToAssignLatin("equals"), $equals);
   $parse->operators->subQuarks->dumpSubs;
  });
+
+latest:
+if (1) {                                                                        #T
+  my $p = create (K(address, Rutf8 $Lex->{sampleText}{A}), operators => sub     # Define lexical operator methods
+   {my ($parse) = @_;
+    my $o = $parse->operators;
+
+    my $assign = Subroutine
+     {PrintOutStringNL "call assign";
+     } [], name=>"UnisynParse::assign";
+
+    my $equals = Subroutine
+     {PrintOutStringNL "call equals";
+     } [], name=>"UnisynParse::equals";
+
+    $o->assign(asciiToAssignLatin("assign"), $assign);
+    $o->assign(asciiToAssignLatin("equals"), $equals);
+   });
+
+  $p->traverseTermsAndCall;
+
+  Assemble(debug => 0, eq => <<END)
+call equals
+END
+ }
 
 unlink $_ for qw(hash print2 sde-log.txt sde-ptr-check.out.txt z.txt);          # Remove incidental files
 
