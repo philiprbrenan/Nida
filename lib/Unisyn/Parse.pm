@@ -10,7 +10,7 @@
 # 0123    456789ABCDEF
 # Waiting on quarks
 package Unisyn::Parse;
-our $VERSION = "20210912";
+our $VERSION = "20210915";
 use warnings FATAL => qw(all);
 use strict;
 use Carp qw(confess cluck);
@@ -241,85 +241,124 @@ sub lexicalItemLength($$)                                                       
 
 sub new($$)                                                                     #P Create a new term in the parse tree rooted on the stack.
  {my ($depth, $description) = @_;                                               # Stack depth to be converted, text reason why we are creating a new term
-  Comment "New start";
+
+  my $wr = RegisterSize rax;                                                    # Width of general purpose register
+
+  my $s = Subroutine
+   {my ($locals) = @_;                                                          # Parameters
+
+    my $a = DescribeArena $$locals{bs};                                         # Address arena
+
+    my $quarks =  $Quarks->reload(arena => $$locals{bs},                        # Reload the quarks because the quarks used to create this subroutine might not be the same as the quarks that are reusing it now.
+      array => $$locals{numbersToStringsFirst},
+      tree  => $$locals{stringsToNumbersFirst});
+
+    my $operators =  $Operators ? $Operators->reload(arena => $$locals{bs},     # Reload the subQuarks because the subQuarks used to create this subroutine might not be the same as the subQuarks that are reusing it now.
+      array => $$locals{opNumbersToStringsFirst},
+      tree  => $$locals{opStringsToNumbersFirst}) : undef;
+
+    my $t = $a->CreateTree;                                                     # Create a tree in the arena to hold the details of the lexical elements on the stack
+    my $o = V(offset);                                                          # Offset into source for lexical item
+    $t->insert(V(key, $opType),  K(data, $term));                               # Create a term - we only have terms at the moment in the parse tree - but that might change in the future
+    $t->insert(V(key, $opCount), K(data, $depth));                              # The number of elements in the term which is the number of operands for the operator
+
+    my $liOnStack = $w1;                                                        # The lexical item as it appears on the stack
+    my $liType    = $w2;                                                        # The lexical item type
+    my $liOffset  = $w3;                                                        # The lexical item offset in the source
+
+    PushR zmm0;                                                                 # Put the simulated stack on the stack
+
+    for my $i(1..$depth)                                                        # Each term
+     {my $j = $depth + 1 - $i;
+      my $k = ($i - 1) * $wr;                                                   # Position in simulated stack
+      Mov $liOnStack, "[rsp+$k]";                                               # Copy term out of simulated stack
+      PrintErrRegisterInHex $liOnStack if $debug;
+
+      Mov $liOffset, $liOnStack;                                                # Offset of either the text in the source or the offset of the first block of the tree describing a term
+      Shr $liOffset, 32;                                                        # Offset in source: either the actual text of the offset of the first block of the tree containing a term shifted over to look as if it were an offset in the source
+      $o->getReg($liOffset);                                                    # Offset of lexical item in source or offset of first block in tree describing a term
+
+      ClearRegisters $liType;
+      Mov $liType."b", $liOnStack."b";                                          # The lexical item type in the lowest byte, the rest clear.
+
+      Cmp $liType, $term;                                                       # Check whether the lexical item on the stack is a term
+      IfEq                                                                      # Insert a sub tree if we are inserting a term
+      Then
+       {$t->insertTree(K(key, $lexItemWidth * $j + $lexItemOffset), $o);        # Offset of first block in the tree representing the term
+       },
+      Else                                                                      # Insert the offset in the utf32 source if we are not on a term
+       {$t->insert    (K(key, $lexItemWidth * $j + $lexItemOffset), $o);        # Offset in source of non term
+       };
+
+      Cmp $liType, $variable;                                                   # Check whether the lexical item is a variable which can also represent ascii
+      IfEq                                                                      # Insert a sub tree if we are inserting a term
+      Then
+       {Mov $liType."b", "[$start+4*$liOffset+3]";                              # Load lexical type from source
+       };
+
+      Cmp $liType, $term;                                                       # Length of lexical item that is not a term
+      IfNe
+      Then                                                                      # Not a term
+       {my $size = lexicalItemLength(V(address, $start), $o);                   # Get the size of the lexical item at the offset indicated on the stack
+        $t->insert(V(key, $lexItemWidth * $j + $lexItemLength), $size);         # Save size of lexical item in parse tree
+
+        my $s = CreateShortString(1);                                           # Short string to hold text of lexical item so we can load it into a quark
+        PushR r15;                                                              # Probably not needed as saved in L<parseutf8>
+        r15 ne $start && r15 ne $liOffset or confess "r15 in use";
+        Lea r15, "[$start+4*$liOffset]";                                        # Start address of lexical item
+        my $start = V(address, r15);                                            # Save start address of lexical item
+        PopR;
+        $s->loadDwordBytes(0, $start, $size, 1);                                # Load text of lexical item into short string leaving dpace for lexical type
+        Pinsrb "xmm1", $liType."b", 1;                                          # Set lexical type as the first byte of the short string
+
+        my $q = $quarks->quarkFromShortString($s);
+        $t->insert(V(key, $lexItemWidth * $j + $lexItemQuark), $q);             # Save quark number of lexical item in parse tree
+
+        if ($operators)                                                         # The parse has operator definitions
+         {if ($j == 1)                                                          # The operator quark is always first
+           {my $N = $operators->subFromQuark($quarks, $q);                      # Look up the subroutine associated with this operator
+            If $N >= 0,                                                         # Found a matching operator subroutine
+            Then
+             {$t->insert(V(key, $opSub), $N);                                   # Save offset to subroutine associated with this lexical item
+             };
+           }
+         }
+       };
+
+      $t->insert  (V(key, $lexItemWidth * $j + $lexItemType),                   # Save lexical type in parse tree
+                   V(data)->getReg($liType));
+     }
+                                                                                # Push new term onto the stack in place of the items popped off
+    $t->first->setReg($liOffset);                                               # Offset of new term tree
+    Shl $liOffset, 32;                                                          # Push offset to term tree into the upper dword to make it look like a source offset
+    Or  $liOffset."b", $term;                                                   # Mark as a term tree
+    $$locals{new}->getReg($liOffset);                                           # New term comprised of a tree of old terms
+    PopR;                                                                       # Restore stack to its position at the start
+   }
+  [qw(bs new
+    numbersToStringsFirst stringsToNumbersFirst
+    opNumbersToStringsFirst opStringsToNumbersFirst
+  )], name=>"Unisyn::Parse::new_$depth";
+
   PrintErrStringNL "New: $description" if $debug;
 
-  my $a = DescribeArena $parameters{bs};                                        # Create a tree in the arena to hold the details of the lexical elements on the stack
-  my $t = $a->CreateTree;                                                       # Create a tree in the arena to hold the details of the lexical elements on the stack
-  my $o = V(offset);                                                            # Offset into source for lexical item
-  $t->insert(V(key, $opType),  V(data, $term));                                 # Create a term - we only have terms at the moment in the parse tree - but that might change in the future
-  $t->insert(V(key, $opCount), V(data, $depth));                                # The number of elements in the term which is the number of operands for the operator
+  if    ($depth == 1) {Mov $w1, 1}
+  elsif ($depth == 2) {Mov $w1, 3}
+  else                {Mov $w1, 7}
+  Kmovq k1, $w1;                                                                # B<k1> is saved in L<parseutf8>
+  Vmovdqu64 "zmm0{k1}", "[rsp]";                                                # Lexical items on stack
 
-  my $liOnStack = $w1;                                                          # The lexical item as it appears on the stack
-  my $liType    = $w2;                                                          # The lexical item type
-  my $liOffset  = $w3;                                                          # The lexical item offset in the source
+  my $zero = K(zero, 0);
+  $s->call(bs => $parameters{bs}, my $new = V('new'),
+    numbersToStringsFirst   => $Quarks->numbersToStrings->first,
+    stringsToNumbersFirst   => $Quarks->stringsToNumbers->first,
+    opNumbersToStringsFirst => $Operators ? $Operators->subQuarks->numbersToStrings->first : $zero,
+    opStringsToNumbersFirst => $Operators ? $Operators->subQuarks->stringsToNumbers->first : $zero,
+   );
 
-  for my $i(1..$depth)                                                          # Each term,
-   {my $j = $depth + 1 - $i;
-    Pop $liOnStack;                                                             # Unload stack
-    PrintErrRegisterInHex $liOnStack if $debug;
-
-    Mov $liOffset, $liOnStack;                                                  # Offset of either the text in the source or the offset of the first block of the tree describing a term
-    Shr $liOffset, 32;                                                          # Offset in source: either the actual text of the offset of the first block of the tree containing a term shifted over to look as if it were an offset in the source
-    $o->getReg($liOffset);                                                      # Offset of lexical item in source or offset of first block in tree describing a term
-
-    ClearRegisters $liType;
-    Mov $liType."b", $liOnStack."b";                                            # The lexical item type in the lowest byte, the rest clear.
-
-    Cmp $liType, $term;                                                         # Check whether the lexical item on the stack is a term
-    IfEq                                                                        # Insert a sub tree if we are inserting a term
-    Then
-     {$t->insertTree(V(key, $lexItemWidth * $j + $lexItemOffset), $o);          # Offset of first block in the tree representing the term
-     },
-    Else                                                                        # Insert the offset in the utf32 source if we are not on a term
-     {$t->insert    (V(key, $lexItemWidth * $j + $lexItemOffset), $o);          # Offset in source of non term
-     };
-
-    Cmp $liType, $variable;                                                     # Check whether the lexical item is a variable which can also represent ascii
-    IfEq                                                                        # Insert a sub tree if we are inserting a term
-    Then
-     {Mov $liType."b", "[$start+4*$liOffset+3]";                                # Load lexical type from source
-     };
-
-    Cmp $liType, $term;                                                         # Length of lexical item that is not a term
-    IfNe
-    Then                                                                        # Not a term
-     {my $size = lexicalItemLength(V(address, $start), $o);                     # Get the size of the lexical item at the offset indicated on the stack
-      $t->insert(V(key, $lexItemWidth * $j + $lexItemLength), $size);           # Save size of lexical item in parse tree
-
-      my $s = CreateShortString(0);                                             # Short string to hold text of lexical item so we can load it into a quark
-      PushR r15;
-      r15 ne $start && r15 ne $liOffset or confess "r15 in use";
-      Lea r15, "[$start+4*$liOffset]";                                          # Start address of lexical item
-      my $start = V(address, r15);                                              # Save start address of lexical item
-      PopR;
-#     $s->loadDwordBytes(0, $start, $size);                                     # Load text of lexical item into short string
-      $s->loadDwordBytes(0, $start, $size, 1);                                  # Load text of lexical item into short string
-      Pinsrb "xmm0", $liType."b", 1;                                            # Set lexical type as the first byte of the short string
-
-      my $q = $Quarks->quarkFromShortString($s);
-      $t->insert(V(key, $lexItemWidth * $j + $lexItemQuark), $q);               # Save quark number of lexical item in parse tree
-
-      if ($Operators)                                                           # The parse has operator definitions
-       {if ($j == 1)                                                            # The operator quark is always first
-         {my $N = $Operators->subFromQuark($Quarks, $q);                        # Look up the subroutine associated with this operator
-          If $N >= 0,                                                           # Found a matching operator subroutine
-          Then
-           {$t->insert(V(key, $opSub), $N);                                     # Save offset to subroutine associated with this lexical item
-           };
-         }
-       }
-     };
-
-    $t->insert  (V(key, $lexItemWidth * $j + $lexItemType),                     # Save lexical type in parse tree
-                 V(data)->getReg($liType));
-   }
-                                                                                # Push new term onto the stack in place of the items popped off
-  $t->first->setReg($liOffset);                                                 # Offset of new term tree
-  Shl $liOffset, 32;                                                            # Push offset to term tree into the upper dword to make it look like a source offset
-  Or  $liOffset."b", $term;                                                     # Mark as a term tree
-  Push $liOffset;                                                               # Place new term on stack
-  Comment "New end";
+  $new->setReg($w1);                                                            # Save offset of new term in a work register
+  Add rsp, $depth * $wr;                                                        # Remove input terms from stack
+  Push $w1;                                                                     # Save new term on stack
  }
 
 sub error($)                                                                    #P Write an error message and stop.
@@ -1154,7 +1193,7 @@ sub parseUtf8($@)                                                               
 
 #D1 Traverse                                                                    # Traverse the parse tree
 
-sub traverseTermsAndCall($)                                                     # Traverse the terms in parse tree in post order and call the operator subroutine associated with each term
+sub traverseTermsAndCall($)                                                     # Traverse the terms in parse tree in post order and call the operator subroutine associated with each term.
  {my ($parse) = @_;                                                             # Parse tree
 
   my $s = Subroutine                                                            # Print a tree
@@ -2097,7 +2136,7 @@ Semicolon
 Parse a Unisyn expression.
 
 
-Version "20210912".
+Version "20210915".
 
 
 The following sections describe the methods in each functional area of this
@@ -2137,13 +2176,52 @@ B<Example:>
 
 Parse Unisyn expressions
 
+=head1 Traverse
+
+Traverse the parse tree
+
+=head2 traverseTermsAndCall($parse)
+
+Traverse the terms in parse tree in post order and call the operator subroutine associated with each term.
+
+     Parameter  Description
+  1  $parse     Parse tree
+
+B<Example:>
+
+
+    my $p = create (K(address, Rutf8 $Lex->{sampleText}{A}), operators => sub
+     {my ($parse) = @_;
+
+      my $assign = Subroutine
+       {PrintOutStringNL "call assign";
+       } [], name=>"UnisynParse::assign";
+
+      my $equals = Subroutine
+       {PrintOutStringNL "call equals";
+       } [], name=>"UnisynParse::equals";
+
+      my $o = $parse->operators;                                                  # Operator subroutines
+      $o->assign(asciiToAssignLatin("assign"), $assign);
+      $o->assign(asciiToAssignLatin("equals"), $equals);
+     });
+
+
+    $p->traverseTermsAndCall;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+
+
+    Assemble(debug => 0, eq => <<END)
+  call equals
+  END
+
+
 =head1 Print
 
 Print a parse tree
 
 =head2 print($parse)
 
-Create a parser for an expression described by variables.
+Print a parse tree.
 
      Parameter  Description
   1  $parse     Parse tree
@@ -2701,7 +2779,7 @@ Parse some text and print the results.
 
 39 L<parseUtf8|/parseUtf8> - Parse a unisyn expression encoded as utf8 and return the parse tree.
 
-40 L<print|/print> - Create a parser for an expression described by variables.
+40 L<print|/print> - Print a parse tree.
 
 41 L<printLexicalItem|/printLexicalItem> - Print the utf8 string corresponding to a lexical item at a variable offset.
 
@@ -2723,17 +2801,19 @@ Parse some text and print the results.
 
 50 L<testSet|/testSet> - Test a set of items, setting the Zero Flag is one matches else clear the Zero flag.
 
-51 L<Unisyn::Parse::SubQuarks::assign|/Unisyn::Parse::SubQuarks::assign> - Define a method for an assign operator.
+51 L<traverseTermsAndCall|/traverseTermsAndCall> - Traverse the terms in parse tree in post order and call the operator subroutine associated with each term.
 
-52 L<Unisyn::Parse::SubQuarks::dyad|/Unisyn::Parse::SubQuarks::dyad> - Define a method for a dyadic operator.
+52 L<Unisyn::Parse::SubQuarks::assign|/Unisyn::Parse::SubQuarks::assign> - Define a method for an assign operator.
 
-53 L<Unisyn::Parse::SubQuarks::lexToString|/Unisyn::Parse::SubQuarks::lexToString> - Convert a lexical item to a string.
+53 L<Unisyn::Parse::SubQuarks::dyad|/Unisyn::Parse::SubQuarks::dyad> - Define a method for a dyadic operator.
 
-54 L<Unisyn::Parse::SubQuarks::put|/Unisyn::Parse::SubQuarks::put> - Put a new subroutine definition into the sub quarks.
+54 L<Unisyn::Parse::SubQuarks::lexToString|/Unisyn::Parse::SubQuarks::lexToString> - Convert a lexical item to a string.
 
-55 L<Unisyn::Parse::SubQuarks::reload|/Unisyn::Parse::SubQuarks::reload> - Reload the description of a set of sub quarks.
+55 L<Unisyn::Parse::SubQuarks::put|/Unisyn::Parse::SubQuarks::put> - Put a new subroutine definition into the sub quarks.
 
-56 L<Unisyn::Parse::SubQuarks::subFromQuark|/Unisyn::Parse::SubQuarks::subFromQuark> - Given the quark number for a lexical item and the quark set of lexical items get the offset of the associated method.
+56 L<Unisyn::Parse::SubQuarks::reload|/Unisyn::Parse::SubQuarks::reload> - Reload the description of a set of sub quarks.
+
+57 L<Unisyn::Parse::SubQuarks::subFromQuark|/Unisyn::Parse::SubQuarks::subFromQuark> - Given the quark number for a lexical item and the quark set of lexical items get the offset of the associated method.
 
 =head1 Installation
 
@@ -2824,6 +2904,21 @@ sub C($$%)                                                                      
 
   Assemble(debug => 0, eq => $expected);
  }
+
+#latest:;
+ok T(q(v), <<END) if 1;
+Tree at:  0000 0000 0000 00D8  length: 0000 0000 0000 0006
+  0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+  0000 0000 0000 000C   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0000 0000 0006   0000 0001 0000 0009
+  0000 0118 0000 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
+    index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
+    index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0000
+    index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0005   key: 0000 0000 0000 0007   data: 0000 0000 0000 0000
+end
+END
 
 #latest:
 ok T(q(brackets), <<END, debug => 0) if 1;
