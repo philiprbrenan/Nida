@@ -3456,7 +3456,8 @@ END
 
 #latest:
 if (1) {                                                                        #TtraverseTermsAndCall
-  my $p = create (K(address, Rutf8 $Lex->{sampleText}{ws}), operators => sub
+  my $s = Rutf8 $Lex->{sampleText}{ws};
+  my $p = create (K(address, $s), operators => sub
    {my ($parse) = @_;
 
     my $assign = Subroutine
@@ -3472,10 +3473,17 @@ if (1) {                                                                        
     $o->dyad  (asciiToDyadLatin  ("plus"),   $plus);
    });
 
-  $p->print;
-  $p->traverseTermsAndCall;
+  Mov rax, $s;                                                                  # Print out input string
+  Cstrlen;
+  Mov rdi, r15;
+  PrintOutMemoryNL;
+
+  $p->print;                                                                    # Print parse
+
+  $p->traverseTermsAndCall;                                                     # Operator calls
 
   Assemble(debug => 0, eq => <<END)
+𝗮𝑎𝑠𝑠𝑖𝑔𝑛⌊〈❨𝗯𝗽❩〉𝐩𝐥𝐮𝐬❪𝘀𝗰❫⌋⟢𝗮𝗮𝑎𝑠𝑠𝑖𝑔𝑛❬𝗯𝗯𝐩𝐥𝐮𝐬𝗰𝗰❭⟢
 Semicolon
   Term
     Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
