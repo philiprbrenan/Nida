@@ -38,7 +38,7 @@ loops and if statements with nested expressions:
 ```
      is
  sub          as
-        [array](https://en.wikipedia.org/wiki/Dynamic_array)             then
+        array             then
                     ==                    else
                  v1    v2         plus                  then
                                v3      v4         ==                     else
