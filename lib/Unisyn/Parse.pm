@@ -2866,7 +2866,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 24;
+   {plan tests => 25;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -3451,6 +3451,71 @@ if (1) {                                                                        
 
   Assemble(debug => 0, eq => <<END)
 call equals
+END
+ }
+
+#latest:
+if (1) {                                                                        #TtraverseTermsAndCall
+  my $p = create (K(address, Rutf8 $Lex->{sampleText}{ws}), operators => sub
+   {my ($parse) = @_;
+
+    my $assign = Subroutine
+     {PrintOutStringNL "call assign";
+     } [], name=>"UnisynParse::assign";
+
+    my $plus = Subroutine
+     {PrintOutStringNL "call plus";
+     } [], name=>"UnisynParse::plus";
+
+    my $o = $parse->operators;                                                  # Operator subroutines
+    $o->assign(asciiToAssignLatin("assign"), $assign);
+    $o->dyad  (asciiToDyadLatin  ("plus"),   $plus);
+   });
+
+  $p->print;
+  $p->traverseTermsAndCall;
+
+  Assemble(debug => 0, eq => <<END)
+Semicolon
+  Term
+    Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
+      Term
+        Variable: 𝗮
+      Term
+        Brackets: ⌊⌋
+          Term
+            Term
+              Dyad: 𝐩𝐥𝐮𝐬
+                Term
+                  Brackets: ❨❩
+                    Term
+                      Term
+                        Brackets: ❬❭
+                          Term
+                            Term
+                              Variable: 𝗯𝗽
+                Term
+                  Brackets: ❰❱
+                    Term
+                      Term
+                        Variable: 𝘀𝗰
+  Term
+    Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
+      Term
+        Variable: 𝗮𝗮
+      Term
+        Brackets: ❴❵
+          Term
+            Term
+              Dyad: 𝐩𝐥𝐮𝐬
+                Term
+                  Variable: 𝗯𝗯
+                Term
+                  Variable: 𝗰𝗰
+call plus
+call assign
+call plus
+call assign
 END
  }
 
