@@ -9,7 +9,7 @@ unnecessary burdens on users and language designers.  [UniSyn](https://github.co
 common syntax that is easy to understand yet general enough to be used by many
 different programming languages.
 
-Advantages of having one uniform language syntax:
+## The advantages of having one uniform language syntax:
 
 - less of a burden on users to recall which of the many syntax schemes in
 current use is the relevant one for the programming language they are currently
