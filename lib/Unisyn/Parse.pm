@@ -3429,7 +3429,8 @@ operators => sub                                                                
   $parse->operators->subQuarks->dumpSubs;
  });
 
-#latest:
+latest:
+# 28,752
 if (1) {                                                                        #TtraverseTermsAndCall
   my $p = create (K(address, Rutf8 $Lex->{sampleText}{A}), operators => sub
    {my ($parse) = @_;
@@ -3449,10 +3450,11 @@ if (1) {                                                                        
 
   $p->traverseTermsAndCall;
 
-  Assemble(debug => 0, eq => <<END)
+  Assemble(debug => 0, eq => <<END, countComments => 20)
 call equals
 END
  }
+exit;
 
 #latest:
 if (1) {                                                                        #TtraverseTermsAndCall
