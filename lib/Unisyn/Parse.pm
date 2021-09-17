@@ -1544,30 +1544,42 @@ sub Unisyn::Parse::SubQuarks::subFromQuark($$$)                                 
   $r                                                                            # Return sub routine offset
  }
 
-sub Unisyn::Parse::SubQuarks::lexToString($$$)                                  # Convert a lexical item to a string.
- {my ($q, $alphabet, $op) = @_;                                                 # Sub quarks, the alphabet number, the operator name in that alphabet
+sub Unisyn::Parse::SubQuarks::lexToSub($$$$)                                    # Map a lexical item to a processing subroutine.
+ {my ($q, $alphabet, $op, $sub) = @_;                                           # Sub quarks, the alphabet number, the operator name in that alphabet, subroutine definition
   my $a = &lexicalData->{alphabetsOrdered}{$alphabet};                          # Alphabet
   my $n = $$Lex{lexicals}{$alphabet}{number};                                   # Number of lexical type
   my %i = map {$$a[$_]=>$_} keys @$a;
   my @b = ($n, map {$i{ord $_}} split //, $op);                                 # Bytes representing the operator name
-  join '', map {chr $_} @b                                                      # String representation
+  my $s = join '', map {chr $_} @b;                                             # String representation
+  $q->put($s, $sub);                                                            # Add the string, subroutine combination to the sub quarks
  }
 
 sub Unisyn::Parse::SubQuarks::dyad($$$)                                         # Define a method for a dyadic operator.
- {my ($q, $text, $sub) = @_;                                                    # Sub quarks, sub quarks, the name of the operator as a utf8 string, variable associated subroutine offset
-  my $s = $q->lexToString("dyad", $text);                                       # Operator name in operator alphabet preceded by alphabet number
-  $q->put($s, $sub);                                                            # Add the named dyad to the sub quarks
+ {my ($q, $text, $sub) = @_;                                                    # Sub quarks, sub quarks, the name of the operator as a utf8 string, associated subroutine definition
+  $q->lexToSub("dyad", $text, $sub);
  }
 
 sub Unisyn::Parse::SubQuarks::assign($$$)                                       # Define a method for an assign operator.
- {my ($q, $text, $sub) = @_;                                                    # Sub quarks, the name of the operator as a utf8 string, variable associated subroutine offset
-  my $s = $q->lexToString("assign", $text);                                     # Operator name in operator alphabet preceded by alphabet number
-  $q->put($s, $sub);                                                            # Add the named dyad to the sub quarks
+ {my ($q, $text, $sub) = @_;                                                    # Sub quarks, the name of the operator as a utf8 string, associated subroutine definition
+  $q->lexToSub("assign", $text, $sub);                                          # Operator name in operator alphabet preceded by alphabet number
  }
 
-sub assignToShortString($$)                                                     # Create a short string representing a dyad and put it in the specified short string.
- {my ($short, $text) = @_;                                                      # The number of the short string, the text of the operator in the assign alphabet
-  lexToShortString($short, "assign", $text);
+sub Unisyn::Parse::SubQuarks::prefix($$$)                                       # Define a method for a prefix operator.
+ {my ($q, $text, $sub) = @_;                                                    # Sub quarks, the name of the operator as a utf8 string, associated subroutine definition
+  $q->lexToSub("prefix", $text, $sub);                                          # Operator name in operator alphabet preceded by alphabet number
+ }
+
+sub Unisyn::Parse::SubQuarks::suffix($$$)                                       # Define a method for a suffix operator.
+ {my ($q, $text, $sub) = @_;                                                    # Sub quarks, the name of the operator as a utf8 string, associated subroutine definition
+  $q->lexToSub("suffix", $text, $sub);                                          # Operator name in operator alphabet preceded by alphabet number
+ }
+
+sub Unisyn::Parse::SubQuarks::semiColon($$)                                     # Define a method for the semicolon operator
+ {my ($q, $sub) = @_;                                                           # Sub quarks, associated subroutine definition
+  my $l = &lexicalData;
+  my $s = $l->semiColon;
+  my $n = $$Lex{lexicals}{semiColon}{number};                                   # Lexical number of semicolon
+  $q->put(chr($n).$s, $sub);                                                    # Add the semicolon subroutine to the sub quarks
  }
 
 #D1 Alphabets                                                                   # Translate between alphabets
@@ -3429,8 +3441,9 @@ operators => sub                                                                
   $parse->operators->subQuarks->dumpSubs;
  });
 
-latest:
+#latest:
 # 28,752
+# 28,440
 if (1) {                                                                        #TtraverseTermsAndCall
   my $p = create (K(address, Rutf8 $Lex->{sampleText}{A}), operators => sub
    {my ($parse) = @_;
@@ -3450,11 +3463,10 @@ if (1) {                                                                        
 
   $p->traverseTermsAndCall;
 
-  Assemble(debug => 0, eq => <<END, countComments => 20)
+  Assemble(debug => 0, eq => <<END)
 call equals
 END
  }
-exit;
 
 #latest:
 if (1) {                                                                        #TtraverseTermsAndCall
