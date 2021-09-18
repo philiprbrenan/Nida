@@ -10,7 +10,7 @@
 # 0123    456789ABCDEF
 # Waiting on quarks
 package Unisyn::Parse;
-our $VERSION = "20210915";
+our $VERSION = "20210918";
 use warnings FATAL => qw(all);
 use strict;
 use Carp qw(confess cluck);
@@ -1537,7 +1537,7 @@ sub print($)                                                                    
   PopR;
  } # print
 
-sub dumpParseTree($)                                                            # Dump the parse tree
+sub dumpParseTree($)                                                            # Dump the parse tree.
  {my ($parse) = @_;                                                             # Parse tree
   my $t = $parse->arena->DescribeTree;
   $t->first->copy($parse->parse);
@@ -1619,7 +1619,7 @@ sub Unisyn::Parse::SubQuarks::lexToSub($$$$)                                    
  }
 
 sub Unisyn::Parse::SubQuarks::dyad($$$)                                         # Define a method for a dyadic operator.
- {my ($q, $text, $sub) = @_;                                                    # Sub quarks, sub quarks, the name of the operator as a utf8 string, associated subroutine definition
+ {my ($q, $text, $sub) = @_;                                                    # Sub quarks, the name of the operator as a utf8 string, associated subroutine definition
   $q->lexToSub("dyad", $text, $sub);
  }
 
@@ -1638,21 +1638,21 @@ sub Unisyn::Parse::SubQuarks::suffix($$$)                                       
   $q->lexToSub("suffix", $text, $sub);                                          # Operator name in operator alphabet preceded by alphabet number
  }
 
-sub Unisyn::Parse::SubQuarks::semiColon($$)                                     # Define a method for the semicolon operator
+sub Unisyn::Parse::SubQuarks::semiColon($$)                                     # Define a method for the semicolon operator.
  {my ($q, $sub) = @_;                                                           # Sub quarks, associated subroutine definition
   my $n = $$Lex{lexicals}{semiColon}{number};                                   # Lexical number of semicolon
   my $s = chr($n).chr(0);                                                       # Semi colon is represented by a string length of 2 (semi colon lexical number, zero == position in alphabet)
   $q->put($s, $sub)                                                             # Add the semicolon subroutine to the sub quarks
  }
 
-sub Unisyn::Parse::SubQuarks::variable($$)                                      # Define a method for a variable
+sub Unisyn::Parse::SubQuarks::variable($$)                                      # Define a method for a variable.
  {my ($q, $sub) = @_;                                                           # Sub quarks, associated subroutine definition
   my $n = $$Lex{lexicals}{variable}{number};                                    # Lexical number of a variable
   $q->put(chr($n), $sub);                                                       # Add the variable subroutine to the sub quarks
  }
 
-sub Unisyn::Parse::SubQuarks::bracket($$$)                                      # Define a method for a bracket operator
- {my ($q, $open, $sub) = @_;                                                    # Opening parenthesis
+sub Unisyn::Parse::SubQuarks::bracket($$$)                                      # Define a method for a bracket operator.
+ {my ($q, $open, $sub) = @_;                                                    # Sub quarks, opening parenthesis, associated subroutine
   my $l = &lexicalData;
   my $s = join '', sort $l->{bracketsOpen}->@*;#, $l->{bracketsClose}->@*;      # Bracket alphabet
   my $b = index($s, $open);
@@ -1661,7 +1661,7 @@ sub Unisyn::Parse::SubQuarks::bracket($$$)                                      
   $q->put(chr($n).chr($b+1+$l->{bracketsBase}), $sub);   ### +1 ?               # Add the brackets subroutine to the sub quarks
  }
 
-#D1 Alphabets                                                                   # Translate between alphabets
+#D1 Alphabets                                                                   # Translate between alphabets.
 
 sub showAlphabet($)                                                             #P Show an alphabet.
  {my ($alphabet) = @_;                                                          # Alphabet name
@@ -2219,59 +2219,99 @@ Unisyn::Parse - Parse a Unisyn expression.
 
 Parse the B<Unisyn> expression:
 
-    my $expr = "𝗮𝑎𝑠𝑠𝑖𝑔𝑛⌊〈❨𝗯𝗽❩〉𝐩𝐥𝐮𝐬❪𝘀𝗰❫⌋⟢𝗮𝗮𝑎𝑠𝑠𝑖𝑔𝑛❬𝗯𝗯𝐩𝐥𝐮𝐬𝗰𝗰❭⟢";
+  𝒂 ❴ 𝒃 ⟦𝒄⟨ 𝗮 𝑒𝑞𝑢𝑎𝑙𝑠 𝒅 𝗯 𝙙 𝐭𝐢𝐦𝐞𝐬 ⟪𝗰 𝐩𝐥𝐮𝐬 𝗱⟫⟢  𝗲 𝑎𝑠𝑠𝑖𝑔𝑛 𝗳 𝐬𝐮𝐛 𝗴 𝙝⟩ 𝙘 ⟧ 𝙗 ❵ 𝙖
 
-using:
+To get:
 
-  create (K(address, Rutf8 $expr))->print;
-
-to get:
-
-  ok Assemble(debug => 0, eq => <<END);
-Semicolon
-  Term
-    Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
-      Term
-        Variable: 𝗮
-      Term
-        Brackets: ⌊⌋
-          Term
+  Suffix: 𝙖
+    Term
+      Prefix: 𝒂
+        Term
+          Brackets: ⦇⦈
             Term
-              Dyad: 𝐩𝐥𝐮𝐬
-                Term
-                  Brackets: ❨❩
-                    Term
+              Term
+                Suffix: 𝙗
+                  Term
+                    Prefix: 𝒃
                       Term
-                        Brackets: ❬❭
+                        Brackets: ⦋⦌
                           Term
                             Term
-                              Variable: 𝗯𝗽
-                Term
-                  Brackets: ❰❱
-                    Term
-                      Term
-                        Variable: 𝘀𝗰
-  Term
-    Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
-      Term
-        Variable: 𝗮𝗮
-      Term
-        Brackets: ❴❵
-          Term
-            Term
-              Dyad: 𝐩𝐥𝐮𝐬
-                Term
-                  Variable: 𝗯𝗯
-                Term
-                  Variable: 𝗰𝗰
-  END
+                              Suffix: 𝙘
+                                Term
+                                  Prefix: 𝒄
+                                    Term
+                                      Brackets: ⦏⦐
+                                        Term
+                                          Term
+                                            Semicolon
+                                              Term
+                                                Assign: 𝑒𝑞𝑢𝑎𝑙𝑠
+                                                  Term
+                                                    Variable: 𝗮
+                                                  Term
+                                                    Dyad: 𝐭𝐢𝐦𝐞𝐬
+                                                      Term
+                                                        Suffix: 𝙙
+                                                          Term
+                                                            Prefix: 𝒅
+                                                              Term
+                                                                Variable: 𝗯
+                                                      Term
+                                                        Brackets: ⦓⦔
+                                                          Term
+                                                            Term
+                                                              Dyad: 𝐩𝐥𝐮𝐬
+                                                                Term
+                                                                  Variable: 𝗰
+                                                                Term
+                                                                  Variable: 𝗱
+                                              Term
+                                                Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
+                                                  Term
+                                                    Variable: 𝗲
+                                                  Term
+                                                    Dyad: 𝐬𝐮𝐛
+                                                      Term
+                                                        Variable: 𝗳
+                                                      Term
+                                                        Suffix: 𝙝
+                                                          Term
+                                                            Variable: 𝗴
+
+Then traverse the parse tree printing the type of each node:
+
+  variable
+  variable
+  prefix_d
+  suffix_d
+  variable
+  variable
+  plus
+  times
+  equals
+  variable
+  variable
+  variable
+  sub
+  assign
+  semiColon
+  brackets_3
+  prefix_c
+  suffix_c
+  brackets_2
+  prefix_b
+  suffix_b
+  brackets_1
+  prefix_a
+  suffix_a
 
 =head1 Description
 
 Parse a Unisyn expression.
 
 
-Version "20210915".
+Version "20210918".
 
 
 The following sections describe the methods in each functional area of this
@@ -2294,10 +2334,10 @@ Create a new unisyn parse from a utf8 string.
 B<Example:>
 
 
-
+  
     create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-
+  
     ok Assemble(debug => 0, eq => <<END);
   Assign: 𝑎
     Term
@@ -2305,7 +2345,7 @@ B<Example:>
     Term
       Variable: 𝗯
   END
-
+  
 
 =head1 Parse
 
@@ -2325,30 +2365,80 @@ Traverse the terms in parse tree in post order and call the operator subroutine 
 B<Example:>
 
 
-    my $p = create (K(address, Rutf8 $Lex->{sampleText}{A}), operators => sub
-     {my ($parse) = @_;
+    my $s = Rutf8 $Lex->{sampleText}{A};                                          # Ascii
+    my $p = create K(address, $s), operators => \&printOperatorSequence;
+  
+    K(address, $s)->printOutZeroString;
+    $p->dumpParseTree;
+  # $p->print;
+  
+  # $p->traverseTermsAndCall;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-      my $assign = Subroutine
-       {PrintOutStringNL "call assign";
-       } [], name=>"UnisynParse::assign";
-
-      my $equals = Subroutine
-       {PrintOutStringNL "call equals";
-       } [], name=>"UnisynParse::equals";
-
-      my $o = $parse->operators;                                                  # Operator subroutines
-      $o->assign(asciiToAssignLatin("assign"), $assign);
-      $o->assign(asciiToAssignLatin("equals"), $equals);
-     });
-
-
-    $p->traverseTermsAndCall;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
-
-
+  
     Assemble(debug => 0, eq => <<END)
   call equals
   END
+  
+    my $s = Rutf8 $Lex->{sampleText}{ws};
+    my $p = create (K(address, $s), operators => \&printOperatorSequence);
+  
+    K(address, $s)->printOutZeroString;                                           # Print input string
+    $p->print;                                                                    # Print parse
+  
+    $p->traverseTermsAndCall;                                                     # Traverse tree printing terms  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
+  
+    Assemble(debug => 0, eq => <<END)
+  𝗮𝑎𝑠𝑠𝑖𝑔𝑛⌊〈❨𝗯𝗽❩〉𝐩𝐥𝐮𝐬❪𝘀𝗰❫⌋⟢𝗮𝗮𝑎𝑠𝑠𝑖𝑔𝑛❬𝗯𝗯𝐩𝐥𝐮𝐬𝗰𝗰❭⟢
+  Semicolon
+    Term
+      Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
+        Term
+          Variable: 𝗮
+        Term
+          Brackets: ⌊⌋
+            Term
+              Term
+                Dyad: 𝐩𝐥𝐮𝐬
+                  Term
+                    Brackets: ❨❩
+                      Term
+                        Term
+                          Brackets: ❬❭
+                            Term
+                              Term
+                                Variable: 𝗯𝗽
+                  Term
+                    Brackets: ❰❱
+                      Term
+                        Term
+                          Variable: 𝘀𝗰
+    Term
+      Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
+        Term
+          Variable: 𝗮𝗮
+        Term
+          Brackets: ❴❵
+            Term
+              Term
+                Dyad: 𝐩𝐥𝐮𝐬
+                  Term
+                    Variable: 𝗯𝗯
+                  Term
+                    Variable: 𝗰𝗰
+  variable
+  variable
+  variable
+  plus
+  assign
+  variable
+  variable
+  variable
+  plus
+  assign
+  semiColon
+  END
+  
 
 =head1 Print
 
@@ -2364,10 +2454,10 @@ Print a parse tree.
 B<Example:>
 
 
-
+  
     create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-
+  
     ok Assemble(debug => 0, eq => <<END);
   Assign: 𝑎
     Term
@@ -2375,7 +2465,14 @@ B<Example:>
     Term
       Variable: 𝗯
   END
+  
 
+=head2 dumpParseTree($parse)
+
+Dump the parse tree.
+
+     Parameter  Description
+  1  $parse     Parse tree
 
 =head1 SubQuark
 
@@ -2412,6 +2509,13 @@ Put a new subroutine definition into the sub quarks.
   2  $string    String containing operator type and method name
   3  $sub       Variable offset to subroutine
 
+=head2 Unisyn::Parse::SubQuarks::dumpSubs($q)
+
+Dump a set of quarks identifying subroutines.
+
+     Parameter  Description
+  1  $q         Quarks
+
 =head2 Unisyn::Parse::SubQuarks::subFromQuark($q, $lexicals, $number)
 
 Given the quark number for a lexical item and the quark set of lexical items get the offset of the associated method.
@@ -2421,14 +2525,15 @@ Given the quark number for a lexical item and the quark set of lexical items get
   2  $lexicals  Lexical item quarks
   3  $number    Lexical item quark
 
-=head2 Unisyn::Parse::SubQuarks::lexToString($q, $alphabet, $op)
+=head2 Unisyn::Parse::SubQuarks::lexToSub($q, $alphabet, $op, $sub)
 
-Convert a lexical item to a string.
+Map a lexical item to a processing subroutine.
 
      Parameter  Description
   1  $q         Sub quarks
   2  $alphabet  The alphabet number
   3  $op        The operator name in that alphabet
+  4  $sub       Subroutine definition
 
 =head2 Unisyn::Parse::SubQuarks::dyad($q, $text, $sub)
 
@@ -2436,8 +2541,8 @@ Define a method for a dyadic operator.
 
      Parameter  Description
   1  $q         Sub quarks
-  2  $text      Sub quarks
-  3  $sub       The name of the operator as a utf8 string
+  2  $text      The name of the operator as a utf8 string
+  3  $sub       Associated subroutine definition
 
 =head2 Unisyn::Parse::SubQuarks::assign($q, $text, $sub)
 
@@ -2446,19 +2551,54 @@ Define a method for an assign operator.
      Parameter  Description
   1  $q         Sub quarks
   2  $text      The name of the operator as a utf8 string
-  3  $sub       Variable associated subroutine offset
+  3  $sub       Associated subroutine definition
 
-=head2 assignToShortString($short, $text)
+=head2 Unisyn::Parse::SubQuarks::prefix($q, $text, $sub)
 
-Create a short string representing a dyad and put it in the specified short string.
+Define a method for a prefix operator.
 
      Parameter  Description
-  1  $short     The number of the short string
-  2  $text      The text of the operator in the assign alphabet
+  1  $q         Sub quarks
+  2  $text      The name of the operator as a utf8 string
+  3  $sub       Associated subroutine definition
+
+=head2 Unisyn::Parse::SubQuarks::suffix($q, $text, $sub)
+
+Define a method for a suffix operator.
+
+     Parameter  Description
+  1  $q         Sub quarks
+  2  $text      The name of the operator as a utf8 string
+  3  $sub       Associated subroutine definition
+
+=head2 Unisyn::Parse::SubQuarks::semiColon($q, $sub)
+
+Define a method for the semicolon operator.
+
+     Parameter  Description
+  1  $q         Sub quarks
+  2  $sub       Associated subroutine definition
+
+=head2 Unisyn::Parse::SubQuarks::variable($q, $sub)
+
+Define a method for a variable.
+
+     Parameter  Description
+  1  $q         Sub quarks
+  2  $sub       Associated subroutine definition
+
+=head2 Unisyn::Parse::SubQuarks::bracket($q, $open, $sub)
+
+Define a method for a bracket operator.
+
+     Parameter  Description
+  1  $q         Sub quarks
+  2  $open      Opening parenthesis
+  3  $sub       Associated subroutine
 
 =head1 Alphabets
 
-Translate between alphabets
+Translate between alphabets.
 
 =head2 asciiToAssignLatin($in)
 
@@ -2541,6 +2681,13 @@ Translate ascii to the corresponding letters in the escaped ascii alphabet.
 
 Translate ascii to the corresponding letters in the escaped ascii alphabet.
 
+
+=head2 printOperatorSequence($parse)
+
+Print the operator calling sequence.
+
+     Parameter  Description
+  1  $parse     Parse
 
 
 =head1 Hash Definitions
@@ -2838,9 +2985,9 @@ Parse some text and print the results.
 
 1 L<accept_a|/accept_a> - Assign.
 
-2 L<accept_B|/accept_B> - Closing parenthesis.
+2 L<accept_b|/accept_b> - Open.
 
-3 L<accept_b|/accept_b> - Open.
+3 L<accept_B|/accept_B> - Closing parenthesis.
 
 4 L<accept_d|/accept_d> - Infix but not assign or semi-colon.
 
@@ -2874,19 +3021,19 @@ Parse some text and print the results.
 
 19 L<asciiToVariableLatin|/asciiToVariableLatin> - Translate ascii to the corresponding letters in the suffix latin alphabet.
 
-20 L<assignToShortString|/assignToShortString> - Create a short string representing a dyad and put it in the specified short string.
+20 L<C|/C> - Parse some text and print the results.
 
-21 L<C|/C> - Parse some text and print the results.
+21 L<checkSet|/checkSet> - Check that one of a set of items is on the top of the stack or complain if it is not.
 
-22 L<checkSet|/checkSet> - Check that one of a set of items is on the top of the stack or complain if it is not.
+22 L<checkStackHas|/checkStackHas> - Check that we have at least the specified number of elements on the stack.
 
-23 L<checkStackHas|/checkStackHas> - Check that we have at least the specified number of elements on the stack.
+23 L<ClassifyNewLines|/ClassifyNewLines> - Scan input string looking for opportunities to convert new lines into semi colons.
 
-24 L<ClassifyNewLines|/ClassifyNewLines> - Scan input string looking for opportunities to convert new lines into semi colons.
+24 L<ClassifyWhiteSpace|/ClassifyWhiteSpace> - Classify white space per: "lib/Unisyn/whiteSpace/whiteSpaceClassification.
 
-25 L<ClassifyWhiteSpace|/ClassifyWhiteSpace> - Classify white space per: "lib/Unisyn/whiteSpace/whiteSpaceClassification.
+25 L<create|/create> - Create a new unisyn parse from a utf8 string.
 
-26 L<create|/create> - Create a new unisyn parse from a utf8 string.
+26 L<dumpParseTree|/dumpParseTree> - Dump the parse tree.
 
 27 L<error|/error> - Write an error message and stop.
 
@@ -2918,37 +3065,51 @@ Parse some text and print the results.
 
 41 L<printLexicalItem|/printLexicalItem> - Print the utf8 string corresponding to a lexical item at a variable offset.
 
-42 L<pushElement|/pushElement> - Push the current element on to the stack.
+42 L<printOperatorSequence|/printOperatorSequence> - Print the operator calling sequence.
 
-43 L<pushEmpty|/pushEmpty> - Push the empty element on to the stack.
+43 L<pushElement|/pushElement> - Push the current element on to the stack.
 
-44 L<putLexicalCode|/putLexicalCode> - Put the specified lexical code into the current character in memory.
+44 L<pushEmpty|/pushEmpty> - Push the empty element on to the stack.
 
-45 L<reduce|/reduce> - Convert the longest possible expression on top of the stack into a term  at the specified priority.
+45 L<putLexicalCode|/putLexicalCode> - Put the specified lexical code into the current character in memory.
 
-46 L<reduceMultiple|/reduceMultiple> - Reduce existing operators on the stack.
+46 L<reduce|/reduce> - Convert the longest possible expression on top of the stack into a term  at the specified priority.
 
-47 L<semiColon|/semiColon> - Translate ascii to the corresponding letters in the escaped ascii alphabet.
+47 L<reduceMultiple|/reduceMultiple> - Reduce existing operators on the stack.
 
-48 L<showAlphabet|/showAlphabet> - Show an alphabet.
+48 L<semiColon|/semiColon> - Translate ascii to the corresponding letters in the escaped ascii alphabet.
 
-49 L<T|/T> - Parse some text and dump the results.
+49 L<showAlphabet|/showAlphabet> - Show an alphabet.
 
-50 L<testSet|/testSet> - Test a set of items, setting the Zero Flag is one matches else clear the Zero flag.
+50 L<T|/T> - Parse some text and dump the results.
 
-51 L<traverseTermsAndCall|/traverseTermsAndCall> - Traverse the terms in parse tree in post order and call the operator subroutine associated with each term.
+51 L<testSet|/testSet> - Test a set of items, setting the Zero Flag is one matches else clear the Zero flag.
 
-52 L<Unisyn::Parse::SubQuarks::assign|/Unisyn::Parse::SubQuarks::assign> - Define a method for an assign operator.
+52 L<traverseTermsAndCall|/traverseTermsAndCall> - Traverse the terms in parse tree in post order and call the operator subroutine associated with each term.
 
-53 L<Unisyn::Parse::SubQuarks::dyad|/Unisyn::Parse::SubQuarks::dyad> - Define a method for a dyadic operator.
+53 L<Unisyn::Parse::SubQuarks::assign|/Unisyn::Parse::SubQuarks::assign> - Define a method for an assign operator.
 
-54 L<Unisyn::Parse::SubQuarks::lexToString|/Unisyn::Parse::SubQuarks::lexToString> - Convert a lexical item to a string.
+54 L<Unisyn::Parse::SubQuarks::bracket|/Unisyn::Parse::SubQuarks::bracket> - Define a method for a bracket operator.
 
-55 L<Unisyn::Parse::SubQuarks::put|/Unisyn::Parse::SubQuarks::put> - Put a new subroutine definition into the sub quarks.
+55 L<Unisyn::Parse::SubQuarks::dumpSubs|/Unisyn::Parse::SubQuarks::dumpSubs> - Dump a set of quarks identifying subroutines.
 
-56 L<Unisyn::Parse::SubQuarks::reload|/Unisyn::Parse::SubQuarks::reload> - Reload the description of a set of sub quarks.
+56 L<Unisyn::Parse::SubQuarks::dyad|/Unisyn::Parse::SubQuarks::dyad> - Define a method for a dyadic operator.
 
-57 L<Unisyn::Parse::SubQuarks::subFromQuark|/Unisyn::Parse::SubQuarks::subFromQuark> - Given the quark number for a lexical item and the quark set of lexical items get the offset of the associated method.
+57 L<Unisyn::Parse::SubQuarks::lexToSub|/Unisyn::Parse::SubQuarks::lexToSub> - Map a lexical item to a processing subroutine.
+
+58 L<Unisyn::Parse::SubQuarks::prefix|/Unisyn::Parse::SubQuarks::prefix> - Define a method for a prefix operator.
+
+59 L<Unisyn::Parse::SubQuarks::put|/Unisyn::Parse::SubQuarks::put> - Put a new subroutine definition into the sub quarks.
+
+60 L<Unisyn::Parse::SubQuarks::reload|/Unisyn::Parse::SubQuarks::reload> - Reload the description of a set of sub quarks.
+
+61 L<Unisyn::Parse::SubQuarks::semiColon|/Unisyn::Parse::SubQuarks::semiColon> - Define a method for the semicolon operator.
+
+62 L<Unisyn::Parse::SubQuarks::subFromQuark|/Unisyn::Parse::SubQuarks::subFromQuark> - Given the quark number for a lexical item and the quark set of lexical items get the offset of the associated method.
+
+63 L<Unisyn::Parse::SubQuarks::suffix|/Unisyn::Parse::SubQuarks::suffix> - Define a method for a suffix operator.
+
+64 L<Unisyn::Parse::SubQuarks::variable|/Unisyn::Parse::SubQuarks::variable> - Define a method for a variable.
 
 =head1 Installation
 
@@ -3500,8 +3661,8 @@ is_deeply asciiToVariableGreek("ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufc
 is_deeply asciiToEscaped      ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"), q(ABCDEFGHIJKLMNOPQRSTUVWXYZ🅐🅑🅒🅓🅔🅕🅖🅗🅘🅙🅚🅛🅜🅝🅞🅟🅠🅡🅢🅣🅤🅥🅦🅧🅨🅩);
 is_deeply semiColon, q(⟢);
 
-sub printOperatorSequence($)                                                    # Print the operator calling sequence
- {my ($parse) = @_;
+sub printOperatorSequence($)                                                    # Print the operator calling sequence.
+ {my ($parse) = @_;                                                             # Parse
 
   my $o = $parse->operators;
   if (1)                                                                        # Prefix and suffix operators
