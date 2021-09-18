@@ -21,7 +21,6 @@ use feature qw(say current_sub);
 use utf8;
 
 my  $develop    = -e q(/home/phil/);                                            # Developing
-#our $arena;                                                                    # We always reload the actual arena address from rax and so this is permissible
 our %parameters;                                                                # A copy of the parameter list parsed into the parser so that all the related subroutines can see it. The alternative would have been to code these subroutines as my subs but this makes it much harder to test them.  As parses are not interrupted by other parses reentrancy is not a problem.
 our $Parse;                                                                     # The latest parse request
 our $Quarks;                                                                    # The quarks associated with this parse
@@ -101,7 +100,7 @@ our $lexItemType      = 0;                                                      
 our $lexItemOffset    = 1;                                                      # Field number of the offset in the utf32 source of the lexical item in the description of a lexical item or - if this a term - the offset of the invariant first block of the sub tree
 our $lexItemLength    = 2;                                                      # Field number of the length of the lexical item in the utf32 source in the description of a lexical item
 our $lexItemQuark     = 3;                                                      # Quark containing the text of this lexical item.
-our $lexItemWidth     = 4;                                                      # The number of fields used to describe a lexical item  in the parse tree
+our $lexItemWidth     = 4;                                                      # The number of fields used to describe a lexical item in the parse tree
 
 our $opType           = 0;                                                      # Operator type field - currently always a term
 our $opCount          = 1;                                                      # Number of operands for this operator
@@ -303,23 +302,53 @@ sub new($$)                                                                     
         $t->insert(V(key, $lexItemWidth * $j + $lexItemLength), $size);         # Save size of lexical item in parse tree
 
         my $s = CreateShortString(1);                                           # Short string to hold text of lexical item so we can load it into a quark
+           $s->clear;                                                           # Perhaps not strictly necessary but easier to debug
         PushR r15;                                                              # Probably not needed as saved in L<parseutf8>
         r15 ne $start && r15 ne $liOffset or confess "r15 in use";
         Lea r15, "[$start+4*$liOffset]";                                        # Start address of lexical item
-        my $start = V(address, r15);                                            # Save start address of lexical item
+        my $startAddress = V(address, r15);                                     # Save start address of lexical item
         PopR;
-        $s->loadDwordBytes(0, $start, $size, 1);                                # Load text of lexical item into short string leaving dpace for lexical type
-        Pinsrb "xmm1", $liType."b", 1;                                          # Set lexical type as the first byte of the short string
+
+        Cmp $liType, $OpenBracket;                                              # Is it a bracket ?
+        IfEq
+        Then
+         {ClearRegisters $liType;                                               # Compute lexical type of bracket by adding bracket number to the start of the bracket range
+          Mov $liType."b", "[$start+4*$liOffset+3]";                            # Load bracket number
+          Shl $liType, 16;                                                      # Shift bracket base into position
+          Add $liType, 2;                                                       # Set length of short string as two = (lexical type, bracket number)
+          Pinsrd "xmm1", $liType."d", 0;                                        # Load short string
+          Shr $liType, 16;                                                      # Move lexical type back into position for insertion into the parse tree
+         },
+        Else
+         {$s->loadDwordBytes(0, $startAddress, $size, 1);                       # Load text of lexical item into short string leaving space for lexical type
+          Pinsrb "xmm1", $liType."b", 1;                                        # Set lexical type as the first byte of the short string
+         };
 
         my $q = $quarks->quarkFromShortString($s);
         $t->insert(V(key, $lexItemWidth * $j + $lexItemQuark), $q);             # Save quark number of lexical item in parse tree
-
         if ($operators)                                                         # The parse has operator definitions
          {if ($j == 1)                                                          # The operator quark is always first
-           {my $N = $operators->subFromQuark($quarks, $q);                      # Look up the subroutine associated with this operator
-            If $N >= 0,                                                         # Found a matching operator subroutine
-            Then
-             {$t->insert(V(key, $opSub), $N);                                   # Save offset to subroutine associated with this lexical item
+           {Cmp $liType, $variable;
+            IfEq
+            Then                                                                # Process variables in general
+             {PushR $liType;
+              Mov $liType, $variable * 2**8 + 1;                                # General variable
+              Pinsrq "xmm1", $liType, 0;                                        # Load short string
+              my $q = $operators->subQuarks->quarkFromShortString($s);          # Offset for variable processing sub
+                      $operators->subQuarks->numbersToStrings->get(index=>$q,   # Load subroutine offset
+                         my $N = V(element));
+              PopR;
+              If $N >= 0,                                                       # Found a matching operator subroutine
+              Then
+               {$t->insert(V(key, $opSub), $N);                                 # Save offset to subroutine associated with this lexical item
+               };
+             },
+            Else                                                                # Process non variable, i.e. operators specifically
+             {my $N = $operators->subFromQuark($quarks, $q);                    # Look up the subroutine associated with this operator
+              If $N >= 0,                                                       # Found a matching operator subroutine
+              Then
+               {$t->insert(V(key, $opSub), $N);                                 # Save offset to subroutine associated with this lexical item
+               };
              };
            }
          }
@@ -1113,7 +1142,7 @@ sub parseUtf8($@)                                                               
     if ($debug)
      {PrintErrStringNL "After conversion from utf8 to utf32";
       $sourceSize32   ->errNL("Output Length: ");                               # Write output length
-      PrintUtf32($sourceLength32, $source32);                                   # Print utf32
+      PrintUtf32($sourceSize32, $source32);                                     # Print utf32
      }
 
     Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{lexicalLow} ->@*)."]";              # Each double is [31::24] Classification, [21::0] Utf32 start character
@@ -1122,7 +1151,7 @@ sub parseUtf8($@)                                                               
     ClassifyWithInRangeAndSaveOffset address=>$source32, size=>$sourceLength32; # Alphabetic classification
     if ($debug)
      {PrintErrStringNL "After classification into alphabet ranges";
-      PrintUtf32($sourceLength32, $source32);                                   # Print classified utf32
+      PrintUtf32($sourceSize32, $source32);                                     # Print classified utf32
      }
 
     Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{bracketsLow} ->@*)."]";             # Each double is [31::24] Classification, [21::0] Utf32 start character
@@ -1131,26 +1160,26 @@ sub parseUtf8($@)                                                               
     ClassifyWithInRange address=>$source32, size=>$sourceLength32;              # Bracket classification
     if ($debug)
      {PrintErrStringNL "After classification into brackets";
-      PrintUtf32($sourceLength32, $source32);                                   # Print classified brackets
+      PrintUtf32($sourceSize32, $source32);                                     # Print classified brackets
      }
 
     my $opens = V(opens, -1);
     MatchBrackets address=>$source32, size=>$sourceLength32, $opens, $$p{fail}; # Match brackets
     if ($debug)
      {PrintErrStringNL "After bracket matching";
-      PrintUtf32($sourceLength32, $source32);                                   # Print matched brackets
+      PrintUtf32($sourceSize32, $source32);                                     # Print matched brackets
      }
 
     ClassifyWhiteSpace address=>$source32, size=>$sourceLength32;               # Classify white space
     if ($debug)
      {PrintErrStringNL "After white space classification";
-      PrintUtf32($sourceLength32, $source32);
+      PrintUtf32($sourceSize32, $source32);
      }
 
     ClassifyNewLines address=>$source32, size=>$sourceLength32;                 # Classify new lines
     if ($debug)
      {PrintErrStringNL "After classifying new lines";
-      PrintUtf32($sourceLength32, $source32);
+      PrintUtf32($sourceSize32, $source32);
      }
 
     $$p{source32}      ->setReg($start);                                        # Start of expression string after it has been classified
@@ -1199,7 +1228,6 @@ sub traverseTermsAndCall($)                                                     
   my $s = Subroutine                                                            # Print a tree
    {my ($p, $s) = @_;                                                           # Parameters, sub definition
     my $t = Nasm::X86::DescribeTree (arena=>$$p{bs}, first=>$$p{first});
-
     $t->find(K(key, $opType));                                                  # The lexical type of the element - normally a term
 
     If $t->found == 0,                                                          # Not found lexical type of element
@@ -1237,7 +1265,6 @@ sub traverseTermsAndCall($)                                                     
         $t->first  ->copy($$p{first});                                          # Re-establish addressability to the tree after the recursive call
        },
      });
-
 
     $t->find(K(key, $opSub));                                                   # The subroutine for the term
     If $t->found > 0,                                                           # Found subroutine for term
@@ -1312,30 +1339,50 @@ sub printLexicalItem($$$$)                                                      
       Jmp $print;
      };
 
-    Cmp rax, $assign;                                                           # Test for assign operator
+    Cmp rax, $assign;                                                           # Assign operator
     IfEq
     Then
-     {my $b = $Lex->{alphabetsOrdered}{assign};                                 # Load assign alphabet in dwords
+     {my $b = $Lex->{alphabetsOrdered}{assign};
       my @b = map {convertUtf32ToUtf8LE $_} @$b;
       my $a = Rd @b;
       Mov r12, $a;
       Jmp $print;
      };
 
-    Cmp rax, $dyad;                                                             # Test for dyad
+    Cmp rax, $dyad;                                                             # Dyad
     IfEq
     Then
-     {my $b = $Lex->{alphabetsOrdered}{dyad};                                   # Load dyad alphabet in dwords
+     {my $b = $Lex->{alphabetsOrdered}{dyad};
       my @b = map {convertUtf32ToUtf8LE $_} @$b;
       my $a = Rd @b;
       Mov r12, $a;
       Jmp $print;
      };
 
-    Cmp rax, $Ascii;                                                            # Test for ascii
+    Cmp rax, $Ascii;                                                            # Ascii
     IfEq
     Then
-     {my $b = $Lex->{alphabetsOrdered}{Ascii};                                  # Load ascii alphabet in dwords
+     {my $b = $Lex->{alphabetsOrdered}{Ascii};
+      my @b = map {convertUtf32ToUtf8LE $_} @$b;
+      my $a = Rd @b;
+      Mov r12, $a;
+      Jmp $print;
+     };
+
+    Cmp rax, $prefix;                                                           # Prefix
+    IfEq
+    Then
+     {my $b = $Lex->{alphabetsOrdered}{prefix};
+      my @b = map {convertUtf32ToUtf8LE $_} @$b;
+      my $a = Rd @b;
+      Mov r12, $a;
+      Jmp $print;
+     };
+
+    Cmp rax, $suffix;                                                           # Suffix
+    IfEq
+    Then
+     {my $b = $Lex->{alphabetsOrdered}{suffix};
       my @b = map {convertUtf32ToUtf8LE $_} @$b;
       my $a = Rd @b;
       Mov r12, $a;
@@ -1446,9 +1493,14 @@ sub print($)                                                                    
          {PrintOutString "Assign: ";
          },
 
-        Ef {$lex == $OpenBracket}                                               # Open brackets
+        Ef {$lex == $prefix}                                                    # Prefix
         Then
-         {PrintOutString "Brackets: ";
+         {PrintOutString "Prefix: ";
+         },
+
+        Ef {$lex == $suffix}                                                    # Suffix
+        Then
+         {PrintOutString "Suffix: ";
          },
 
         Ef {$lex == $dyad}                                                      # Dyad
@@ -1461,11 +1513,8 @@ sub print($)                                                                    
          {PrintOutString "Ascii: ";
          },
 
-        Else                                                                    # Unexpected lexical type
-         {PrintErrStringNL "Unexpected lexical type:";
-          $lex->d;
-          PrintErrTraceBack;
-          Exit(1);
+        Else                                                                    # Brackets
+         {PrintOutString "Brackets: ";
          };
 
         $parse->printLexicalItem($$p{source32}, $off, $len);                    # Print the variable name
@@ -1487,6 +1536,13 @@ sub print($)                                                                    
 
   PopR;
  } # print
+
+sub dumpParseTree($)                                                            # Dump the parse tree
+ {my ($parse) = @_;                                                             # Parse tree
+  my $t = $parse->arena->DescribeTree;
+  $t->first->copy($parse->parse);
+  $t->dump;
+ }
 
 #D1 SubQuark                                                                    # A set of quarks describing the method to be called for each lexical operator.  These routines specialize the general purpose quark methods for use on parse methods.
 
@@ -1518,14 +1574,22 @@ sub Unisyn::Parse::SubQuarks::reload($%)                                        
 sub Unisyn::Parse::SubQuarks::put($$$)                                          # Put a new subroutine definition into the sub quarks.
  {my ($q, $string, $sub) = @_;                                                  # Subquarks, string containing operator type and method name, variable offset to subroutine
   @_ == 3 or confess "3 parameters";
+  !ref($string) or
+    confess "Scalar string required, not ".dump($string);
   ref($sub) && ref($sub) =~ m(Nasm::X86::Sub) or
-    confess "Subroutine definition required";
+    confess "Subroutine definition required, not ".dump($string);
 
   PushR zmm0;
   my $s = CreateShortString(0)->loadConstantString($string);                    # Load the operator name in its alphabet with the alphabet number on the first byte
   my $N = $q->subQuarks->quarkFromSub($sub, $s);                                # Create quark from sub
   PopR;
   $N                                                                            # Created quark number for subroutine
+ }
+
+sub Unisyn::Parse::SubQuarks::dumpSubs($)                                       # Dump a set of quarks identifying subroutines.
+ {my ($q) = @_;                                                                 # Quarks
+  @_ == 1 or confess "1 parameter";
+  $q->subQuarks->dumpSubs;
  }
 
 sub Unisyn::Parse::SubQuarks::subFromQuark($$$)                                 # Given the quark number for a lexical item and the quark set of lexical items get the offset of the associated method.
@@ -1538,9 +1602,9 @@ sub Unisyn::Parse::SubQuarks::subFromQuark($$$)                                 
   my $Q = $lexicals->quarkToQuark($number, $q->subQuarks);                      # Either the offset to the specified method or -1.
   my $r = V('sub', -1);                                                         # Matching routine not found
   If $Q >= 0,                                                                   # Quark found
-   Then
-    {$q->subQuarks->numbersToStrings->get(index=>$Q, element=>$r);              # Load subroutine offset
-    };
+  Then
+   {$q->subQuarks->numbersToStrings->get(index=>$Q, element=>$r);               # Load subroutine offset
+   };
   $r                                                                            # Return sub routine offset
  }
 
@@ -1576,10 +1640,25 @@ sub Unisyn::Parse::SubQuarks::suffix($$$)                                       
 
 sub Unisyn::Parse::SubQuarks::semiColon($$)                                     # Define a method for the semicolon operator
  {my ($q, $sub) = @_;                                                           # Sub quarks, associated subroutine definition
-  my $l = &lexicalData;
-  my $s = $l->semiColon;
   my $n = $$Lex{lexicals}{semiColon}{number};                                   # Lexical number of semicolon
-  $q->put(chr($n).$s, $sub);                                                    # Add the semicolon subroutine to the sub quarks
+  my $s = chr($n).chr(0);                                                       # Semi colon is represented by a string length of 2 (semi colon lexical number, zero == position in alphabet)
+  $q->put($s, $sub)                                                             # Add the semicolon subroutine to the sub quarks
+ }
+
+sub Unisyn::Parse::SubQuarks::variable($$)                                      # Define a method for a variable
+ {my ($q, $sub) = @_;                                                           # Sub quarks, associated subroutine definition
+  my $n = $$Lex{lexicals}{variable}{number};                                    # Lexical number of a variable
+  $q->put(chr($n), $sub);                                                       # Add the variable subroutine to the sub quarks
+ }
+
+sub Unisyn::Parse::SubQuarks::bracket($$$)                                      # Define a method for a bracket operator
+ {my ($q, $open, $sub) = @_;                                                    # Opening parenthesis
+  my $l = &lexicalData;
+  my $s = join '', sort $l->{bracketsOpen}->@*;#, $l->{bracketsClose}->@*;      # Bracket alphabet
+  my $b = index($s, $open);
+  $b < 0 and confess "No such bracket: $open";
+  my $n = $$Lex{lexicals}{OpenBracket}{number};                                 # Lexical number of open bracket
+  $q->put(chr($n).chr($b+1+$l->{bracketsBase}), $sub);   ### +1 ?               # Add the brackets subroutine to the sub quarks
  }
 
 #D1 Alphabets                                                                   # Translate between alphabets
@@ -1884,148 +1963,192 @@ sub lexicalData {do {
                           WhiteSpace       => bless({ letter => "W", like => undef, name => "WhiteSpace", number => 11 }, "Unisyn::Parse::Lexical::Constant"),
                         }, "Unisyn::Parse::Lexicals"),
     sampleLexicals   => {
-                          A => [
-                            100663296,
-                            83886080,
-                            33554497,
-                            33554464,
-                            33554497,
-                            33554464,
-                            33554464,
-                            33554464,
-                            33554464,
-                          ],
-                          brackets => [
-                            100663296,
-                            83886080,
-                            0,
-                            0,
-                            0,
-                            100663296,
-                            16777216,
-                            16777216,
-                            50331648,
-                            0,
-                            100663296,
-                            16777216,
-                            16777216,
-                            134217728,
-                          ],
-                          bvB => [0, 100663296, 16777216],
-                          nosemi => [
-                            100663296,
-                            83886080,
-                            0,
-                            0,
-                            0,
-                            100663296,
-                            16777216,
-                            16777216,
-                            50331648,
-                            0,
-                            100663296,
-                            16777216,
-                            16777216,
-                          ],
-                          s => [100663296, 134217728, 100663296],
-                          s1 => [
-                            100663296,
-                            83886080,
-                            33554442,
-                            33554464,
-                            33554464,
-                            33554497,
-                            33554442,
-                            33554464,
-                            33554464,
-                            33554464,
-                          ],
-                          v => [100663296],
-                          vav => [100663296, 83886080, 100663296],
-                          vavav => [100663296, 83886080, 100663296, 83886080, 100663296],
-                          vnsvs => [
-                            100663296,
-                            33554442,
-                            33554464,
-                            33554464,
-                            33554464,
-                            100663296,
-                            33554464,
-                            33554464,
-                            33554464,
-                          ],
-                          vnv => [100663296, 33554442, 100663296],
-                          vnvs => [
-                            100663296,
-                            33554442,
-                            100663296,
-                            33554464,
-                            33554464,
-                            33554464,
-                            33554464,
-                          ],
-                          ws => [
-                            100663296,
-                            83886080,
-                            0,
-                            0,
-                            0,
-                            100663296,
-                            16777216,
-                            16777216,
-                            50331648,
-                            0,
-                            100663296,
-                            16777216,
-                            16777216,
-                            134217728,
-                            100663296,
-                            83886080,
-                            0,
-                            100663296,
-                            50331648,
-                            100663296,
-                            16777216,
-                            134217728,
-                          ],
-                          wsa => [
-                            100663296,
-                            83886080,
-                            0,
-                            0,
-                            0,
-                            100663296,
-                            16777216,
-                            16777216,
-                            50331648,
-                            0,
-                            100663296,
-                            16777216,
-                            16777216,
-                            134217728,
-                            100663296,
-                            83886080,
-                            33554497,
-                            50331648,
-                            100663296,
-                            134217728,
-                          ],
+                          A             => [
+                                             100663296,
+                                             83886080,
+                                             33554497,
+                                             33554464,
+                                             33554497,
+                                             33554464,
+                                             33554464,
+                                             33554464,
+                                             33554464,
+                                           ],
+                          BB            => [
+                                             0,
+                                             0,
+                                             0,
+                                             0,
+                                             0,
+                                             0,
+                                             0,
+                                             0,
+                                             100663296,
+                                             16777216,
+                                             16777216,
+                                             16777216,
+                                             16777216,
+                                             16777216,
+                                             16777216,
+                                             16777216,
+                                             16777216,
+                                           ],
+                          brackets      => [
+                                             100663296,
+                                             83886080,
+                                             0,
+                                             0,
+                                             0,
+                                             100663296,
+                                             16777216,
+                                             16777216,
+                                             50331648,
+                                             0,
+                                             100663296,
+                                             16777216,
+                                             16777216,
+                                             134217728,
+                                           ],
+                          bvB           => [0, 100663296, 16777216],
+                          nosemi        => [
+                                             100663296,
+                                             83886080,
+                                             0,
+                                             0,
+                                             0,
+                                             100663296,
+                                             16777216,
+                                             16777216,
+                                             50331648,
+                                             0,
+                                             100663296,
+                                             16777216,
+                                             16777216,
+                                           ],
+                          ppppvdvdvqqqq => [
+                                             0,
+                                             0,
+                                             0,
+                                             100663296,
+                                             83886080,
+                                             100663296,
+                                             50331648,
+                                             0,
+                                             100663296,
+                                             50331648,
+                                             100663296,
+                                             16777216,
+                                             134217728,
+                                             100663296,
+                                             83886080,
+                                             100663296,
+                                             50331648,
+                                             100663296,
+                                             16777216,
+                                             16777216,
+                                             16777216,
+                                           ],
+                          s             => [100663296, 134217728, 100663296],
+                          s1            => [
+                                             100663296,
+                                             83886080,
+                                             33554442,
+                                             33554464,
+                                             33554464,
+                                             33554497,
+                                             33554442,
+                                             33554464,
+                                             33554464,
+                                             33554464,
+                                           ],
+                          v             => [100663296],
+                          vav           => [100663296, 83886080, 100663296],
+                          vavav         => [100663296, 83886080, 100663296, 83886080, 100663296],
+                          vnsvs         => [
+                                             100663296,
+                                             33554442,
+                                             33554464,
+                                             33554464,
+                                             33554464,
+                                             100663296,
+                                             33554464,
+                                             33554464,
+                                             33554464,
+                                           ],
+                          vnv           => [100663296, 33554442, 100663296],
+                          vnvs          => [
+                                             100663296,
+                                             33554442,
+                                             100663296,
+                                             33554464,
+                                             33554464,
+                                             33554464,
+                                             33554464,
+                                           ],
+                          ws            => [
+                                             100663296,
+                                             83886080,
+                                             0,
+                                             0,
+                                             0,
+                                             100663296,
+                                             16777216,
+                                             16777216,
+                                             50331648,
+                                             0,
+                                             100663296,
+                                             16777216,
+                                             16777216,
+                                             134217728,
+                                             100663296,
+                                             83886080,
+                                             0,
+                                             100663296,
+                                             50331648,
+                                             100663296,
+                                             16777216,
+                                             134217728,
+                                           ],
+                          wsa           => [
+                                             100663296,
+                                             83886080,
+                                             0,
+                                             0,
+                                             0,
+                                             100663296,
+                                             16777216,
+                                             16777216,
+                                             50331648,
+                                             0,
+                                             100663296,
+                                             16777216,
+                                             16777216,
+                                             134217728,
+                                             100663296,
+                                             83886080,
+                                             33554497,
+                                             50331648,
+                                             100663296,
+                                             134217728,
+                                           ],
                         },
     sampleText       => {
-                          A => "\x{1D5EE}\x{1D5EE}\x{1D452}\x{1D45E}\x{1D462}\x{1D44E}\x{1D459}\x{1D460}abc 123    ",
-                          brackets => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}",
-                          bvB => "\x{2329}\x{1D5EE}\x{1D5EF}\x{1D5F0}\x{232A}",
-                          nosemi => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}",
-                          s => "\x{1D5EE}\x{27E2}\x{1D5EF}",
-                          s1 => "\x{1D5EE}\x{1D44E}\n  \n   ",
-                          v => "\x{1D5EE}",
-                          vav => "\x{1D5EE}\x{1D44E}\x{1D5EF}",
-                          vavav => "\x{1D5EE}\x{1D44E}\x{1D5EF}\x{1D44E}\x{1D5F0}",
-                          vnsvs => "\x{1D5EE}\x{1D5EE}\n   \x{1D5EF}\x{1D5EF}   ",
-                          vnv => "\x{1D5EE}\n\x{1D5EF}",
-                          vnvs => "\x{1D5EE}\n\x{1D5EF}    ",
-                          ws => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}\x{1D5EE}\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{276C}\x{1D5EF}\x{1D5EF}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F0}\x{1D5F0}\x{276D}\x{27E2}",
-                          wsa => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}\x{1D5EE}\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}some--ascii--text\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F0}\x{1D5F0}\x{27E2}",
+                          A             => "\x{1D5EE}\x{1D5EE}\x{1D452}\x{1D45E}\x{1D462}\x{1D44E}\x{1D459}\x{1D460}abc 123    ",
+                          BB            => "\x{230A}\x{2329}\x{2768}\x{276A}\x{276C}\x{276E}\x{2770}\x{2772}\x{1D5EE}\x{2773}\x{2771}\x{276F}\x{276D}\x{276B}\x{2769}\x{232A}\x{230B}",
+                          brackets      => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}",
+                          bvB           => "\x{2329}\x{1D5EE}\x{1D5EF}\x{1D5F0}\x{232A}",
+                          nosemi        => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}",
+                          ppppvdvdvqqqq => "\x{1D482}\x{2774}\x{1D483}\x{27E6}\x{1D484}\x{27E8}\x{1D5EE}\x{1D452}\x{1D45E}\x{1D462}\x{1D44E}\x{1D459}\x{1D460}\x{1D485}\x{1D5EF}\x{1D659}\x{1D42D}\x{1D422}\x{1D426}\x{1D41E}\x{1D42C}\x{27EA}\x{1D5F0}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F1}\x{27EB}\x{27E2}\x{1D5F2}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{1D5F3}\x{1D42C}\x{1D42E}\x{1D41B}\x{1D5F4}\x{1D65D}\x{27E9}\x{1D658}\x{27E7}\x{1D657}\x{2775}\x{1D656}",
+                          s             => "\x{1D5EE}\x{27E2}\x{1D5EF}",
+                          s1            => "\x{1D5EE}\x{1D44E}\n  \n   ",
+                          v             => "\x{1D5EE}",
+                          vav           => "\x{1D5EE}\x{1D44E}\x{1D5EF}",
+                          vavav         => "\x{1D5EE}\x{1D44E}\x{1D5EF}\x{1D44E}\x{1D5F0}",
+                          vnsvs         => "\x{1D5EE}\x{1D5EE}\n   \x{1D5EF}\x{1D5EF}   ",
+                          vnv           => "\x{1D5EE}\n\x{1D5EF}",
+                          vnvs          => "\x{1D5EE}\n\x{1D5EF}    ",
+                          ws            => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}\x{1D5EE}\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{276C}\x{1D5EF}\x{1D5EF}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F0}\x{1D5F0}\x{276D}\x{27E2}",
+                          wsa           => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}\x{1D5EE}\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}some--ascii--text\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F0}\x{1D5F0}\x{27E2}",
                         },
     semiColon        => "\x{27E2}",
     separator        => "\x{205F}",
@@ -2901,11 +3024,7 @@ sub T($$%)                                                                      
 
   my $p = create V(address, $address), %options;                                # Parse
 
-  if (1)                                                                        # Print the parse tree if requested
-   {my $t = $p->arena->DescribeTree;
-    $t->first->copy($p->parse);
-    $t->dump;
-   }
+  $p->dumpParseTree;                                                            # Dump the parse tree
 
   Assemble(debug => 0, eq => $expected);
  }
@@ -2961,11 +3080,11 @@ Tree at:  0000 0000 0000 0AD8  length: 0000 0000 0000 000A
   end
   Tree at:  0000 0000 0000 0A18  length: 0000 0000 0000 0008
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0998 0000 0009   0000 0007 0000 0001   0000 0007 0000 0000   0000 0002 0000 0009
+    0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0998 0000 0009   0000 0007 0000 0001   0000 0007 0000 0012   0000 0002 0000 0009
     0000 0A58 0080 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0000
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0012
       index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0007
       index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
       index: 0000 0000 0000 0005   key: 0000 0000 0000 0007   data: 0000 0000 0000 0007
@@ -2995,11 +3114,11 @@ Tree at:  0000 0000 0000 0AD8  length: 0000 0000 0000 000A
           index: 0000 0000 0000 0009   key: 0000 0000 0000 000D   data: 0000 0000 0000 0718 subTree
         Tree at:  0000 0000 0000 0518  length: 0000 0000 0000 0008
           0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-          0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0498 0000 0009   0000 0003 0000 0001   0000 0008 0000 0000   0000 0002 0000 0009
+          0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0498 0000 0009   0000 0003 0000 0001   0000 0008 0000 0014   0000 0002 0000 0009
           0000 0558 0080 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
             index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
             index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
-            index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0000
+            index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0014
             index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0008
             index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
             index: 0000 0000 0000 0005   key: 0000 0000 0000 0007   data: 0000 0000 0000 0003
@@ -3015,11 +3134,11 @@ Tree at:  0000 0000 0000 0AD8  length: 0000 0000 0000 000A
               index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 03D8 subTree
             Tree at:  0000 0000 0000 03D8  length: 0000 0000 0000 0008
               0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-              0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0358 0000 0009   0000 0002 0000 0001   0000 0009 0000 0000   0000 0002 0000 0009
+              0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0358 0000 0009   0000 0002 0000 0001   0000 0009 0000 0016   0000 0002 0000 0009
               0000 0418 0080 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
                 index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
                 index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
-                index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0000
+                index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0016
                 index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0009
                 index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
                 index: 0000 0000 0000 0005   key: 0000 0000 0000 0007   data: 0000 0000 0000 0002
@@ -3050,11 +3169,11 @@ Tree at:  0000 0000 0000 0AD8  length: 0000 0000 0000 000A
         end
         Tree at:  0000 0000 0000 0718  length: 0000 0000 0000 0008
           0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-          0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0698 0000 0009   0000 0005 0000 0001   0000 0012 0000 0000   0000 0002 0000 0009
+          0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0698 0000 0009   0000 0005 0000 0001   0000 0012 0000 0018   0000 0002 0000 0009
           0000 0758 0080 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
             index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
             index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
-            index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0000
+            index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0018
             index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0012
             index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
             index: 0000 0000 0000 0005   key: 0000 0000 0000 0007   data: 0000 0000 0000 0005
@@ -3157,11 +3276,11 @@ END
 ok T(q(bvB), <<END) if 1;
 Tree at:  0000 0000 0000 0298  length: 0000 0000 0000 0008
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-  0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0218 0000 0009   0000 0001 0000 0001   0000 0000 0000 0000   0000 0002 0000 0009
+  0000 0000 0000 0010   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0218 0000 0009   0000 0001 0000 0001   0000 0000 0000 0014   0000 0002 0000 0009
   0000 02D8 0080 0008   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
     index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
     index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0002
-    index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0000
+    index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0014
     index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0000
     index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
     index: 0000 0000 0000 0005   key: 0000 0000 0000 0007   data: 0000 0000 0000 0001
@@ -3381,120 +3500,99 @@ is_deeply asciiToVariableGreek("ABGDEZNHIKLMVXOPRQSTUFCYWabgdeznhiklmvxoprqstufc
 is_deeply asciiToEscaped      ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"), q(ABCDEFGHIJKLMNOPQRSTUVWXYZ🅐🅑🅒🅓🅔🅕🅖🅗🅘🅙🅚🅛🅜🅝🅞🅟🅠🅡🅢🅣🅤🅥🅦🅧🅨🅩);
 is_deeply semiColon, q(⟢);
 
-#latest:
-ok T(q(A), <<END,
-Quark : 0000 0000 0000 0000 = 0000 0000 0040 207B
-Quark : 0000 0000 0000 0001 = 0000 0000 0040 20EF
-Tree at:  0000 0000 0000 0698  length: 0000 0000 0000 000B
-  0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-  0000 0000 0000 0016   0000 0000 0000 0000   0000 0000 0000 04D8   0000 0009 0000 0398   0000 0009 0000 0002   0000 0006 0000 0002   0000 0005 0040 20EF   0000 0003 0000 0009
-  0000 06D8 0500 000B   0000 0000 0000 0000   0000 0000 0000 000D   0000 000C 0000 0009   0000 0008 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
-    index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
-    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 20EF
-    index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0005
-    index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0002
-    index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0006
-    index: 0000 0000 0000 0006   key: 0000 0000 0000 0007   data: 0000 0000 0000 0002
-    index: 0000 0000 0000 0007   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 0008   key: 0000 0000 0000 0009   data: 0000 0000 0000 0398 subTree
-    index: 0000 0000 0000 0009   key: 0000 0000 0000 000C   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 000A   key: 0000 0000 0000 000D   data: 0000 0000 0000 04D8 subTree
-  Tree at:  0000 0000 0000 0398  length: 0000 0000 0000 0006
-    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 000C   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0002   0000 0000 0000 0006   0000 0001 0000 0009
-    0000 03D8 0000 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
-      index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
-      index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
-      index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0000
-      index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0002
-      index: 0000 0000 0000 0005   key: 0000 0000 0000 0007   data: 0000 0000 0000 0000
-  end
-  Tree at:  0000 0000 0000 04D8  length: 0000 0000 0000 0006
-    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 000C   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0001 0000 0007   0000 0008 0000 0002   0000 0001 0000 0009
-    0000 0518 0000 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
-      index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
-      index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0004   data: 0000 0000 0000 0002
-      index: 0000 0000 0000 0003   key: 0000 0000 0000 0005   data: 0000 0000 0000 0008
-      index: 0000 0000 0000 0004   key: 0000 0000 0000 0006   data: 0000 0000 0000 0007
-      index: 0000 0000 0000 0005   key: 0000 0000 0000 0007   data: 0000 0000 0000 0001
-  end
-end
-END
-operators => sub                                                                # Define lexical operator methods
- {my ($parse) = @_;                                                             # Parse definition
-  my $o = $parse->operators;                                                    # Sub quarks describing operators
+sub printOperatorSequence($)                                                    # Print the operator calling sequence
+ {my ($parse) = @_;
+
+  my $o = $parse->operators;
+  if (1)                                                                        # Prefix and suffix operators
+   {my $s = 'abcd';
+    for my $i(1..length($s))
+     {my $c = substr($s, $i-1, 1);
+      my $p = Subroutine
+       {PrintOutStringNL "prefix_$c";
+       } [], name=>"UnisynParse::prefix_$c";
+      my $q = Subroutine
+       {PrintOutStringNL "suffix_$c";
+       } [], name=>"UnisynParse::suffix_$c";
+      $o->prefix(asciiToPrefixLatin($c), $p);
+      $o->suffix(asciiToSuffixLatin($c), $q);
+     }
+   }
+  if (1)                                                                        # Brackets
+   {my $s = "⦇⦋⦏";
+    for my $i(1..length($s))
+     {my $b = Subroutine
+       {PrintOutStringNL "brackets_$i";
+       } [], name=>"UnisynParse::brackets_$i";
+      $o->bracket(substr($s, $i-1, 1), $b);
+     }
+   }
+  if (1)                                                                        # Variable
+   {my $v = Subroutine
+     {PrintOutStringNL "variable";
+     } [], name=>"UnisynParse::variable";
+    $o->variable($v);
+   }
 
   my $assign = Subroutine
-   {PrintOutStringNL "call assign";
+   {PrintOutStringNL "assign";
    } [], name=>"UnisynParse::assign";
+  $o->assign(asciiToAssignLatin("assign"), $assign);
 
   my $equals = Subroutine
-   {PrintOutStringNL "call equals";
+   {PrintOutStringNL "equals";
    } [], name=>"UnisynParse::equals";
-
-  $o->assign(asciiToAssignLatin("assign"), $assign);
   $o->assign(asciiToAssignLatin("equals"), $equals);
-  $parse->operators->subQuarks->dumpSubs;
- });
+
+  my $plus   = Subroutine
+   {PrintOutStringNL "plus";
+   } [], name=>"UnisynParse::plus";
+  $o->dyad(asciiToDyadLatin("plus"), $plus);
+
+  my $sub    = Subroutine
+   {PrintOutStringNL "sub";
+   } [], name=>"UnisynParse::sub";
+  $o->dyad(asciiToDyadLatin("sub"), $sub);
+
+  my $times  = Subroutine
+   {PrintOutStringNL "times";
+   } [], name=>"UnisynParse::times";
+  $o->dyad(asciiToDyadLatin("times"), $times);
+
+  my $semiColon = Subroutine
+   {PrintOutStringNL "semiColon";
+   } [], name=>"UnisynParse::semiColon";
+  $o->semiColon($semiColon);
+# $o->dumpSubs;
+#  $o->subQuarks->stringsToNumbers->dump;
+ }
 
 #latest:
 # 28,752
 # 28,440
-if (1) {                                                                        #TtraverseTermsAndCall
-  my $p = create (K(address, Rutf8 $Lex->{sampleText}{A}), operators => sub
-   {my ($parse) = @_;
+if (0) {                                                                        #TtraverseTermsAndCall
+  my $s = Rutf8 $Lex->{sampleText}{A};                                          # Ascii
+  my $p = create K(address, $s), operators => \&printOperatorSequence;
 
-    my $assign = Subroutine
-     {PrintOutStringNL "call assign";
-     } [], name=>"UnisynParse::assign";
-
-    my $equals = Subroutine
-     {PrintOutStringNL "call equals";
-     } [], name=>"UnisynParse::equals";
-
-    my $o = $parse->operators;                                                  # Operator subroutines
-    $o->assign(asciiToAssignLatin("assign"), $assign);
-    $o->assign(asciiToAssignLatin("equals"), $equals);
-   });
-
-  $p->traverseTermsAndCall;
+  K(address, $s)->printOutZeroString;
+  $p->dumpParseTree;
+# $p->print;
+# $p->traverseTermsAndCall;
 
   Assemble(debug => 0, eq => <<END)
 call equals
 END
  }
+#exit;
 
 #latest:
 if (1) {                                                                        #TtraverseTermsAndCall
   my $s = Rutf8 $Lex->{sampleText}{ws};
-  my $p = create (K(address, $s), operators => sub
-   {my ($parse) = @_;
+  my $p = create (K(address, $s), operators => \&printOperatorSequence);
 
-    my $assign = Subroutine
-     {PrintOutStringNL "call assign";
-     } [], name=>"UnisynParse::assign";
-
-    my $plus = Subroutine
-     {PrintOutStringNL "call plus";
-     } [], name=>"UnisynParse::plus";
-
-    my $o = $parse->operators;                                                  # Operator subroutines
-    $o->assign(asciiToAssignLatin("assign"), $assign);
-    $o->dyad  (asciiToDyadLatin  ("plus"),   $plus);
-   });
-
-  Mov rax, $s;                                                                  # Print out input string
-  Cstrlen;
-  Mov rdi, r15;
-  PrintOutMemoryNL;
-
+  K(address, $s)->printOutZeroString;                                           # Print input string
   $p->print;                                                                    # Print parse
-
-  $p->traverseTermsAndCall;                                                     # Operator calls
+  $p->traverseTermsAndCall;                                                     # Traverse tree printing terms
 
   Assemble(debug => 0, eq => <<END)
 𝗮𝑎𝑠𝑠𝑖𝑔𝑛⌊〈❨𝗯𝗽❩〉𝐩𝐥𝐮𝐬❪𝘀𝗰❫⌋⟢𝗮𝗮𝑎𝑠𝑠𝑖𝑔𝑛❬𝗯𝗯𝐩𝐥𝐮𝐬𝗰𝗰❭⟢
@@ -3534,10 +3632,111 @@ Semicolon
                   Variable: 𝗯𝗯
                 Term
                   Variable: 𝗰𝗰
-call plus
-call assign
-call plus
-call assign
+variable
+variable
+variable
+plus
+assign
+variable
+variable
+variable
+plus
+assign
+semiColon
+END
+ }
+
+#latest:
+if (1) {
+  my $s = Rutf8 $Lex->{sampleText}{ppppvdvdvqqqq};
+  my $p = create (K(address, $s), operators => \&printOperatorSequence);
+
+# $p->dumpParseTree;
+  K(address, $s)->printOutZeroString;                                           # Print input string
+  $p->print;                                                                    # Print parse
+  $p->traverseTermsAndCall;                                                     # Traverse tree printing terms
+
+  ok Assemble(debug => 0, eq => <<END)
+𝒂❴𝒃⟦𝒄⟨𝗮𝑒𝑞𝑢𝑎𝑙𝑠𝒅𝗯𝙙𝐭𝐢𝐦𝐞𝐬⟪𝗰𝐩𝐥𝐮𝐬𝗱⟫⟢𝗲𝑎𝑠𝑠𝑖𝑔𝑛𝗳𝐬𝐮𝐛𝗴𝙝⟩𝙘⟧𝙗❵𝙖
+Suffix: 𝙖
+  Term
+    Prefix: 𝒂
+      Term
+        Brackets: ⦇⦈
+          Term
+            Term
+              Suffix: 𝙗
+                Term
+                  Prefix: 𝒃
+                    Term
+                      Brackets: ⦋⦌
+                        Term
+                          Term
+                            Suffix: 𝙘
+                              Term
+                                Prefix: 𝒄
+                                  Term
+                                    Brackets: ⦏⦐
+                                      Term
+                                        Term
+                                          Semicolon
+                                            Term
+                                              Assign: 𝑒𝑞𝑢𝑎𝑙𝑠
+                                                Term
+                                                  Variable: 𝗮
+                                                Term
+                                                  Dyad: 𝐭𝐢𝐦𝐞𝐬
+                                                    Term
+                                                      Suffix: 𝙙
+                                                        Term
+                                                          Prefix: 𝒅
+                                                            Term
+                                                              Variable: 𝗯
+                                                    Term
+                                                      Brackets: ⦓⦔
+                                                        Term
+                                                          Term
+                                                            Dyad: 𝐩𝐥𝐮𝐬
+                                                              Term
+                                                                Variable: 𝗰
+                                                              Term
+                                                                Variable: 𝗱
+                                            Term
+                                              Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
+                                                Term
+                                                  Variable: 𝗲
+                                                Term
+                                                  Dyad: 𝐬𝐮𝐛
+                                                    Term
+                                                      Variable: 𝗳
+                                                    Term
+                                                      Suffix: 𝙝
+                                                        Term
+                                                          Variable: 𝗴
+variable
+variable
+prefix_d
+suffix_d
+variable
+variable
+plus
+times
+equals
+variable
+variable
+variable
+sub
+assign
+semiColon
+brackets_3
+prefix_c
+suffix_c
+brackets_2
+prefix_b
+suffix_b
+brackets_1
+prefix_a
+suffix_a
 END
  }
 
