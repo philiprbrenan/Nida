@@ -390,7 +390,7 @@ sub translateSomeText($$)                                                       
    }
 
   for my $w(split /\s+/, $string)                                               # Translate to text
-   {if    ($w =~ m(\A(a|d|v))) {translate $w}
+   {if    ($w =~ m(\A(a|d|p|q|v))) {translate $w}
     elsif ($w =~ m(\As)) {$T .= $Tables->alphabets->{semiColon}}
     elsif ($w =~ m(\Ab)) {$T .= $Tables->bracketsOpen ->[substr($w, 1)||0]}
     elsif ($w =~ m(\AB)) {$T .= $Tables->bracketsClose->[substr($w, 1)||0]}
@@ -495,6 +495,14 @@ END
 
 translateSomeText 'A', <<END;
 vaa aequals Aabc S A123  S S S S
+END
+
+translateSomeText 'BB', <<END;
+b1 b2 b3 b4 b5 b6 b7 b8 va B8 B7 B6 B5 B4 B3 B2 B1
+END
+
+translateSomeText 'ppppvdvdvqqqq', <<END;
+pa b9 pb b10 pc b11 va aequals pd vb qd dtimes b12 vc dplus vd B12 s ve aassign vf dsub vg  qh B11 qc B10  qb B9 qa
 END
 
 say STDERR owf $lexicalsFile, dump($Tables);                                    # Write results
