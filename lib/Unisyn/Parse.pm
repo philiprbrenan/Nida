@@ -6,9 +6,6 @@
 # podDocumentation
 # Finished in 13.14s, bytes: 2,655,008, execs: 465,858
 # Can we remove more Pushr  by doing one big save in parseutf8 ?
-# abcdefghijklmnopqrstuvwxyz
-# 0123    456789ABCDEF
-# Waiting on quarks
 package Unisyn::Parse;
 our $VERSION = "20210918";
 use warnings FATAL => qw(all);
@@ -324,27 +321,36 @@ sub new($$)                                                                     
           Pinsrb "xmm1", $liType."b", 1;                                        # Set lexical type as the first byte of the short string
          };
 
-        my $q = $quarks->quarkFromShortString($s);
+        my $q = $quarks->quarkFromShortString($s);                              # Find the quark matching the lexical item if there is such a quark
         $t->insert(V(key, $lexItemWidth * $j + $lexItemQuark), $q);             # Save quark number of lexical item in parse tree
         if ($operators)                                                         # The parse has operator definitions
          {if ($j == 1)                                                          # The operator quark is always first
-           {Cmp $liType, $variable;
-            IfEq
-            Then                                                                # Process variables in general
-             {PushR $liType;
-              Mov $liType, $variable * 2**8 + 1;                                # General variable
-              Pinsrq "xmm1", $liType, 0;                                        # Load short string
-              my $q = $operators->subQuarks->quarkFromShortString($s);          # Offset for variable processing sub
-                      $operators->subQuarks->numbersToStrings->get(index=>$q,   # Load subroutine offset
-                         my $N = V(element));
-              PopR;
+           {OrBlock                                                             # Like an operator or like a variable?
+             {my ($pass, $end, $start) = @_;
+              Cmp $liType, $variable;
+              Je $pass;                                                         # Process a variable
+              Cmp $liType, $Ascii;
+              Je $pass;                                                         # Process ascii constant
+              Cmp $liType, $semiColon;
+              Je $pass;                                                         # Process Semicolon
+              Cmp $liType, $NewLineSemiColon;
+              Je $pass;                                                         # Process new line semicolon
+                                                                                # Process non variable, i.e. operators specifically
+              my $N = $operators->subFromQuark($quarks, $q);                    # Look up the subroutine associated with this operator
               If $N >= 0,                                                       # Found a matching operator subroutine
               Then
                {$t->insert(V(key, $opSub), $N);                                 # Save offset to subroutine associated with this lexical item
                };
-             },
-            Else                                                                # Process non variable, i.e. operators specifically
-             {my $N = $operators->subFromQuark($quarks, $q);                    # Look up the subroutine associated with this operator
+             }
+            Pass                                                                # Process variables in general or items based on variables using a short string of length 1 being the lexical type of the item in question
+             {Shl $liType, 8;                                                   # Move lexical type into second byte
+              Inc $liType;                                                      # Show length
+              Pinsrq "xmm1", $liType, 0;                                        # Load short string
+              my $q = $operators->subQuarks->locateQuarkFromShortString($s);    # Offset for variable processing sub
+                      $operators->subQuarks->numbersToStrings->get(index=>$q,   # Load subroutine offset
+                         my $N = V(element));
+
+              Shr $liType, 8;                                                   # Restore lexical type
               If $N >= 0,                                                       # Found a matching operator subroutine
               Then
                {$t->insert(V(key, $opSub), $N);                                 # Save offset to subroutine associated with this lexical item
@@ -1635,14 +1641,23 @@ sub Unisyn::Parse::SubQuarks::prefix($$$)                                       
 
 sub Unisyn::Parse::SubQuarks::suffix($$$)                                       # Define a method for a suffix operator.
  {my ($q, $text, $sub) = @_;                                                    # Sub quarks, the name of the operator as a utf8 string, associated subroutine definition
-  $q->lexToSub("suffix", $text, $sub);                                          # Operator name in operator alphabet preceded by alphabet number
+  my $n = $$Lex{lexicals}{variable}{number};                                    # Lexical number of a variable
+  $q->put(chr($n), $sub);                                                       # Add the variable subroutine to the sub quarks
+ }
+
+
+sub Unisyn::Parse::SubQuarks::ascii($$)                                         # Define a method for ascii text
+ {my ($q, $sub) = @_;                                                           # Sub quarks, associated subroutine definition
+  my $n = $$Lex{lexicals}{Ascii}{number};                                       # Lexical number of ascii
+  $q->put(chr($n), $sub);                                                       # Add the ascii subroutine to the sub quarks
  }
 
 sub Unisyn::Parse::SubQuarks::semiColon($$)                                     # Define a method for the semicolon operator.
  {my ($q, $sub) = @_;                                                           # Sub quarks, associated subroutine definition
   my $n = $$Lex{lexicals}{semiColon}{number};                                   # Lexical number of semicolon
-  my $s = chr($n).chr(0);                                                       # Semi colon is represented by a string length of 2 (semi colon lexical number, zero == position in alphabet)
-  $q->put($s, $sub)                                                             # Add the semicolon subroutine to the sub quarks
+  $q->put(chr($n), $sub);                                                       # Add the semicolon subroutine to the sub quarks
+  my $N = $$Lex{lexicals}{NewLineSemiColon}{number};                            # New line semi colon
+  $q->put(chr($N), $sub);                                                       # Add the semicolon subroutine to the sub quarks
  }
 
 sub Unisyn::Parse::SubQuarks::variable($$)                                      # Define a method for a variable.
@@ -1974,6 +1989,19 @@ sub lexicalData {do {
                                              33554464,
                                              33554464,
                                            ],
+                          Adv           => [
+                                             100663296,
+                                             83886080,
+                                             33554497,
+                                             33554464,
+                                             33554497,
+                                             33554464,
+                                             33554464,
+                                             33554464,
+                                             33554464,
+                                             50331648,
+                                             100663296,
+                                           ],
                           BB            => [
                                              0,
                                              0,
@@ -2134,6 +2162,7 @@ sub lexicalData {do {
                         },
     sampleText       => {
                           A             => "\x{1D5EE}\x{1D5EE}\x{1D452}\x{1D45E}\x{1D462}\x{1D44E}\x{1D459}\x{1D460}abc 123    ",
+                          Adv           => "\x{1D5EE}\x{1D5EE}\x{1D452}\x{1D45E}\x{1D462}\x{1D44E}\x{1D459}\x{1D460}abc 123    \x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D603}\x{1D5EE}\x{1D5FF}",
                           BB            => "\x{230A}\x{2329}\x{2768}\x{276A}\x{276C}\x{276E}\x{2770}\x{2772}\x{1D5EE}\x{2773}\x{2771}\x{276F}\x{276D}\x{276B}\x{2769}\x{232A}\x{230B}",
                           brackets      => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}",
                           bvB           => "\x{2329}\x{1D5EE}\x{1D5EF}\x{1D5F0}\x{232A}",
@@ -2160,17 +2189,17 @@ sub lexicalData {do {
                                             next   => "bpv",
                                             short  => "assign",
                                           }, "Tree::Term::LexicalCode"),
-                                     B => bless({
-                                            letter => "B",
-                                            name   => "closing parenthesis",
-                                            next   => "aBdqs",
-                                            short  => "CloseBracket",
-                                          }, "Tree::Term::LexicalCode"),
                                      b => bless({
                                             letter => "b",
                                             name   => "opening parenthesis",
                                             next   => "bBpsv",
                                             short  => "OpenBracket",
+                                          }, "Tree::Term::LexicalCode"),
+                                     B => bless({
+                                            letter => "B",
+                                            name   => "closing parenthesis",
+                                            next   => "aBdqs",
+                                            short  => "CloseBracket",
                                           }, "Tree::Term::LexicalCode"),
                                      d => bless({ letter => "d", name => "dyadic operator", next => "bpv", short => "dyad" }, "Tree::Term::LexicalCode"),
                                      p => bless({ letter => "p", name => "prefix operator", next => "bpv", short => "prefix" }, "Tree::Term::LexicalCode"),
@@ -2334,10 +2363,10 @@ Create a new unisyn parse from a utf8 string.
 B<Example:>
 
 
-  
+
     create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-  
+
     ok Assemble(debug => 0, eq => <<END);
   Assign: 𝑎
     Term
@@ -2345,7 +2374,7 @@ B<Example:>
     Term
       Variable: 𝗯
   END
-  
+
 
 =head1 Parse
 
@@ -2367,27 +2396,27 @@ B<Example:>
 
     my $s = Rutf8 $Lex->{sampleText}{A};                                          # Ascii
     my $p = create K(address, $s), operators => \&printOperatorSequence;
-  
+
     K(address, $s)->printOutZeroString;
     $p->dumpParseTree;
   # $p->print;
-  
+
   # $p->traverseTermsAndCall;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-  
+
     Assemble(debug => 0, eq => <<END)
   call equals
   END
-  
+
     my $s = Rutf8 $Lex->{sampleText}{ws};
     my $p = create (K(address, $s), operators => \&printOperatorSequence);
-  
+
     K(address, $s)->printOutZeroString;                                           # Print input string
     $p->print;                                                                    # Print parse
-  
+
     $p->traverseTermsAndCall;                                                     # Traverse tree printing terms  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-  
+
     Assemble(debug => 0, eq => <<END)
   𝗮𝑎𝑠𝑠𝑖𝑔𝑛⌊〈❨𝗯𝗽❩〉𝐩𝐥𝐮𝐬❪𝘀𝗰❫⌋⟢𝗮𝗮𝑎𝑠𝑠𝑖𝑔𝑛❬𝗯𝗯𝐩𝐥𝐮𝐬𝗰𝗰❭⟢
   Semicolon
@@ -2438,7 +2467,7 @@ B<Example:>
   assign
   semiColon
   END
-  
+
 
 =head1 Print
 
@@ -2454,10 +2483,10 @@ Print a parse tree.
 B<Example:>
 
 
-  
+
     create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-  
+
     ok Assemble(debug => 0, eq => <<END);
   Assign: 𝑎
     Term
@@ -2465,7 +2494,7 @@ B<Example:>
     Term
       Variable: 𝗯
   END
-  
+
 
 =head2 dumpParseTree($parse)
 
@@ -3724,27 +3753,110 @@ sub printOperatorSequence($)                                                    
    {PrintOutStringNL "semiColon";
    } [], name=>"UnisynParse::semiColon";
   $o->semiColon($semiColon);
+
+  my $ascii = Subroutine
+   {PrintOutStringNL "ascii";
+   } [], name=>"UnisynParse::ascii";
+  $o->ascii($ascii);
+
 # $o->dumpSubs;
-#  $o->subQuarks->stringsToNumbers->dump;
+# $o->subQuarks->stringsToNumbers->dump;
+# $ascii->V->d;
+ }
+
+#latest:
+if (1) {                                                                        # Semicolon
+  my $s = Rutf8 $Lex->{sampleText}{s};
+  my $p = create K(address, $s), operators => \&printOperatorSequence;
+
+  K(address, $s)->printOutZeroString;
+  $p->print;
+  $p->dumpParseTree ;
+  $p->traverseTermsAndCall;
+
+  Assemble(debug => 0, eq => <<END)
+𝗮⟢𝗯
+Semicolon
+  Term
+    Variable: 𝗮
+  Term
+    Variable: 𝗯
+Tree at:  0000 0000 0000 0CD8  length: 0000 0000 0000 000B
+  0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+  0000 0000 0000 0016   0000 0000 0000 0000   0000 0000 0000 0C18   0000 0009 0000 0AD8   0000 0009 0000 0002   0000 0001 0000 0001   0000 0008 0041 10AB   0000 0003 0000 0009
+  0000 0D18 0500 000B   0000 0000 0000 0000   0000 0000 0000 000D   0000 000C 0000 0009   0000 0008 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
+    index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
+    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0041 10AB
+    index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0008
+    index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0006   key: 0000 0000 0000 0007   data: 0000 0000 0000 0002
+    index: 0000 0000 0000 0007   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0008   key: 0000 0000 0000 0009   data: 0000 0000 0000 0AD8 subTree
+    index: 0000 0000 0000 0009   key: 0000 0000 0000 000C   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 000A   key: 0000 0000 0000 000D   data: 0000 0000 0000 0C18 subTree
+  Tree at:  0000 0000 0000 0AD8  length: 0000 0000 0000 0007
+    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+    0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0001 0000 0000   0000 0006 0040 ECF3   0000 0001 0000 0009
+    0000 0B18 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
+      index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+      index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 ECF3
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
+      index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0000
+      index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
+      index: 0000 0000 0000 0006   key: 0000 0000 0000 0007   data: 0000 0000 0000 0000
+  end
+  Tree at:  0000 0000 0000 0C18  length: 0000 0000 0000 0007
+    0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+    0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0001 0000 0002   0000 0006 0040 ECF3   0000 0001 0000 0009
+    0000 0C58 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
+      index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+      index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 ECF3
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
+      index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0002
+      index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
+      index: 0000 0000 0000 0006   key: 0000 0000 0000 0007   data: 0000 0000 0000 0001
+  end
+end
+variable
+variable
+semiColon
+END
  }
 
 #latest:
 # 28,752
 # 28,440
-if (0) {                                                                        #TtraverseTermsAndCall
-  my $s = Rutf8 $Lex->{sampleText}{A};                                          # Ascii
+if (1) {                                                                        #TtraverseTermsAndCall
+  my $s = Rutf8 $Lex->{sampleText}{Adv};                                        # Ascii
   my $p = create K(address, $s), operators => \&printOperatorSequence;
 
   K(address, $s)->printOutZeroString;
-  $p->dumpParseTree;
-# $p->print;
-# $p->traverseTermsAndCall;
+# $p->dumpParseTree;
+  $p->print;
+  $p->traverseTermsAndCall;
 
   Assemble(debug => 0, eq => <<END)
-call equals
+𝗮𝗮𝑒𝑞𝑢𝑎𝑙𝑠abc 123    𝐩𝐥𝐮𝐬𝘃𝗮𝗿
+Assign: 𝑒𝑞𝑢𝑎𝑙𝑠
+  Term
+    Variable: 𝗮𝗮
+  Term
+    Dyad: 𝐩𝐥𝐮𝐬
+      Term
+        Ascii: abc 123
+      Term
+        Variable: 𝘃𝗮𝗿
+variable
+ascii
+variable
+plus
+equals
 END
  }
-#exit;
 
 #latest:
 if (1) {                                                                        #TtraverseTermsAndCall
@@ -3877,7 +3989,6 @@ Suffix: 𝙖
 variable
 variable
 prefix_d
-suffix_d
 variable
 variable
 plus
@@ -3891,13 +4002,10 @@ assign
 semiColon
 brackets_3
 prefix_c
-suffix_c
 brackets_2
 prefix_b
-suffix_b
 brackets_1
 prefix_a
-suffix_a
 END
  }
 
