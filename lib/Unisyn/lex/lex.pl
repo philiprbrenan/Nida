@@ -497,6 +497,10 @@ translateSomeText 'A', <<END;
 vaa aequals Aabc S A123  S S S S
 END
 
+translateSomeText 'Adv', <<END;
+vaa aequals Aabc S A123  S S S S dplus vvar
+END
+
 translateSomeText 'BB', <<END;
 b1 b2 b3 b4 b5 b6 b7 b8 va B8 B7 B6 B5 B4 B3 B2 B1
 END
