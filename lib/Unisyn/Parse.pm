@@ -1275,21 +1275,20 @@ sub traverseParseTree($)                                                        
     $t->find(K(key, $opSub));                                                   # The subroutine for the term
     If $t->found > 0,                                                           # Found subroutine for term
     Then                                                                        # Call subroutine for this term
-     {PushR r15, zmm0;
+     {#PushR r15, zmm0;
       my $l = RegisterSize rax;
       $$p{bs}   ->putQIntoZmm(0, 0*$l, r15);
       $$p{first}->putQIntoZmm(0, 1*$l, r15);
       $t->data  ->setReg(r15);
       Call r15;
-      PopR;
-     },
-    Else                                                                        # Missing subroutine for term
-     {#PrintOutStringNL "No sub for term";
+      #PopR;
      };
 
    } [qw(bs first)], name => "Nasm::X86::Tree::traverseParseTree";
 
+  PushR r15, zmm0;
   $s->call($parse->arena->bs, first => $parse->parse);
+  PopR;
 
   $a
  } # traverseParseTree
@@ -3747,6 +3746,7 @@ sub printOperatorSequence($)                                                    
 
   my $semiColon = Subroutine
    {PrintOutStringNL "semiColon";
+#   PrintErrRegisterInHex xmm0;
    } [], name=>"UnisynParse::semiColon";
   $o->semiColon($semiColon);
 
