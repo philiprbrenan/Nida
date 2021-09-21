@@ -1228,7 +1228,7 @@ sub parseUtf8($@)                                                               
 
 #D1 Traverse                                                                    # Traverse the parse tree
 
-sub traverseTermsAndCall($)                                                     # Traverse the terms in parse tree in post order and call the operator subroutine associated with each term.
+sub traverseParseTree($)                                                        # Traverse the terms in parse tree in post order and call the operator subroutine associated with each term.
  {my ($parse) = @_;                                                             # Parse tree
 
   my $s = Subroutine                                                            # Print a tree
@@ -1280,23 +1280,19 @@ sub traverseTermsAndCall($)                                                     
       $$p{bs}   ->putQIntoZmm(0, 0*$l, r15);
       $$p{first}->putQIntoZmm(0, 1*$l, r15);
       $t->data  ->setReg(r15);
-      Cmp r15, 0;
-      IfGt
-      Then
-       {Call r15;
-       };
+      Call r15;
       PopR;
      },
     Else                                                                        # Missing subroutine for term
      {#PrintOutStringNL "No sub for term";
      };
 
-   } [qw(bs first)], name => "Nasm::X86::Tree::traverseTermsAndCall";
+   } [qw(bs first)], name => "Nasm::X86::Tree::traverseParseTree";
 
   $s->call($parse->arena->bs, first => $parse->parse);
 
   $a
- } # traverseTermsAndCall
+ } # traverseParseTree
 
 #D1 Print                                                                       # Print a parse tree
 
@@ -2384,7 +2380,7 @@ Parse Unisyn expressions
 
 Traverse the parse tree
 
-=head2 traverseTermsAndCall($parse)
+=head2 traverseParseTree($parse)
 
 Traverse the terms in parse tree in post order and call the operator subroutine associated with each term.
 
@@ -2401,7 +2397,7 @@ B<Example:>
     $p->dumpParseTree;
   # $p->print;
 
-  # $p->traverseTermsAndCall;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+  # $p->traverseParseTree;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
 
     Assemble(debug => 0, eq => <<END)
@@ -2414,7 +2410,7 @@ B<Example:>
     K(address, $s)->printOutZeroString;                                           # Print input string
     $p->print;                                                                    # Print parse
 
-    $p->traverseTermsAndCall;                                                     # Traverse tree printing terms  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    $p->traverseParseTree;                                                     # Traverse tree printing terms  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
 
     Assemble(debug => 0, eq => <<END)
@@ -3114,7 +3110,7 @@ Parse some text and print the results.
 
 51 L<testSet|/testSet> - Test a set of items, setting the Zero Flag is one matches else clear the Zero flag.
 
-52 L<traverseTermsAndCall|/traverseTermsAndCall> - Traverse the terms in parse tree in post order and call the operator subroutine associated with each term.
+52 L<traverseParseTree|/traverseParseTree> - Traverse the terms in parse tree in post order and call the operator subroutine associated with each term.
 
 53 L<Unisyn::Parse::SubQuarks::assign|/Unisyn::Parse::SubQuarks::assign> - Define a method for an assign operator.
 
@@ -3772,7 +3768,7 @@ if (1) {                                                                        
   K(address, $s)->printOutZeroString;
   $p->print;
   $p->dumpParseTree ;
-  $p->traverseTermsAndCall;
+  $p->traverseParseTree;
 
   Assemble(debug => 0, eq => <<END)
 𝗮⟢𝗯
@@ -3830,14 +3826,14 @@ END
 #latest:
 # 28,752
 # 28,440
-if (1) {                                                                        #TtraverseTermsAndCall
+if (1) {                                                                        #TtraverseParseTree
   my $s = Rutf8 $Lex->{sampleText}{Adv};                                        # Ascii
   my $p = create K(address, $s), operators => \&printOperatorSequence;
 
   K(address, $s)->printOutZeroString;
 # $p->dumpParseTree;
   $p->print;
-  $p->traverseTermsAndCall;
+  $p->traverseParseTree;
 
   Assemble(debug => 0, eq => <<END)
 𝗮𝗮𝑒𝑞𝑢𝑎𝑙𝑠abc 123    𝐩𝐥𝐮𝐬𝘃𝗮𝗿
@@ -3859,13 +3855,13 @@ END
  }
 
 #latest:
-if (1) {                                                                        #TtraverseTermsAndCall
+if (1) {                                                                        #TtraverseParseTree
   my $s = Rutf8 $Lex->{sampleText}{ws};
   my $p = create (K(address, $s), operators => \&printOperatorSequence);
 
   K(address, $s)->printOutZeroString;                                           # Print input string
   $p->print;                                                                    # Print parse
-  $p->traverseTermsAndCall;                                                     # Traverse tree printing terms
+  $p->traverseParseTree;                                                        # Traverse tree printing terms
 
   Assemble(debug => 0, eq => <<END)
 𝗮𝑎𝑠𝑠𝑖𝑔𝑛⌊〈❨𝗯𝗽❩〉𝐩𝐥𝐮𝐬❪𝘀𝗰❫⌋⟢𝗮𝗮𝑎𝑠𝑠𝑖𝑔𝑛❬𝗯𝗯𝐩𝐥𝐮𝐬𝗰𝗰❭⟢
@@ -3927,7 +3923,7 @@ if (1) {
 # $p->dumpParseTree;
   K(address, $s)->printOutZeroString;                                           # Print input string
   $p->print;                                                                    # Print parse
-  $p->traverseTermsAndCall;                                                     # Traverse tree printing terms
+  $p->traverseParseTree;                                                        # Traverse tree printing terms
 
   ok Assemble(debug => 0, eq => <<END)
 𝒂❴𝒃⟦𝒄⟨𝗮𝑒𝑞𝑢𝑎𝑙𝑠𝒅𝗯𝙙𝐭𝐢𝐦𝐞𝐬⟪𝗰𝐩𝐥𝐮𝐬𝗱⟫⟢𝗲𝑎𝑠𝑠𝑖𝑔𝑛𝗳𝐬𝐮𝐛𝗴𝙝⟩𝙘⟧𝙗❵𝙖
