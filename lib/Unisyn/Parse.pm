@@ -1119,7 +1119,6 @@ sub reload($$)                                                                  
   $parse->operators->reload(arena => $$parameters{bs},                          # Reload the subQuarks because the subQuarks used to create this subroutine might not be the same as the subQuarks that are reusing it now.
     array => $$parameters{opNumbersToStringsFirst},
     tree  => $$parameters{opStringsToNumbersFirst}) if $parse->operators;
-  $Parse = $parse;                                                              # Global parse state which
  }
 
 sub parseUtf8($@)                                                               #P Parse a unisyn expression encoded as utf8 and return the parse tree.
@@ -1129,7 +1128,7 @@ sub parseUtf8($@)                                                               
   my $s = Subroutine
    {my ($p) = @_;                                                               # Parameters
 
-    $parse->reload;                                                             # Reload the parse
+    $parse->reload($p);                                                         # Reload the parse description
     PrintErrStringNL "ParseUtf8" if $debug;
 
     PushR $parseStackBase, map {"r$_"} 8..15;
