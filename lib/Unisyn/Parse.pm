@@ -7,7 +7,7 @@
 # Finished in 13.14s, bytes: 2,655,008, execs: 465,858
 # Can we remove more Pushr  by doing one big save in parseutf8 ?
 package Unisyn::Parse;
-our $VERSION = "20210918";
+our $VERSION = "20210922";
 use warnings FATAL => qw(all);
 use strict;
 use Carp qw(confess cluck);
@@ -18,10 +18,7 @@ use feature qw(say current_sub);
 use utf8;
 
 my  $develop    = -e q(/home/phil/);                                            # Developing
-our %parameters;                                                                # A copy of the parameter list parsed into the parser so that all the related subroutines can see it. The alternative would have been to code these subroutines as my subs but this makes it much harder to test them.  As parses are not interrupted by other parses reentrancy is not a problem.
-our $Parse;                                                                     # The latest parse request
-our $Quarks;                                                                    # The quarks associated with this parse
-our $Operators;                                                                 # The subQuarks associated with this parse
+our $Parse;                                                                     # One of the advantages of creating a parse tree is that we can perform parse one at a time making it safe to globalize this variable. The alternative is to pass this variable between all the parsing calls which would obscure their workings greatly.
 our $debug      = 0;                                                            # Print evolution of stack if true.
 
 #D1 Create                                                                      # Create a Unisyn parse of a utf8 string.
@@ -245,11 +242,12 @@ sub new($$)                                                                     
 
     my $a = DescribeArena $$locals{bs};                                         # Address arena
 
-    my $quarks =  $Quarks->reload(arena => $$locals{bs},                        # Reload the quarks because the quarks used to create this subroutine might not be the same as the quarks that are reusing it now.
+    my $quarks =  $Parse->quarks->reload(arena => $$locals{bs},                 # Reload the quarks because the quarks used to create this subroutine might not be the same as the quarks that are reusing it now.
       array => $$locals{numbersToStringsFirst},
       tree  => $$locals{stringsToNumbersFirst});
 
-    my $operators =  $Operators ? $Operators->reload(arena => $$locals{bs},     # Reload the subQuarks because the subQuarks used to create this subroutine might not be the same as the subQuarks that are reusing it now.
+    my $operators =  $Parse->operators ? $Parse->operators->reload              # Reload the subQuarks because the subQuarks used to create this subroutine might not be the same as the subQuarks that are reusing it now.
+     (arena => $$locals{bs},
       array => $$locals{opNumbersToStringsFirst},
       tree  => $$locals{opStringsToNumbersFirst}) : undef;
 
@@ -377,18 +375,17 @@ sub new($$)                                                                     
 
   PrintErrStringNL "New: $description" if $debug;
 
-  if    ($depth == 1) {Mov $w1, 1}
+  if    ($depth == 1) {Mov $w1, 1}                                              # Copy the top of the real stack which holds the parse state to zmm0 so that we can adjust the stack to call L<new>
   elsif ($depth == 2) {Mov $w1, 3}
   else                {Mov $w1, 7}
   Kmovq k1, $w1;                                                                # B<k1> is saved in L<parseutf8>
-  Vmovdqu64 "zmm0{k1}", "[rsp]";                                                # Lexical items on stack
+  Vmovdqu64 "zmm0{k1}", "[rsp]";                                                # Copy top lexical items on stack
 
-  my $zero = K(zero, 0);
-  $s->call(bs => $parameters{bs}, my $new = V('new'),
-    numbersToStringsFirst   => $Quarks->numbersToStrings->first,
-    stringsToNumbersFirst   => $Quarks->stringsToNumbers->first,
-    opNumbersToStringsFirst => $Operators ? $Operators->subQuarks->numbersToStrings->first : $zero,
-    opStringsToNumbersFirst => $Operators ? $Operators->subQuarks->stringsToNumbers->first : $zero,
+  $s->call(bs => $Parse->arena->bs, my $new = V('new'),
+    numbersToStringsFirst   => $Parse->quarks->numbersToStrings->first,
+    stringsToNumbersFirst   => $Parse->quarks->stringsToNumbers->first,
+    opNumbersToStringsFirst => $Parse->operators ? $Parse->operators->subQuarks->numbersToStrings->first : 0,
+    opStringsToNumbersFirst => $Parse->operators ? $Parse->operators->subQuarks->stringsToNumbers->first : 0,
    );
 
   $new->setReg($w1);                                                            # Save offset of new term in a work register
@@ -1111,22 +1108,28 @@ sub ClassifyWhiteSpace(@)                                                       
   $s->call(@parameters);
  } # ClassifyWhiteSpace
 
+sub reload($$)                                                                  #P Reload the variables associated with a parse
+ {my ($parse, $parameters) = @_;                                                # Parse, hash of variable parameters
+  @_ >= 1 or confess "One or more parameters";
+
+  $parse->quarks->reload   (arena => $$parameters{bs},                          # Reload the quarks because the quarks used to create this subroutine might not be the same as the quarks that are reusing it now.
+    array => $$parameters{numbersToStringsFirst},
+    tree  => $$parameters{stringsToNumbersFirst});
+
+  $parse->operators->reload(arena => $$parameters{bs},                          # Reload the subQuarks because the subQuarks used to create this subroutine might not be the same as the subQuarks that are reusing it now.
+    array => $$parameters{opNumbersToStringsFirst},
+    tree  => $$parameters{opStringsToNumbersFirst}) if $parse->operators;
+  $Parse = $parse;                                                              # Global parse state which
+ }
+
 sub parseUtf8($@)                                                               #P Parse a unisyn expression encoded as utf8 and return the parse tree.
  {my ($parse, @parameters) = @_;                                                # Parse, parameters
   @_ >= 1 or confess "One or more parameters";
 
   my $s = Subroutine
    {my ($p) = @_;                                                               # Parameters
-    %parameters = %$p;                                                          # Make the parameters available in all the called parse subroutines.
 
-    $Quarks =  $parse->quarks->reload(arena => $$p{bs},                         # Reload the quarks because the quarks used to create this subroutine might not be the same as the quarks that are reusing it now.
-      array => $$p{numbersToStringsFirst},
-      tree  => $$p{stringsToNumbersFirst});
-
-    $Operators =  $parse->operators->reload(arena => $$p{bs},                   # Reload the subQuarks because the subQuarks used to create this subroutine might not be the same as the subQuarks that are reusing it now.
-      array => $$p{opNumbersToStringsFirst},
-      tree  => $$p{opStringsToNumbersFirst}) if $parse->operators;
-
+    $parse->reload;                                                             # Reload the parse
     PrintErrStringNL "ParseUtf8" if $debug;
 
     PushR $parseStackBase, map {"r$_"} 8..15;
@@ -1641,7 +1644,7 @@ sub Unisyn::Parse::SubQuarks::suffix($$$)                                       
  }
 
 
-sub Unisyn::Parse::SubQuarks::ascii($$)                                         # Define a method for ascii text
+sub Unisyn::Parse::SubQuarks::ascii($$)                                         # Define a method for ascii text.
  {my ($q, $sub) = @_;                                                           # Sub quarks, associated subroutine definition
   my $n = $$Lex{lexicals}{Ascii}{number};                                       # Lexical number of ascii
   $q->put(chr($n), $sub);                                                       # Add the ascii subroutine to the sub quarks
@@ -2335,7 +2338,7 @@ Then traverse the parse tree printing the type of each node:
 Parse a Unisyn expression.
 
 
-Version "20210918".
+Version "20210921".
 
 
 The following sections describe the methods in each functional area of this
@@ -2389,18 +2392,32 @@ Traverse the terms in parse tree in post order and call the operator subroutine 
 B<Example:>
 
 
-    my $s = Rutf8 $Lex->{sampleText}{A};                                          # Ascii
+    my $s = Rutf8 $Lex->{sampleText}{Adv};                                        # Ascii
     my $p = create K(address, $s), operators => \&printOperatorSequence;
 
     K(address, $s)->printOutZeroString;
-    $p->dumpParseTree;
-  # $p->print;
+  # $p->dumpParseTree;
+    $p->print;
 
-  # $p->traverseParseTree;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    $p->traverseParseTree;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
 
     Assemble(debug => 0, eq => <<END)
-  call equals
+  𝗮𝗮𝑒𝑞𝑢𝑎𝑙𝑠abc 123    𝐩𝐥𝐮𝐬𝘃𝗮𝗿
+  Assign: 𝑒𝑞𝑢𝑎𝑙𝑠
+    Term
+      Variable: 𝗮𝗮
+    Term
+      Dyad: 𝐩𝐥𝐮𝐬
+        Term
+          Ascii: abc 123
+        Term
+          Variable: 𝘃𝗮𝗿
+  variable
+  ascii
+  variable
+  plus
+  equals
   END
 
     my $s = Rutf8 $Lex->{sampleText}{ws};
@@ -2409,7 +2426,7 @@ B<Example:>
     K(address, $s)->printOutZeroString;                                           # Print input string
     $p->print;                                                                    # Print parse
 
-    $p->traverseParseTree;                                                     # Traverse tree printing terms  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
+    $p->traverseParseTree;                                                        # Traverse tree printing terms  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
 
     Assemble(debug => 0, eq => <<END)
@@ -2594,6 +2611,14 @@ Define a method for a suffix operator.
   1  $q         Sub quarks
   2  $text      The name of the operator as a utf8 string
   3  $sub       Associated subroutine definition
+
+=head2 Unisyn::Parse::SubQuarks::ascii($q, $sub)
+
+Define a method for ascii text.
+
+     Parameter  Description
+  1  $q         Sub quarks
+  2  $sub       Associated subroutine definition
 
 =head2 Unisyn::Parse::SubQuarks::semiColon($q, $sub)
 
@@ -3111,29 +3136,31 @@ Parse some text and print the results.
 
 52 L<traverseParseTree|/traverseParseTree> - Traverse the terms in parse tree in post order and call the operator subroutine associated with each term.
 
-53 L<Unisyn::Parse::SubQuarks::assign|/Unisyn::Parse::SubQuarks::assign> - Define a method for an assign operator.
+53 L<Unisyn::Parse::SubQuarks::ascii|/Unisyn::Parse::SubQuarks::ascii> - Define a method for ascii text.
 
-54 L<Unisyn::Parse::SubQuarks::bracket|/Unisyn::Parse::SubQuarks::bracket> - Define a method for a bracket operator.
+54 L<Unisyn::Parse::SubQuarks::assign|/Unisyn::Parse::SubQuarks::assign> - Define a method for an assign operator.
 
-55 L<Unisyn::Parse::SubQuarks::dumpSubs|/Unisyn::Parse::SubQuarks::dumpSubs> - Dump a set of quarks identifying subroutines.
+55 L<Unisyn::Parse::SubQuarks::bracket|/Unisyn::Parse::SubQuarks::bracket> - Define a method for a bracket operator.
 
-56 L<Unisyn::Parse::SubQuarks::dyad|/Unisyn::Parse::SubQuarks::dyad> - Define a method for a dyadic operator.
+56 L<Unisyn::Parse::SubQuarks::dumpSubs|/Unisyn::Parse::SubQuarks::dumpSubs> - Dump a set of quarks identifying subroutines.
 
-57 L<Unisyn::Parse::SubQuarks::lexToSub|/Unisyn::Parse::SubQuarks::lexToSub> - Map a lexical item to a processing subroutine.
+57 L<Unisyn::Parse::SubQuarks::dyad|/Unisyn::Parse::SubQuarks::dyad> - Define a method for a dyadic operator.
 
-58 L<Unisyn::Parse::SubQuarks::prefix|/Unisyn::Parse::SubQuarks::prefix> - Define a method for a prefix operator.
+58 L<Unisyn::Parse::SubQuarks::lexToSub|/Unisyn::Parse::SubQuarks::lexToSub> - Map a lexical item to a processing subroutine.
 
-59 L<Unisyn::Parse::SubQuarks::put|/Unisyn::Parse::SubQuarks::put> - Put a new subroutine definition into the sub quarks.
+59 L<Unisyn::Parse::SubQuarks::prefix|/Unisyn::Parse::SubQuarks::prefix> - Define a method for a prefix operator.
 
-60 L<Unisyn::Parse::SubQuarks::reload|/Unisyn::Parse::SubQuarks::reload> - Reload the description of a set of sub quarks.
+60 L<Unisyn::Parse::SubQuarks::put|/Unisyn::Parse::SubQuarks::put> - Put a new subroutine definition into the sub quarks.
 
-61 L<Unisyn::Parse::SubQuarks::semiColon|/Unisyn::Parse::SubQuarks::semiColon> - Define a method for the semicolon operator.
+61 L<Unisyn::Parse::SubQuarks::reload|/Unisyn::Parse::SubQuarks::reload> - Reload the description of a set of sub quarks.
 
-62 L<Unisyn::Parse::SubQuarks::subFromQuark|/Unisyn::Parse::SubQuarks::subFromQuark> - Given the quark number for a lexical item and the quark set of lexical items get the offset of the associated method.
+62 L<Unisyn::Parse::SubQuarks::semiColon|/Unisyn::Parse::SubQuarks::semiColon> - Define a method for the semicolon operator.
 
-63 L<Unisyn::Parse::SubQuarks::suffix|/Unisyn::Parse::SubQuarks::suffix> - Define a method for a suffix operator.
+63 L<Unisyn::Parse::SubQuarks::subFromQuark|/Unisyn::Parse::SubQuarks::subFromQuark> - Given the quark number for a lexical item and the quark set of lexical items get the offset of the associated method.
 
-64 L<Unisyn::Parse::SubQuarks::variable|/Unisyn::Parse::SubQuarks::variable> - Define a method for a variable.
+64 L<Unisyn::Parse::SubQuarks::suffix|/Unisyn::Parse::SubQuarks::suffix> - Define a method for a suffix operator.
+
+65 L<Unisyn::Parse::SubQuarks::variable|/Unisyn::Parse::SubQuarks::variable> - Define a method for a variable.
 
 =head1 Installation
 
@@ -3779,11 +3806,11 @@ Semicolon
     Variable: 𝗯
 Tree at:  0000 0000 0000 0CD8  length: 0000 0000 0000 000B
   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-  0000 0000 0000 0016   0000 0000 0000 0000   0000 0000 0000 0C18   0000 0009 0000 0AD8   0000 0009 0000 0002   0000 0001 0000 0001   0000 0008 0041 10AB   0000 0003 0000 0009
+  0000 0000 0000 0016   0000 0000 0000 0000   0000 0000 0000 0C18   0000 0009 0000 0AD8   0000 0009 0000 0002   0000 0001 0000 0001   0000 0008 0041 10A5   0000 0003 0000 0009
   0000 0D18 0500 000B   0000 0000 0000 0000   0000 0000 0000 000D   0000 000C 0000 0009   0000 0008 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
     index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
     index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
-    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0041 10AB
+    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0041 10A5
     index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0008
     index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0001
     index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
@@ -3794,11 +3821,11 @@ Tree at:  0000 0000 0000 0CD8  length: 0000 0000 0000 000B
     index: 0000 0000 0000 000A   key: 0000 0000 0000 000D   data: 0000 0000 0000 0C18 subTree
   Tree at:  0000 0000 0000 0AD8  length: 0000 0000 0000 0007
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0001 0000 0000   0000 0006 0040 ECF3   0000 0001 0000 0009
+    0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0001 0000 0000   0000 0006 0040 ECED   0000 0001 0000 0009
     0000 0B18 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 ECF3
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 ECED
       index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
       index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0000
       index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
@@ -3806,11 +3833,11 @@ Tree at:  0000 0000 0000 0CD8  length: 0000 0000 0000 000B
   end
   Tree at:  0000 0000 0000 0C18  length: 0000 0000 0000 0007
     0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
-    0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0001 0000 0002   0000 0006 0040 ECF3   0000 0001 0000 0009
+    0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0001 0000 0002   0000 0006 0040 ECED   0000 0001 0000 0009
     0000 0C58 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 ECF3
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 ECED
       index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
       index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0002
       index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
