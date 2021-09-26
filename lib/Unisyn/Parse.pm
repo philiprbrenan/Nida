@@ -17,8 +17,11 @@ use Nasm::X86 qw(:all);
 use feature qw(say current_sub);
 use utf8;
 
+makeDieConfess;
+
 my  $develop    = -e q(/home/phil/);                                            # Developing
 our $Parse;                                                                     # One of the advantages of creating a parse tree is that we can perform parse one at a time making it safe to globalize this variable. The alternative is to pass this variable between all the parsing calls which would obscure their workings greatly.
+our $ParseUtf8SubDef;                                                           # The definition of the subroutine that does the parsing so that we can reuse its parameters when we call L<new>.
 our $debug      = 0;                                                            # Print evolution of stack if true.
 
 #D1 Create                                                                      # Create a Unisyn parse of a utf8 string.
@@ -239,7 +242,6 @@ sub new($$)                                                                     
 
   my $s = Subroutine
    {my ($locals) = @_;                                                          # Parameters
-
     my $a = DescribeArena $$locals{bs};                                         # Address arena
 
     my $quarks =  $Parse->quarks->reload(arena => $$locals{bs},                 # Reload the quarks because the quarks used to create this subroutine might not be the same as the quarks that are reusing it now.
@@ -368,10 +370,12 @@ sub new($$)                                                                     
     $$locals{new}->getReg($liOffset);                                           # New term comprised of a tree of old terms
     PopR;                                                                       # Restore stack to its position at the start
    }
-  [qw(bs new
-    numbersToStringsFirst stringsToNumbersFirst
-    opNumbersToStringsFirst opStringsToNumbersFirst
-  )], name=>"Unisyn::Parse::new_$depth";
+  [qw(new)], with => $ParseUtf8SubDef,
+#  [qw(bs new
+#    numbersToStringsFirst stringsToNumbersFirst
+#    opNumbersToStringsFirst opStringsToNumbersFirst
+#  )],
+  name=>"Unisyn::Parse::new_$depth";
 
   PrintErrStringNL "New: $description" if $debug;
 
@@ -381,12 +385,14 @@ sub new($$)                                                                     
   Kmovq k1, $w1;                                                                # B<k1> is saved in L<parseutf8>
   Vmovdqu64 "zmm0{k1}", "[rsp]";                                                # Copy top lexical items on stack
 
-  $s->call(bs => $Parse->arena->bs, my $new = V('new'),
-    numbersToStringsFirst   => $Parse->quarks->numbersToStrings->first,
-    stringsToNumbersFirst   => $Parse->quarks->stringsToNumbers->first,
-    opNumbersToStringsFirst => $Parse->operators ? $Parse->operators->subQuarks->numbersToStrings->first : 0,
-    opStringsToNumbersFirst => $Parse->operators ? $Parse->operators->subQuarks->stringsToNumbers->first : 0,
-   );
+# $s->call(bs => $Parse->arena->bs, my $new = V('new'),
+#   numbersToStringsFirst   => $Parse->quarks->numbersToStrings->first,
+#   stringsToNumbersFirst   => $Parse->quarks->stringsToNumbers->first,
+#   opNumbersToStringsFirst => $Parse->operators ? $Parse->operators->subQuarks->numbersToStrings->first : 0,
+#   opStringsToNumbersFirst => $Parse->operators ? $Parse->operators->subQuarks->stringsToNumbers->first : 0,
+#  );
+
+  $s->call(my $new = V('new'));
 
   $new->setReg($w1);                                                            # Save offset of new term in a work register
   Add rsp, $depth * $wr;                                                        # Remove input terms from stack
@@ -1126,7 +1132,8 @@ sub parseUtf8($@)                                                               
   @_ >= 1 or confess "One or more parameters";
 
   my $s = Subroutine
-   {my ($p) = @_;                                                               # Parameters
+   {my ($p, $s) = @_;                                                           # Parameters
+    $ParseUtf8SubDef = $s;                                                      # Save the sub definition globally so that we can forward its parameter list to L<new>.
 
     $parse->reload($p);                                                         # Reload the parse description
     PrintErrStringNL "ParseUtf8" if $debug;
@@ -1278,12 +1285,31 @@ sub traverseParseTree($)                                                        
     If $t->found > 0,                                                           # Found subroutine for term
     Then                                                                        # Call subroutine for this term
      {#PushR r15, zmm0;
-      my $l = RegisterSize rax;
-      $$p{bs}   ->putQIntoZmm(0, 0*$l, r15);
-      $$p{first}->putQIntoZmm(0, 1*$l, r15);
-      $t->data  ->setReg(r15);
-      Call r15;
-      #PopR;
+      my $p = Subroutine                                                        # Prototype subroutine to establish parameter list
+        {} [qw(tree)], with => $s,
+      name => __PACKAGE__."TraverseParseTree::ProcessLexicalItem::prototype";
+
+      my $d = Subroutine                                                        # Dispatcher
+       {my ($parameters, $sub) = @_;
+        $p->dispatchV($t->data, r15);
+       } [], with => $p,
+      name => __PACKAGE__."TraverseParseTree::ProcessLexicalItem::dispatch";
+
+      $d->call(tree => $t->first);
+
+#     my $p = Subroutine                                                        # Subroutine
+#      {my ($parameters) = @_;                                                  # Parameters
+#       $$parameters{call}->setReg(r15);
+#       Call r15;
+#      }  [qw(tree call)], with => $s,
+#     name => __PACKAGE__."TraverseParseTree::ProcessLexicalItem";
+#
+#     my $l = RegisterSize rax;
+#     $$p{bs}   ->putQIntoZmm(0, 0*$l, r15);
+#     $$p{first}->putQIntoZmm(0, 1*$l, r15);
+#     $t->data  ->setReg(r15);
+#     Call r15;
+#     #PopR;
      };
 
    } [qw(bs first)], name => "Nasm::X86::Tree::traverseParseTree";
