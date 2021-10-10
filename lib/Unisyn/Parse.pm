@@ -102,6 +102,7 @@ our $lexItemWidth     = 4;                                                      
 our $opType           = 0;                                                      # Operator type field - currently always a term
 our $opCount          = 1;                                                      # Number of operands for this operator
 our $opSub            = 2;                                                      # Offset of sub associated with this lexical item
+our $opChain          = 3;                                                      # The execution chain produced by traversing the parse tree in post order.
 
 sub getAlpha($$$)                                                               #P Load the position of a lexical item in its alphabet from the current character.
  {my ($register, $address, $index) = @_;                                        # Register to load, address of start of string, index into string
@@ -1239,7 +1240,93 @@ sub traverseParseTree($)                                                        
 
   my $s = Subroutine                                                            # Print a tree
    {my ($p, $s) = @_;                                                           # Parameters, sub definition
-    my $t = Nasm::X86::DescribeTree (arena=>$$p{bs}, first=>$$p{first});
+    my $t = Nasm::X86::DescribeTree (arena=>$$p{bs}, first=>$$p{first});        # Tree definition
+    $t->find(K(key, $opType));                                                  # The lexical type of the element - normally a term
+
+    If $t->found == 0,                                                          # Not found lexical type of element
+    Then
+     {PrintOutString "No type for node";
+      Exit(1);
+     };
+
+    If $t->data != $term,                                                       # Expected a term
+    Then
+     {PrintOutString "Expected a term";
+      Exit(1);
+     };
+
+    my $operands = V(operands);                                                 # Number of operands
+    $t->find(K(key, $opCount));                                                 # Key 1 tells us the number of operands
+    If $t->found > 0,                                                           # Found key 1
+    Then
+     {$operands->copy($t->data);                                                # Number of operands
+     },
+    Else
+     {PrintOutString "Expected at least one operand";
+      Exit(1);
+     };
+
+    $operands->for(sub                                                          # Each operand
+     {my ($index, $start, $next, $end) = @_;                                    # Execute body
+      my $i = (1 + $index) * $lexItemWidth;                                     # Operand detail
+      $t->find($i+$lexItemType);   my $lex = V(key) ->copy($t->data);           # Lexical type
+      $t->find($i+$lexItemOffset); my $off = V(key) ->copy($t->data);           # Offset of first block of sub tree
+
+      If $lex == $term,                                                         # Term
+      Then
+       {$s->call($$p{bs}, first => $off);                                       # Traverse sub tree referenced by offset field
+        $t->first  ->copy($$p{first});                                          # Re-establish addressability to the tree after the recursive call
+       },
+     });
+
+    $t->find(K(key, $opSub));                                                   # The subroutine for the term
+    If $t->found > 0,                                                           # Found subroutine for term
+    Then                                                                        # Call subroutine for this term
+     {#PushR r15, zmm0;
+      my $p = Subroutine                                                        # Prototype subroutine to establish parameter list
+        {} [qw(tree call)], with => $s,
+      name => __PACKAGE__."TraverseParseTree::ProcessLexicalItem::prototype";
+
+      my $d = Subroutine                                                        # Dispatcher
+       {my ($q, $sub) = @_;
+        $p->dispatchV($$q{call}, r15);
+       } [], with => $p,
+      name => __PACKAGE__."TraverseParseTree::ProcessLexicalItem::dispatch";
+
+      If $t->data > 0,
+      Then
+       {$d->call(tree => $t->first, call => $t->data)                           # Call sub associated with the lexical item
+       };
+#     my $p = Subroutine                                                        # Subroutine
+#      {my ($parameters) = @_;                                                  # Parameters
+#       $$parameters{call}->setReg(r15);
+#       Call r15;
+#      }  [qw(tree call)], with => $s,
+#     name => __PACKAGE__."TraverseParseTree::ProcessLexicalItem";
+#
+#     my $l = RegisterSize rax;
+#     $$p{bs}   ->putQIntoZmm(0, 0*$l, r15);
+#     $$p{first}->putQIntoZmm(0, 1*$l, r15);
+#     $t->data  ->setReg(r15);
+#     Call r15;
+#     #PopR;
+     };
+
+   } [qw(bs first)], name => "Nasm::X86::Tree::traverseParseTree";
+
+  PushR r15, zmm0;
+  $s->call($parse->arena->bs, first => $parse->parse);
+  PopR;
+
+  $a
+ } # traverseParseTree
+
+sub makeExecutionChain($)                                                        # Traverse the parse tree in post order to create an execution chain.
+ {my ($parse) = @_;                                                             # Parse tree
+
+  my $s = Subroutine                                                            # Print a tree
+   {my ($p, $s) = @_;                                                           # Parameters, sub definition
+    my $t = Nasm::X86::DescribeTree (arena=>$$p{bs}, first=>$$p{first});        # Tree definition
     $t->find(K(key, $opType));                                                  # The lexical type of the element - normally a term
 
     If $t->found == 0,                                                          # Not found lexical type of element
@@ -2323,10 +2410,10 @@ Create a new unisyn parse from a utf8 string.
 B<Example:>
 
 
-  
+
     create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-  
+
     ok Assemble(debug => 0, eq => <<END);
   Assign: 𝑎
     Term
@@ -2334,7 +2421,7 @@ B<Example:>
     Term
       Variable: 𝗯
   END
-  
+
 
 =head1 Parse
 
@@ -2356,14 +2443,14 @@ B<Example:>
 
     my $s = Rutf8 $Lex->{sampleText}{Adv};                                        # Ascii
     my $p = create K(address, $s), operators => \&printOperatorSequence;
-  
+
     K(address, $s)->printOutZeroString;
     $p->dumpParseTree;
     $p->print;
-  
+
     $p->traverseParseTree;  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-  
+
     Assemble(debug => 0, eq => <<END)
   𝗮𝗮𝑒𝑞𝑢𝑎𝑙𝑠abc 123    𝐩𝐥𝐮𝐬𝘃𝗮𝗿
   Tree at:  0000 0000 0000 10D8  length: 0000 0000 0000 000B
@@ -2449,16 +2536,16 @@ B<Example:>
   plus
   equals
   END
-  
+
     my $s = Rutf8 $Lex->{sampleText}{ws};
     my $p = create (K(address, $s), operators => \&printOperatorSequence);
-  
+
     K(address, $s)->printOutZeroString;                                           # Print input string
     $p->print;                                                                    # Print parse
-  
+
     $p->traverseParseTree;                                                        # Traverse tree printing terms  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-  
+
     Assemble(debug => 0, eq => <<END)
   𝗮𝑎𝑠𝑠𝑖𝑔𝑛⌊〈❨𝗯𝗽❩〉𝐩𝐥𝐮𝐬❪𝘀𝗰❫⌋⟢𝗮𝗮𝑎𝑠𝑠𝑖𝑔𝑛❬𝗯𝗯𝐩𝐥𝐮𝐬𝗰𝗰❭⟢
   Semicolon
@@ -2509,7 +2596,7 @@ B<Example:>
   assign
   semiColon
   END
-  
+
 
 =head1 Print
 
@@ -2525,10 +2612,10 @@ Print a parse tree.
 B<Example:>
 
 
-  
+
     create (K(address, Rutf8 $Lex->{sampleText}{vav}))->print;                    # Create parse tree from source terminated with zero  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
 
-  
+
     ok Assemble(debug => 0, eq => <<END);
   Assign: 𝑎
     Term
@@ -2536,7 +2623,7 @@ B<Example:>
     Term
       Variable: 𝗯
   END
-  
+
 
 =head2 dumpParseTree($parse)
 
