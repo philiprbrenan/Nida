@@ -1,4 +1,4 @@
-# Test UnisynParse 2021-10-10 at 22:19:45
+# Test UnisynParse 2021-10-10 at 22:20:47
 
 name: Test
 
@@ -16,15 +16,15 @@ jobs:
         ref: 'main'
 
     - name: Checkout Nasm::X86
-      clean: false
       uses: actions/checkout@v2
       with:
+        clean: false
         repository: philiprbrenan/NasmX86
 
     - name: Checkout Data::Table::Text
-      clean: false
       uses: actions/checkout@v2
       with:
+        clean: false
         repository: philiprbrenan/DataTableText
 
     - name: Install Data::Table::Text
