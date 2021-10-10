@@ -44,6 +44,7 @@ sub create($%)                                                                  
     fails          => V('fail'),                                                # Number of failures encountered in this parse
     quarks         => $a->CreateQuarks,                                         # Quarks representing the strings used in this parse
     operators      => undef,                                                    # Methods implementing each lexical operator
+    width          => RegisterSize(eax),                                        # Size of entries in exec chain
    );
 
   if (my $o = $options{operators})                                              # Operator methods for lexical items
@@ -93,16 +94,23 @@ our $bracketsBase     = $$Lex{bracketsBase};                                    
 our $asciiNewLine     = ord("\n");                                              # New line in ascii
 our $asciiSpace       = ord(' ');                                               # Space in ascii
 
+                                                                                # Operator description
+our $opType           = 0;                                                      # Operator type field - currently always a term
+our $opCount          = 1;                                                      # Number of operands for this operator
+our $opSub            = 2;                                                      # Offset of sub associated with this lexical item
+our $opChain          = 3;                                                      # The execution chain produced by traversing the parse tree in post order.
+
+                                                                                # Lexical item description
 our $lexItemType      = 0;                                                      # Field number of lexical item type in the description of a lexical item
 our $lexItemOffset    = 1;                                                      # Field number of the offset in the utf32 source of the lexical item in the description of a lexical item or - if this a term - the offset of the invariant first block of the sub tree
 our $lexItemLength    = 2;                                                      # Field number of the length of the lexical item in the utf32 source in the description of a lexical item
 our $lexItemQuark     = 3;                                                      # Quark containing the text of this lexical item.
 our $lexItemWidth     = 4;                                                      # The number of fields used to describe a lexical item in the parse tree
 
-our $opType           = 0;                                                      # Operator type field - currently always a term
-our $opCount          = 1;                                                      # Number of operands for this operator
-our $opSub            = 2;                                                      # Offset of sub associated with this lexical item
-our $opChain          = 3;                                                      # The execution chain produced by traversing the parse tree in post order.
+                                                                                # Execution chain
+our $execChainNext    = 0;                                                      # Next block offset
+our $execChainTerm    = 1;                                                      # Corresponding term offset
+our $execChainSub     = 3;                                                      # Offset of sub associated with term
 
 sub getAlpha($$$)                                                               #P Load the position of a lexical item in its alphabet from the current character.
  {my ($register, $address, $index) = @_;                                        # Register to load, address of start of string, index into string
@@ -1321,8 +1329,9 @@ sub traverseParseTree($)                                                        
   $a
  } # traverseParseTree
 
-sub makeExecutionChain($)                                                        # Traverse the parse tree in post order to create an execution chain.
+sub makeExecutionChain($)                                                       # Traverse the parse tree in post order to create an execution chain.
  {my ($parse) = @_;                                                             # Parse tree
+  my $W = $parse->width;                                                        # Width of entries in exec chain blocks
 
   my $s = Subroutine                                                            # Print a tree
    {my ($p, $s) = @_;                                                           # Parameters, sub definition
@@ -1341,8 +1350,21 @@ sub makeExecutionChain($)                                                       
       Exit(1);
      };
 
+    ClearRegisters zmm0;                                                        # Place term on execution chain
+    $$p{chain}->putDIntoZmm(0, $execChainNext * $W, r15);                       # Offset of previous block
+    $$p{first}->putDIntoZmm(0, $execChainTerm * $W, r15);                       # Save term offset
+
+    $t->find(K(key, $opSub));                                                   # The subroutine for the term
+    If $t->found > 0,                                                           # Found subroutine for term
+    Then                                                                        # Call subroutine for this term
+     {$t->data->putDIntoZmm(0, $execChainSub * $W, r15);                        # Save operator
+     };
+
+    my $block = $parse->arena->allocZmmBlock;                                   # Create exec chain element
+    $parse->arena->putZmmBlock(0, r14, r15);                                    # Create exec chain element
+
     my $operands = V(operands);                                                 # Number of operands
-    $t->find(K(key, 1));                                                        # Key 1 tells us the number of operands
+    $t->find(K(key, $opCount));                                                 # Key 1 tells us the number of operands
     If $t->found > 0,                                                           # Found key 1
     Then
      {$operands->copy($t->data);                                                # Number of operands
@@ -1360,52 +1382,19 @@ sub makeExecutionChain($)                                                       
 
       If $lex == $term,                                                         # Term
       Then
-       {$s->call($$p{bs}, first => $off);                                       # Traverse sub tree referenced by offset field
+       {$s->call($$p{bs}, first => $off, chain => $$p{chain});                  # Traverse sub tree referenced by offset field
         $t->first  ->copy($$p{first});                                          # Re-establish addressability to the tree after the recursive call
        },
      });
 
-    $t->find(K(key, $opSub));                                                   # The subroutine for the term
-    If $t->found > 0,                                                           # Found subroutine for term
-    Then                                                                        # Call subroutine for this term
-     {#PushR r15, zmm0;
-      my $p = Subroutine                                                        # Prototype subroutine to establish parameter list
-        {} [qw(tree call)], with => $s,
-      name => __PACKAGE__."TraverseParseTree::ProcessLexicalItem::prototype";
+   } [qw(bs first chain)], name => "Nasm::X86::Tree::traverseParseTree";
 
-      my $d = Subroutine                                                        # Dispatcher
-       {my ($q, $sub) = @_;
-        $p->dispatchV($$q{call}, r15);
-       } [], with => $p,
-      name => __PACKAGE__."TraverseParseTree::ProcessLexicalItem::dispatch";
-
-      If $t->data > 0,
-      Then
-       {$d->call(tree => $t->first, call => $t->data)                           # Call sub associated with the lexical item
-       };
-#     my $p = Subroutine                                                        # Subroutine
-#      {my ($parameters) = @_;                                                  # Parameters
-#       $$parameters{call}->setReg(r15);
-#       Call r15;
-#      }  [qw(tree call)], with => $s,
-#     name => __PACKAGE__."TraverseParseTree::ProcessLexicalItem";
-#
-#     my $l = RegisterSize rax;
-#     $$p{bs}   ->putQIntoZmm(0, 0*$l, r15);
-#     $$p{first}->putQIntoZmm(0, 1*$l, r15);
-#     $t->data  ->setReg(r15);
-#     Call r15;
-#     #PopR;
-     };
-
-   } [qw(bs first)], name => "Nasm::X86::Tree::traverseParseTree";
-
-  PushR r15, zmm0;
-  $s->call($parse->arena->bs, first => $parse->parse);
+  PushR r14, r15, zmm0;
+  $s->call($parse->arena->bs, first => $parse->parse, my $chain = V('chain',0));
   PopR;
 
   $a
- } # traverseParseTree
+ } # makeExecutionChain
 
 #D1 Print                                                                       # Print a parse tree
 
