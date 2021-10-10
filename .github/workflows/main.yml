@@ -1,4 +1,4 @@
-# Test UnisynParse 2021-10-10 at 22:22:48
+# Test UnisynParse 2021-10-10 at 22:33:56
 
 name: Test
 
@@ -10,10 +10,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v2
-      with:
-        ref: 'main'
 
     - name: Checkout Nasm::X86
       uses: actions/checkout@v2
@@ -26,6 +22,12 @@ jobs:
       with:
         clean: false
         repository: philiprbrenan/DataTableText
+
+    - name: Checkout repo
+      uses: actions/checkout@v2
+      with:
+        clean: true
+        ref: 'main'
 
     - name: Install Data::Table::Text
       run: |
