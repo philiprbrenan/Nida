@@ -1,4 +1,4 @@
-# Test UnisynParse 2021-10-10 at 22:14:03
+# Test UnisynParse 2021-10-10 at 22:19:45
 
 name: Test
 
@@ -16,11 +16,13 @@ jobs:
         ref: 'main'
 
     - name: Checkout Nasm::X86
+      clean: false
       uses: actions/checkout@v2
       with:
         repository: philiprbrenan/NasmX86
 
-    - name: Checkout Nasm::X86
+    - name: Checkout Data::Table::Text
+      clean: false
       uses: actions/checkout@v2
       with:
         repository: philiprbrenan/DataTableText
