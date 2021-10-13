@@ -110,7 +110,7 @@ our $lexItemWidth     = 4;                                                      
                                                                                 # Execution chain
 our $execChainNext    = 0;                                                      # Next block offset
 our $execChainTerm    = 1;                                                      # Corresponding term offset
-our $execChainSub     = 3;                                                      # Offset of sub associated with term
+our $execChainSub     = 2;                                                      # Offset of sub associated with term
 
 sub getAlpha($$$)                                                               #P Load the position of a lexical item in its alphabet from the current character.
  {my ($register, $address, $index) = @_;                                        # Register to load, address of start of string, index into string
@@ -1361,7 +1361,8 @@ sub makeExecutionChain($)                                                       
      };
 
     my $block = $parse->arena->allocZmmBlock;                                   # Create exec chain element
-    $parse->arena->putZmmBlock(0, r14, r15);                                    # Create exec chain element
+    $parse->arena->putZmmBlock($block, 0, r14, r15);                            # Save exec chain element
+    $$p{chain}->copy($block);                                                   # Save address of block
 
     my $operands = V(operands);                                                 # Number of operands
     $t->find(K(key, $opCount));                                                 # Key 1 tells us the number of operands
@@ -1377,8 +1378,8 @@ sub makeExecutionChain($)                                                       
     $operands->for(sub                                                          # Each operand
      {my ($index, $start, $next, $end) = @_;                                    # Execute body
       my $i = (1 + $index) * $lexItemWidth;                                     # Operand detail
-      $t->find($i+$lexItemType);   my $lex = V(key) ->copy($t->data);           # Lexical type
-      $t->find($i+$lexItemOffset); my $off = V(key) ->copy($t->data);           # Offset of first block of sub tree
+      $t->find($i+$lexItemType);   my $lex = V(key)->copy($t->data);            # Lexical type
+      $t->find($i+$lexItemOffset); my $off = V(key)->copy($t->data);            # Offset of first block of sub tree
 
       If $lex == $term,                                                         # Term
       Then
@@ -1387,14 +1388,54 @@ sub makeExecutionChain($)                                                       
        },
      });
 
-   } [qw(bs first chain)], name => "Nasm::X86::Tree::traverseParseTree";
+   } [qw(bs first chain)], name => "Nasm::X86::Tree::makeExecutionChain";
 
   PushR r14, r15, zmm0;
-  $s->call($parse->arena->bs, first => $parse->parse, my $chain = V('chain',0));
+
+  $s->call($parse->arena->bs, first => $parse->parse, my $chain = V('chain',0));# Construct execution chain
+
+  If $chain > 0,                                                                # Print execution chain
+  Then
+   {my $A = $parse->arena;
+    my $a = V('zero', 0);
+    my $b = $chain->clone;
+
+    ForEver                                                                     # Loop through exec chain reversing each link
+     {my ($start, $end) = @_;
+      $A ->getZmmBlock($b, 0, r14, r15);
+      my $c = Nasm::X86::getDFromZmm(0, $execChainNext, r15);
+      $a->putDIntoZmm(0, $execChainNext);
+      $A->putZmmBlock($b, 0, r14, r15);
+
+      If $c == 0, Then {Jmp $end};
+      $a->copy($b);
+      $b->copy($c);
+     };
+    my $t = $parse->arena->DescribeTree(first => $parse->parse);                # Parse tree
+    $t->insert(V('key', $opChain), $b);                                         # Save start of chain
+   };
+#
+
   PopR;
 
   $a
  } # makeExecutionChain
+
+sub printExecChain($)                                                           #P Print the execute chain for a parse
+ {my ($parse) = @_;                                                             # Parse tree
+  my $t = $parse->arena->DescribeTree(first=>$parse->parse);
+  $t->find(V('key', $opChain));                                                 # Start of chain
+  my $p = $t->data->clone;
+
+  ForEver
+   {my ($start, $end) = @_;                                                     # Fail block, end of fail block, start of test block
+    If $p == 0, Then {Jmp $end};                                                # End of chain
+    $parse->arena->getZmmBlock($p, 0, r14, r15);
+    $p->out("offset: ", " : ");
+    PrintOutRegisterInHex zmm0;
+    $p->copy(Nasm::X86::getDFromZmm(0, $execChainNext, r15));
+   };
+ }
 
 #D1 Print                                                                       # Print a parse tree
 
@@ -4176,15 +4217,17 @@ sub executeOperator($)                                                          
   $parse->semiColon($semiColon);
  }
 
-#latest:
+latest:
 if (1) {                                                                        # Semicolon
   my $s = Rutf8 $Lex->{sampleText}{s};
   my $p = create K(address, $s), operators => \&executeOperator;
 
    K(address, $s)->printOutZeroString;
    $p->print;
-   $p->dumpParseTree ;
    $p->traverseParseTree;
+   $p->makeExecutionChain;
+   $p->printExecChain;
+   $p->dumpParseTree ;
 
   Assemble(debug => 0, eq => <<END)
 𝗮⟢𝗯
@@ -4193,21 +4236,26 @@ Semicolon
     Variable: 𝗮
   Term
     Variable: 𝗯
-Tree at:  0000 0000 0000 0498  length: 0000 0000 0000 000B
-  Keys: 0000 04D8 0500 000B   0000 0000 0000 0000   0000 0000 0000 000D   0000 000C 0000 0009   0000 0008 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
-  Data: 0000 0000 0000 0016   0000 0000 0000 0000   0000 0000 0000 03D8   0000 0009 0000 0298   0000 0009 0000 0002   0000 0001 0000 0001   0000 0008 0040 8810   0000 0003 0000 0009
+semiColon
+offset: 0000 0000 0000 0558 :   zmm0: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0040 8578   0000 0498 0000 0598
+offset: 0000 0000 0000 0598 :   zmm0: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0298 0000 05D8
+offset: 0000 0000 0000 05D8 :   zmm0: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 03D8 0000 0000
+Tree at:  0000 0000 0000 0498  length: 0000 0000 0000 000C
+  Keys: 0000 04D8 0A00 000C   0000 0000 0000 0000   0000 000D 0000 000C   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+  Data: 0000 0000 0000 0018   0000 0000 0000 0000   0000 03D8 0000 0009   0000 0298 0000 0009   0000 0002 0000 0001   0000 0001 0000 0008   0000 0558 0040 8578   0000 0003 0000 0009
   Node: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
     index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
     index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
-    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 8810
-    index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0008
-    index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0001
-    index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
-    index: 0000 0000 0000 0006   key: 0000 0000 0000 0007   data: 0000 0000 0000 0002
-    index: 0000 0000 0000 0007   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 0008   key: 0000 0000 0000 0009   data: 0000 0000 0000 0298 subTree
-    index: 0000 0000 0000 0009   key: 0000 0000 0000 000C   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 000A   key: 0000 0000 0000 000D   data: 0000 0000 0000 03D8 subTree
+    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 8578
+    index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0558
+    index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0008
+    index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0006   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0002
+    index: 0000 0000 0000 0008   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0009   key: 0000 0000 0000 0009   data: 0000 0000 0000 0298 subTree
+    index: 0000 0000 0000 000A   key: 0000 0000 0000 000C   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 000B   key: 0000 0000 0000 000D   data: 0000 0000 0000 03D8 subTree
   Tree at:  0000 0000 0000 0298  length: 0000 0000 0000 0007
     Keys: 0000 02D8 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
     Data: 0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0001 0000 0000   0000 0006 0000 0000   0000 0001 0000 0009
@@ -4233,7 +4281,6 @@ Tree at:  0000 0000 0000 0498  length: 0000 0000 0000 000B
       index: 0000 0000 0000 0006   key: 0000 0000 0000 0007   data: 0000 0000 0000 0001
   end
 end
-semiColon
 END
  }
 
