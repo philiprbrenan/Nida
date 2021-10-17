@@ -1,4 +1,4 @@
-# Test UnisynParse 2021-10-17 at 13:31:22
+# Test UnisynParse 2021-10-17 at 13:33:07
 
 name: Test
 
@@ -16,13 +16,13 @@ jobs:
       with:
         ref: 'main'
 
-
     - name: Download Intel Sde
       run: |
         curl https://github.com/philiprbrenan/NasmX86/archive/refs/heads/main.zip       > NasmX86.zip
         curl https://github.com/philiprbrenan/DataTableText/archive/refs/heads/main.zip > DataTableText.zip
-        unzip NasmX86.zip
-        unzip DataTableText.zip
+        tree
+        unzip NasmX86
+        unzip DataTableText
         cp -R NasmX86/* DataTableText/* .
         tree
 
