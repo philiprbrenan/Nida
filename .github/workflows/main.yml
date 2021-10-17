@@ -1,4 +1,4 @@
-# Test UnisynParse 2021-10-17 at 13:27:26
+# Test UnisynParse 2021-10-17 at 13:29:53
 
 name: Test
 
@@ -11,36 +11,24 @@ jobs:
 
     steps:
 
-#    - name: Checkout Nasm::X86
-#      uses: actions/checkout@v2
-#      with:
-#        clean: false
-#        repository: philiprbrenan/NasmX86
-#
-#    - name: Checkout Data::Table::Text
-#      uses: actions/checkout@v2
-#      with:
-#        clean: false
-#        repository: philiprbrenan/DataTableText
-
     - name: Checkout repo
       uses: actions/checkout@v2
       with:
         ref: 'main'
 
-    - name: Install Data::Table::Text
+
+    - name: Download Intel Sde
       run: |
-        sudo cpan install -T Data::Table::Text GitHub::Crud Test::Most Nasm::X86
+        curl https://github.com/philiprbrenan/NasmX86/archive/refs/heads/main.zip       > NasmX86.zip
+        curl https://github.com/philiprbrenan/DataTableText/archive/refs/heads/main.zip > DataTableText.zip
+        unzip NasmX86.zip
+        unzip DataTableText.zip
+        cp -R NasmX86/* DataTableText/* .
+        tree
 
     - name: Install Nasm
       run: |
         sudo apt-get install -y nasm
-
-    - name: Download Intel Sde
-      run: |
-        curl https://github.com/philiprbrenan/NasmX86/archive/refs/heads/main.zip > NasmX86.xip
-        unzip NasmX86.zip
-        cp -R NasmX86/* .        tree
 
     - name: Install Intel Sde
       run: |
