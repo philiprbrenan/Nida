@@ -38,7 +38,6 @@ jobs:
 
     - name: Download Intel Sde
       run: |
-#        curl https://software.intel.com/content/dam/develop/external/us/en/documents/downloads/sde-external-8.63.0-2021-01-18-lin.tar.bz2 > sde.tar.bz2
         git clone git@github.com:philiprbrenan/NasmX86.git Nasmx86
         cp -R NasmX86/* .
         tree
