@@ -328,8 +328,6 @@ sub new($$)                                                                     
         Else
          {$s->loadDwordBytes(0, $startAddress, $size, 1);                       # Load text of lexical item into short string leaving space for lexical type
           Pinsrb "xmm1", $liType."b", 1;                                        # Set lexical type as the first byte of the short string
-PrintErrStringNL "AAAA";
-PrintErrRegisterInHex xmm1;
          };
 
         my $q = $quarks->quarkFromShortString($s);                              # Find the quark matching the lexical item if there is such a quark
@@ -359,9 +357,6 @@ PrintErrRegisterInHex xmm1;
               Pinsrq "xmm1", $liType, 0;                                        # Load short string
               my $N = $operators->subFromShortString($s);                       # Address of sub to process variable or ascii or semicolon
               Shr $liType, 8;                                                   # Restore lexical type
-PrintErrStringNL "BBBB";
-PrintErrRegisterInHex xmm1;
-$N->d;
               If $N >= 0,                                                       # Found a matching operator subroutine
               Then
                {$t->insert(V(key, $opSub), $N);                                 # Save offset to subroutine associated with this lexical item
