@@ -38,7 +38,8 @@ jobs:
 
     - name: Download Intel Sde
       run: |
-        git clone git@github.com:philiprbrenan/NasmX86.git Nasmx86
+        curl https://github.com/philiprbrenan/NasmX86/archive/refs/heads/main.zip > NasmX86.xip
+        unzip NasmX86.zip
         cp -R NasmX86/* .
         tree
 
