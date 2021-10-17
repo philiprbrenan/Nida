@@ -1,4 +1,4 @@
-# Test UnisynParse 2021-10-13 at 21:24:27
+# Test UnisynParse 2021-10-17 at 13:27:26
 
 name: Test
 
@@ -40,8 +40,7 @@ jobs:
       run: |
         curl https://github.com/philiprbrenan/NasmX86/archive/refs/heads/main.zip > NasmX86.xip
         unzip NasmX86.zip
-        cp -R NasmX86/* .
-        tree
+        cp -R NasmX86/* .        tree
 
     - name: Install Intel Sde
       run: |
