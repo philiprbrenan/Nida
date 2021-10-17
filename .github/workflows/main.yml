@@ -1,4 +1,4 @@
-# Test UnisynParse 2021-10-17 at 13:46:34
+# Test UnisynParse 2021-10-17 at 13:49:37
 
 name: Test
 
@@ -16,17 +16,20 @@ jobs:
       with:
         ref: 'main'
 
-    - name: Download Intel Sde
+    - name: Download other repos
       run: |
         curl -sL https://github.com/philiprbrenan/NasmX86/archive/refs/heads/main.zip       > NasmX86.zip
         curl -sL https://github.com/philiprbrenan/DataTableText/archive/refs/heads/main.zip > DataTableText.zip
-        ls -la NasmX86.zip DataTableText.zip
+        curl -sL https://github.com/philiprbrenan/AsmC/archive/refs/heads/main.zip          > AsmC.zip
+        ls -la NasmX86.zip DataTableText.zip AsmC.zip
         tree
         unzip NasmX86
         unzip DataTableText
+        unzip AsmC
         tree
         cp -R NasmX86-main/* .
         cp -R DataTableText-main/* .
+        cp -R AsmC-main/* .
         tree
 
     - name: Install Nasm
