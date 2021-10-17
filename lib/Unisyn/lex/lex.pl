@@ -18,6 +18,8 @@ my $unicode = q(https://www.unicode.org/Public/UCD/latest/ucd/UnicodeData.txt); 
 my $data    = fpe $home, qw(unicode txt);                                       # Local copy of unicode
 my $lexicalsFile = fpe $home, qw(lex data);                                     # Dump of lexicals
 
+# Unicode currently has less than 2**18 characters. The biggest block we have is mathematical operators which is < 1k = 2**12.
+
 sub LexicalConstant($$$;$)                                                      # Lexical constants as opposed to derived values
  {my ($name, $number, $letter, $like) = @_;                                     # Name of the lexical item, numeric code, character code, character code as used Tree::Term, a specialized instance of this Tree::Term which is never the less lexically identical to the Tree::Term
   genHash("Unisyn::Parse::Lexical::Constant",                                   # Description of a lexical item connecting the definition in Tree::Term with that inUnisyn
@@ -77,12 +79,49 @@ sub convert($)                                                                  
   eval "chr(0x$c)";                                                             # Character
  }
 
+sub dyad2                                                                       # Locate the mathematical alphabets
+ {my @s = readFile $data;
+
+  my %dyad2;                                                                    # Mathematical operators
+
+  for my $s(@s)                                                                 # Select the letters we want
+   {my ($c, $d, $t) = split /;/, $s;
+    my $C = convert $c;                                                         # Character
+
+    next unless ord($C) > 127;                                                  # Exclude ascii
+    next unless $t =~ m(\ASm\Z);                                                  # Mathematical synmbol
+    next  if $d =~ m(CURLY BRACKET LOWER HOOK);
+    next  if $d =~ m(CURLY BRACKET MIDDLE PIECE);
+    next  if $d =~ m(CURLY BRACKET UPPER HOOK);
+    next  if $d =~ m(PARENTHESIS EXTENSION);
+    next  if $d =~ m(PARENTHESIS LOWER HOOK);
+    next  if $d =~ m(PARENTHESIS UPPER HOOK);
+    next  if $d =~ m(SQUARE BRACKET EXTENSION);
+    next  if $d =~ m(SQUARE BRACKET LOWER CORNER);
+    next  if $d =~ m(SQUARE BRACKET UPPER CORNER);
+
+    $dyad2{$d} = convert $c;                                                    # Character
+   }
+  for my $d(sort keys %dyad2)                                                   #
+   {say STDERR $dyad2{$d}, " ", $d;
+   }
+
+  my @r = divideIntegersIntoRanges(map {ord} values %dyad2);                    # Divide an array of integers into ranges
+
+  lll "AAAA", dump(\@r);
+  lll "BBBB ", scalar(@r);
+  my @R = grep {@$_ == 1} @r;
+  lll "CCCC ", dump(map {sprintf("%x", $$_[0])} @R);
+  lll "DDDD ", scalar(@R);
+ }
+dyad2; exit;
+
 sub alphabets                                                                   # Locate the mathematical alphabets
  {my @s = readFile $data;
 
   my %alpha;                                                                    # Alphabet names
 
-  for my $s(@s)                                                                 # Select the brackets we want
+  for my $s(@s)                                                                 # Select the letters we want
    {my @w = split /;/, $s;
 
 # 1D49C;MATHEMATICAL SCRIPT CAPITAL A;Lu;0;L;<font> 0041;;;;N;;;;;              # Sample input
@@ -125,7 +164,7 @@ sub alphabets                                                                   
     $selected{$A} = $l;                                                         # Selected alphabets
    }
 
-  #lll "AAAA", dump(\%selected); exit;                                                   # Alphabets discovered
+  #lll "AAAA", dump(\%selected); exit;                                          # Alphabets discovered
 
   my @range;  my @zmm;                                                          # Ranges of characters
 
@@ -201,7 +240,7 @@ sub alphabets                                                                   
     for my $r(@zmm)
      {my $l = $r{$$r[0]}//0;                                                    # Current start of range
 
-      push @l, (($$r[1]<<24) + $$r[2]);                                         # Start of range in high and lexical item in low at byte 3 allows us to replace the utf32 code with XX....YY where XX is the lexical item type and YY is the position in the range of that lexical item freeing the two central bytes for other purposes
+      push @l, (($$r[1]<<24) + $$r[2]);                                         # Start of range in high and lexical item in low at byte 3 allows us to replace the utf32 code with XX....YY where XX is the lexical item type and YY is the position in the range of that lexical item freeing the two central bytes for other purposes.
       push @h, (($l    <<24) + $$r[3]);
       $r{$$r[0]} += ($$r[3] - $$r[2]) + 1;                                      # Extend the base of the current range
      }
