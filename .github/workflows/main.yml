@@ -1,4 +1,4 @@
-# Test UnisynParse 2021-10-17 at 13:40:02
+# Test UnisynParse 2021-10-17 at 13:41:44
 
 name: Test
 
@@ -24,6 +24,7 @@ jobs:
         tree
         unzip NasmX86
         unzip DataTableText
+        tree
         cp -R NasmX86/* DataTableText/* .
         tree
 
