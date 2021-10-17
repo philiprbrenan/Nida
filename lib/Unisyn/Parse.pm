@@ -328,6 +328,8 @@ sub new($$)                                                                     
         Else
          {$s->loadDwordBytes(0, $startAddress, $size, 1);                       # Load text of lexical item into short string leaving space for lexical type
           Pinsrb "xmm1", $liType."b", 1;                                        # Set lexical type as the first byte of the short string
+PrintErrStringNL "AAAA";
+PrintErrRegisterInHex xmm1;
          };
 
         my $q = $quarks->quarkFromShortString($s);                              # Find the quark matching the lexical item if there is such a quark
@@ -357,6 +359,9 @@ sub new($$)                                                                     
               Pinsrq "xmm1", $liType, 0;                                        # Load short string
               my $N = $operators->subFromShortString($s);                       # Address of sub to process variable or ascii or semicolon
               Shr $liType, 8;                                                   # Restore lexical type
+PrintErrStringNL "BBBB";
+PrintErrRegisterInHex xmm1;
+$N->d;
               If $N >= 0,                                                       # Found a matching operator subroutine
               Then
                {$t->insert(V(key, $opSub), $N);                                 # Save offset to subroutine associated with this lexical item
@@ -4273,12 +4278,12 @@ if (1) {                                                                        
   my $s = Rutf8 $Lex->{sampleText}{s};
   my $p = create K(address, $s), operators => \&executeOperator;
 
-   K(address, $s)->printOutZeroString;
-   $p->print;
-   $p->traverseParseTree;
-   $p->makeExecutionChain;
-   $p->printExecChain;
-   $p->dumpParseTree ;
+  K(address, $s)->printOutZeroString;
+  $p->print;
+  $p->traverseParseTree;
+  $p->makeExecutionChain;
+  $p->printExecChain;
+  $p->dumpParseTree ;
 
   Assemble(debug => 0, eq => <<END)
 𝗮⟢𝗯
@@ -4345,17 +4350,25 @@ sub executeChain($)                                                             
    } [], name=>"UnisynParse::semiColon";
 
   $parse->semiColon($semiColon);
+
+  my $variable = Subroutine
+   {PrintOutStringNL "variable";
+   } [], name=>"UnisynParse::variable";
+
+  $parse->semiColon($semiColon);
+  $parse->variable ($variable);
  }
 
-latest:
+#latest:
 if (1) {                                                                        # Semicolon
   my $s = Rutf8 $Lex->{sampleText}{s};
-  my $p = create K(address, $s), operators => \&executeOperator;
+  my $p = create K(address, $s), operators => \&executeChain;
 
   K(address, $s)->printOutZeroString;
   $p->print;
   $p->makeExecutionChain;
   PrintOutStringNL "Execution chain:";
+  $p->dumpParseTree ;
   $p->execExecChain;
 
   Assemble(debug => 0, eq => <<END)
@@ -4366,7 +4379,50 @@ Semicolon
   Term
     Variable: 𝗯
 Execution chain:
+Tree at:  0000 0000 0000 04D8  length: 0000 0000 0000 000C
+  Keys: 0000 0518 0A00 000C   0000 0000 0000 0000   0000 000D 0000 000C   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+  Data: 0000 0000 0000 0018   0000 0000 0000 0000   0000 0418 0000 0009   0000 02D8 0000 0009   0000 0002 0000 0001   0000 0001 0000 0008   0000 0598 0040 8578   0000 0003 0000 0009
+  Node: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+    index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
+    index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 8578
+    index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0598
+    index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0008
+    index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0006   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
+    index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0002
+    index: 0000 0000 0000 0008   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 0009   key: 0000 0000 0000 0009   data: 0000 0000 0000 02D8 subTree
+    index: 0000 0000 0000 000A   key: 0000 0000 0000 000C   data: 0000 0000 0000 0009
+    index: 0000 0000 0000 000B   key: 0000 0000 0000 000D   data: 0000 0000 0000 0418 subTree
+  Tree at:  0000 0000 0000 02D8  length: 0000 0000 0000 0007
+    Keys: 0000 0318 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
+    Data: 0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0001 0000 0000   0000 0006 0040 D2A2   0000 0001 0000 0009
+    Node: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+      index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+      index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 D2A2
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
+      index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0000
+      index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
+      index: 0000 0000 0000 0006   key: 0000 0000 0000 0007   data: 0000 0000 0000 0000
+  end
+  Tree at:  0000 0000 0000 0418  length: 0000 0000 0000 0007
+    Keys: 0000 0458 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
+    Data: 0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0001 0000 0002   0000 0006 0040 D2A2   0000 0001 0000 0009
+    Node: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
+      index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
+      index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 D2A2
+      index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
+      index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0002
+      index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
+      index: 0000 0000 0000 0006   key: 0000 0000 0000 0007   data: 0000 0000 0000 0001
+  end
+end
 semiColon
+variable
+variable
 END
  }
 
