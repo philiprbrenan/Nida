@@ -108,7 +108,7 @@ sub dyad2                                                                       
     $dyad2{$d} = convert $c;                                                    # Character
    }
   for my $d(sort keys %dyad2)                                                   #
-   {say STDERR $dyad2{$d}, " ", $d;
+   {#say STDERR $dyad2{$d}, " ", $d;
    }
 
   my @r = divideIntegersIntoRanges(map {ord} values %dyad2);                    # Divide an array of integers into ranges
@@ -126,7 +126,11 @@ sub dyad2                                                                       
   $Tables->dyad2Low    = \@l;                                                   # Record start of each range
   $Tables->dyad2High   = \@h;                                                   # Record end of range
   $Tables->dyad2Offset = \@o;                                                   # Record offset of each range start
-  $Tables->dyad2Chars  = [sort values %dyad2];                                  # Record characters comprising the dyad 2 alphabet
+  $Tables->dyad2Chars  = my $a = [map {ord $_} sort values %dyad2];             # Record characters comprising the dyad 2 alphabet
+
+  my $t = $Tables->alphabetsOrdered;
+  $Tables->alphabetsOrdered = {$t ? %$t : (), dyad2=>$a};
+
  }
 
 sub alphabets                                                                   # Locate the mathematical alphabets
@@ -275,9 +279,8 @@ sub alphabets                                                                   
     push $a{$name}->@*, $start..$end;
    }
 
-  lll "Alphabets Ordered:\n", dump(\%a);
-
-  $Tables->alphabetsOrdered = \%a;
+  my $t = $Tables->alphabetsOrdered;
+  $Tables->alphabetsOrdered = {$t ? %$t : (), %a};
  }
 
 sub brackets                                                                    # Write brackets
@@ -490,9 +493,13 @@ sub translateSomeText($$)                                                       
  }
 
 alphabets;                                                                      # Locate alphabets
-brackets;                                                                       # Locate brackets
 dyad2;                                                                          # Dyadic operators at priority 4 that is one more urgent than dyads
+brackets;                                                                       # Locate brackets
 tripleTerms;                                                                    # All invalid transitions that could usefully interpret one intervening new line as a semi colon
+
+
+lll "Alphabets Ordered:\n", dump($Tables->alphabetsOrdered);
+
 
 translateSomeText 'v', <<END;                                                   # Translate some text
 va
