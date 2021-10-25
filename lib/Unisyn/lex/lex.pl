@@ -18,7 +18,7 @@ my $unicode = q(https://www.unicode.org/Public/UCD/latest/ucd/UnicodeData.txt); 
 my $data    = fpe $home, qw(unicode txt);                                       # Local copy of unicode
 my $lexicalsFile = fpe $home, qw(lex data);                                     # Dump of lexicals
 
-# Unicode currently has less than 2**18 characters. The biggest block we have is mathematical operators which is < 1k = 2**12.
+# Unicode currently has less than 2**18 characters. The biggest block we have is mather matical operators which is < 1k = 2**12.
 
 sub LexicalConstant($$$;$)                                                      # Lexical constants as opposed to derived values
  {my ($name, $number, $letter, $like) = @_;                                     # Name of the lexical item, numeric code, character code, character code as used Tree::Term, a specialized instance of this Tree::Term which is never the less lexically identical to the Tree::Term
@@ -44,6 +44,7 @@ my $Lexicals = genHash("Unisyn::Parse::Lexicals",                               
   empty             => LexicalConstant("empty",             10, 'e', 'e'),      # Empty term present between two adjacent semicolons
   WhiteSpace        => LexicalConstant("WhiteSpace",        11, 'W'),           # White space that can be ignored during lexical analysis
   NewLineSemiColon  => LexicalConstant("NewLineSemiColon",  12, 'N'),           # A new line character that is also acting as a semi colon
+  dyad2             => LexicalConstant("dyad2",             13, 'D', 'D'),      # Infix operator with left to right binding at priority 4
  );
 
 my $TreeTermLexicals = Tree::Term::LexicalStructure->codes;
@@ -66,8 +67,12 @@ my $Tables = genHash("Unisyn::Parse::Lexical::Tables",                          
   sampleText       => undef,                                                    # Sample programs in utf8
   treeTermLexicals => $TreeTermLexicals,                                        # Tree term lexicals
   semiColon        => q(⟢),                                                     # Semi colon symbol, left star: U+27E2
-  separator        => q( ),                                                     # Space for separating non ascii items: U+205F
+  separator        => q( ),                                                      # Space for separating non ascii items: U+205F
   structure        => Tree::Term::LexicalStructure,                             # Lexical structure from Tree::term
+  dyad2Low         => undef,                                                    # Array of dyad 2 start of ranges
+  dyad2High        => undef,                                                    # Array of dyad 2 end of ranges
+  dyad2Offset      => undef,                                                    # Array of dyad 2 offsets at start of each range
+  dyad2Chars       => undef,                                                    # Array of all dyad 2 operators
  );
 
 if (!-e $data)                                                                  # Download Unicode specification
@@ -108,13 +113,21 @@ sub dyad2                                                                       
 
   my @r = divideIntegersIntoRanges(map {ord} values %dyad2);                    # Divide an array of integers into ranges
 
-  lll "AAAA", dump(\@r);
-  lll "BBBB ", scalar(@r);
-  my @R = grep {@$_ == 1} @r;
-  lll "CCCC ", dump(map {sprintf("%x", $$_[0])} @R);
-  lll "DDDD ", scalar(@R);
+  push @r, [0] while @r != 64;                                                  # Pad up to 64 ranges
+
+  my @l; my @h; my @o; my $o = 0;                                               # Low high, offset in range
+  for my $a(@r)
+   {push @l, $$a[0]; push @h, $$a[-1]; push @o, $o; $o += @$a;
+   }
+  for my $a(\@l, \@h, \@o)
+   {say STDERR join ', ', map {sprintf("0x%04x", $_)} @$a;
+   }
+
+  $Tables->dyad2Low    = \@l;                                                   # Record start of each range
+  $Tables->dyad2High   = \@h;                                                   # Record end of range
+  $Tables->dyad2Offset = \@o;                                                   # Record offset of each range start
+  $Tables->dyad2Chars  = [sort values %dyad2];                                  # Record characters comprising the dyad 2 alphabet
  }
-dyad2; exit;
 
 sub alphabets                                                                   # Locate the mathematical alphabets
  {my @s = readFile $data;
@@ -401,6 +414,8 @@ sub translateSomeText($$)                                                       
     $alphabets{$l} = [$n, $a];
    }
 
+  $alphabets{D} = [0, join '', $Tables->dyad2Chars->@*];                        # Alphabet for dyads 2
+
   my $T = '';                                                                   # Translated text as characters
   my $normal = join '', 'A'..'Z', 'a'..'z';                                     # The alphabet we can write lexical items
 
@@ -429,7 +444,7 @@ sub translateSomeText($$)                                                       
    }
 
   for my $w(split /\s+/, $string)                                               # Translate to text
-   {if    ($w =~ m(\A(a|d|p|q|v))) {translate $w}
+   {if    ($w =~ m(\A(a|d|D|p|q|v))) {translate $w}
     elsif ($w =~ m(\As)) {$T .= $Tables->alphabets->{semiColon}}
     elsif ($w =~ m(\Ab)) {$T .= $Tables->bracketsOpen ->[substr($w, 1)||0]}
     elsif ($w =~ m(\AB)) {$T .= $Tables->bracketsClose->[substr($w, 1)||0]}
@@ -440,12 +455,13 @@ sub translateSomeText($$)                                                       
    }
 
   my @L;                                                                        # Translated text as lexical elements
-  my %l = $Tables->lexicals->%*;
-  my %n = map {$_=>$l{$_}->number} sort keys %l;
+  my %l = $Tables->lexicals->%*;                                                # Flatten lexical items
+  my %n = map {$_=>$l{$_}->number} sort keys %l;                                # Numeric code for each lexical
   for my $w(split /\s+/, $string)                                               # Translate to lexical elements
    {my $t = substr($w, 0, 1);
        if ($w =~ m(\Aa)) {push @L, $n{assign}}
     elsif ($w =~ m(\Ad)) {push @L, $n{dyad}}
+    elsif ($w =~ m(\AD)) {push @L, $n{dyad2}}
     elsif ($w =~ m(\Av)) {push @L, $n{variable}}
     elsif ($w =~ m(\As)) {push @L, $n{semiColon}}
     elsif ($w =~ m(\Ab)) {push @L, $n{OpenBracket}}
@@ -454,9 +470,10 @@ sub translateSomeText($$)                                                       
     elsif ($w =~ m(\AN)) {push @L, ($n{Ascii} << 24) + ord("\n")}
     elsif ($w =~ m(\AA)) {push @L, ($n{Ascii} << 24) + ord('A')}
    }
-  lll '-' x 32;
-  lll "Sample text length in chars   :", sprintf("0x%x", length($T));
-  lll "Sample text length in lexicals:", scalar(@L);
+  say STDERR '-' x 32;
+  say STDERR $title;
+  say STDERR "Sample text length in chars   :", sprintf("0x%x", length($T));
+  say STDERR "Sample text length in lexicals:", scalar(@L);
 
   if (0)                                                                        # Print source code as utf8
    {my @T = split //, $T;
@@ -466,15 +483,16 @@ sub translateSomeText($$)                                                       
      }
    }
 
-  lll "Sample text    :\n$T";
-  lll "Sample lexicals:\n", dump(\@L);
+  say STDERR "Sample text    :\n$T";
+  say STDERR "Sample lexicals:\n", dump(\@L);
   $Tables->sampleText    ->{$title} = $T;                                       # Save sample text
   $Tables->sampleLexicals->{$title} = [map {$_ < 16 ? $_<<24 : $_} @L];         # Boost lexical elements not already boosted
  }
 
 alphabets;                                                                      # Locate alphabets
 brackets;                                                                       # Locate brackets
-tripleTerms;
+dyad2;                                                                          # Dyadic operators at priority 4 that is one more urgent than dyads
+tripleTerms;                                                                    # All invalid transitions that could usefully interpret one intervening new line as a semi colon
 
 translateSomeText 'v', <<END;                                                   # Translate some text
 va
@@ -546,6 +564,10 @@ END
 
 translateSomeText 'ppppvdvdvqqqq', <<END;
 pa b9 pb b10 pc b11 va aequals pd vb qd dtimes b12 vc dplus vd B12 s ve aassign vf dsub vg  qh B11 qc B10  qb B9 qa
+END
+
+translateSomeText 'adD', <<END;
+va aassign vb dplus vc DA vd
 END
 
 say STDERR owf $lexicalsFile, dump($Tables);                                    # Write results
