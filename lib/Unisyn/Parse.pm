@@ -1167,13 +1167,38 @@ sub parseUtf8($@)                                                               
       PrintUtf32($sourceSize32, $source32);                                     # Print utf32
      }
 
-    Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{lexicalLow} ->@*)."]";              # Each double is [31::24] Classification, [21::0] Utf32 start character
-    Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{lexicalHigh}->@*)."]";              # Each double is [31::24] Range offset,   [21::0] Utf32 end character
+    if (1)                                                                      # Classify non dyad2 alphabetic characters.
+     {Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{lexicalLow} ->@*)."]";            # Each double is [31::24] Classification, [21::0] Utf32 start character
+      Vmovdqu8 zmm1, "[".Rd(join ', ', $Lex->{lexicalHigh}->@*)."]";            # Each double is [31::24] Range offset,   [21::0] Utf32 end character
 
-    ClassifyWithInRangeAndSaveOffset address=>$source32, size=>$sourceLength32; # Alphabetic classification
-    if ($debug)
-     {PrintErrStringNL "After classification into alphabet ranges";
-      PrintUtf32($sourceSize32, $source32);                                     # Print classified utf32
+      ClassifyWithInRangeAndSaveOffset                                          # Alphabetic classification
+        address=>$source32, size=>$sourceLength32;
+      if ($debug)
+       {PrintErrStringNL "After classification into alphabet ranges";
+        PrintUtf32($sourceSize32, $source32);                                   # Print classified utf32
+       }
+     }
+
+    if (1)                                                                      # Classify dyad2 characters.
+     {my @l = $Lex->{dyad2Low} ->@*;                                            # Start of each range
+      my @h = $Lex->{dyad2High}->@*;                                            # End of range
+      my @o = $Lex->{dyad2Offset}->@*;                                          # Offset of each range
+      my $b = $Lex->{dyad2Blocks};                                              # Dyad 2 blocks
+      my $B = $Lex->{dyad2BlockSize};                                           # Offset of each range
+      for my $block(1..$b)                                                      # Classify dyad2 characters.
+       {my $l = ($block-1) * $B;
+        my $h = ($block)   * $B - 1;
+        Vmovdqu8 zmm0, "[".Rd(join ', ', @l[$l..$h])."]";                       # Start of each range
+        Vmovdqu8 zmm1, "[".Rd(join ', ', @h[$l..$h])."]";                       # End of range
+        Vmovdqu8 zmm2, "[".Rd(join ', ', @o[$l..$h])."]";                       # Offset of each range
+
+        ClassifyWithInRangeAndSaveWordOffset $source32, $sourceLength32,        # Dyad2 character classifications
+          V('classification', $Lex->{lexicals}{dyad2}{number});
+       }
+      if ($debug)
+       {PrintErrStringNL "After classification into dyad2 ranges";
+        PrintUtf32($sourceSize32, $source32);                                   # Print classified utf32
+       }
      }
 
     Vmovdqu8 zmm0, "[".Rd(join ', ', $Lex->{bracketsLow} ->@*)."]";             # Each double is [31::24] Classification, [21::0] Utf32 start character
@@ -1740,7 +1765,11 @@ sub dyad($$$)                                                                   
 
 sub dyad2($$$)                                                                  # Define a method for a dyadic 2 operator.
  {my ($parse, $text, $sub) = @_;                                                # Sub quarks, the name of the operator as a utf8 string, associated subroutine definition
-  $parse->lexToSub("dyad2", $text, $sub);
+  my $N = $$Lex{lexicals}{dyad2}{number};                                       # Lexical number of a dyad 2
+  my $a = &lexicalData->{alphabetsOrdered}{dyad2};                              # Alphabet
+  my %s = map{chr($$a[$_]) => chr $_} 0..$#$a;
+  my $i = $s{substr($text, 0, 1)};                                              # Index of dyad in dyad alphabet
+  $parse->operators->putSub(chr($N).$i, $sub);                                  # Add the semicolon subroutine to the sub quarks
  }
 
 sub assign($$$)                                                                 # Define a method for an assign operator.
@@ -1758,7 +1787,6 @@ sub suffix($$$)                                                                 
   my $n = $$Lex{lexicals}{variable}{number};                                    # Lexical number of a variable
   $parse->operators->putSub(chr($n), $sub);                                     # Add the variable subroutine to the sub quarks
  }
-
 
 sub ascii($$)                                                                   # Define a method for ascii text.
  {my ($parse, $sub) = @_;                                                       # Sub quarks, associated subroutine definition
@@ -1816,11 +1844,6 @@ sub asciiToAssignGreek($)                                                       
 sub asciiToDyadLatin($)                                                         # Translate ascii to the corresponding letters in the dyad latin alphabet.
  {my ($in) = @_;                                                                # A string of ascii
   $in =~ tr/ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/𝐀𝐁𝐂𝐃𝐄𝐅𝐆𝐇𝐈𝐉𝐊𝐋𝐌𝐍𝐎𝐏𝐐𝐑𝐒𝐓𝐔𝐕𝐖𝐗𝐘𝐙𝐚𝐛𝐜𝐝𝐞𝐟𝐠𝐡𝐢𝐣𝐤𝐥𝐦𝐧𝐨𝐩𝐪𝐫𝐬𝐭𝐮𝐯𝐰𝐱𝐲𝐳/r;
- }
-
-sub asciiToDyad2($)                                                             # Translate ascii to the corresponding letters in the dyad2 alphabet.
- {my ($in) = @_;                                                                # A string of ascii
-  $in =~ tr/A/¬/r;
  }
 
 sub asciiToDyadGreek($)                                                         # Translate ascii to the corresponding letters in the dyad greek alphabet.
@@ -2096,6 +2119,8 @@ sub lexicalData {do {
                           "\x{FF08}",
                           "\x{FF5F}",
                         ],
+    dyad2Blocks      => 4,
+    dyad2BlockSize   => 16,
     dyad2Chars       => 'fix',
     dyad2High        => [
                           172,
@@ -2230,48 +2255,70 @@ sub lexicalData {do {
                           0,
                         ],
     dyad2Offset      => [
-                          0 .. 5,
-                          8,
-                          9,
-                          10,
-                          13,
-                          16,
-                          17,
-                          22,
-                          23,
-                          28,
-                          30 .. 34,
-                          36,
-                          37,
-                          38,
-                          306,
-                          308,
-                          309,
-                          310,
-                          316,
-                          322,
-                          323,
-                          324,
-                          332,
-                          333,
-                          338,
-                          369,
-                          385,
-                          516,
-                          579,
-                          611,
-                          869,
-                          890,
-                          896,
-                          897,
-                          898,
-                          901,
-                          902,
-                          905 .. 908,
-                          912 .. 922,
-                          924,
-                          925,
-                          926,
+                          172,
+                          176,
+                          213,
+                          244,
+                          1010,
+                          1537,
+                          8252,
+                          8265,
+                          8304,
+                          8317,
+                          8456,
+                          8495,
+                          8501,
+                          8569,
+                          8574,
+                          8578,
+                          8580,
+                          8582,
+                          8589,
+                          8620,
+                          8622,
+                          8623,
+                          8654,
+                          8686,
+                          8776,
+                          8821,
+                          8824,
+                          8864,
+                          9333,
+                          9342,
+                          9396,
+                          9507,
+                          9843,
+                          9845,
+                          9855,
+                          10111,
+                          10133,
+                          10137,
+                          10139,
+                          10187,
+                          10189,
+                          63401,
+                          64225,
+                          64226,
+                          64390,
+                          64406,
+                          64467,
+                          64468,
+                          64599,
+                          64605,
+                          119601,
+                          119626,
+                          119657,
+                          119682,
+                          119713,
+                          119738,
+                          119769,
+                          119794,
+                          119825,
+                          119850,
+                          125782,
+                          -924,
+                          -925,
+                          -926,
                         ],
     lexicalAlpha     => {
                           ""             => [
@@ -2546,7 +2593,7 @@ sub lexicalData {do {
                         },
     sampleText       => {
                           A             => "\x{1D5EE}\x{1D5EE}\x{1D452}\x{1D45E}\x{1D462}\x{1D44E}\x{1D459}\x{1D460}abc 123    ",
-                          adD           => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{1D5EF}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F0}1\x{1D5F1}",
+                          adD           => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{1D5EF}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F0}\xF7\x{1D5F1}",
                           Adv           => "\x{1D5EE}\x{1D5EE}\x{1D452}\x{1D45E}\x{1D462}\x{1D44E}\x{1D459}\x{1D460}abc 123    \x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D603}\x{1D5EE}\x{1D5FF}",
                           BB            => "\x{230A}\x{2329}\x{2768}\x{276A}\x{276C}\x{276E}\x{2770}\x{2772}\x{1D5EE}\x{2773}\x{2771}\x{276F}\x{276D}\x{276B}\x{2769}\x{232A}\x{230B}",
                           brackets      => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}",
@@ -2574,17 +2621,17 @@ sub lexicalData {do {
                                             next   => "bpv",
                                             short  => "assign",
                                           }, "Tree::Term::LexicalCode"),
-                                     b => bless({
-                                            letter => "b",
-                                            name   => "opening parenthesis",
-                                            next   => "bBpsv",
-                                            short  => "OpenBracket",
-                                          }, "Tree::Term::LexicalCode"),
                                      B => bless({
                                             letter => "B",
                                             name   => "closing parenthesis",
                                             next   => "aBdeqs",
                                             short  => "CloseBracket",
+                                          }, "Tree::Term::LexicalCode"),
+                                     b => bless({
+                                            letter => "b",
+                                            name   => "opening parenthesis",
+                                            next   => "bBpsv",
+                                            short  => "OpenBracket",
                                           }, "Tree::Term::LexicalCode"),
                                      d => bless({ letter => "d", name => "dyadic operator", next => "bpv", short => "dyad" }, "Tree::Term::LexicalCode"),
                                      e => bless({ letter => "e", name => "dyad2 operator", next => "bpv", short => "dyad2" }, "Tree::Term::LexicalCode"),
@@ -4538,7 +4585,7 @@ END
 sub executeOperator($)                                                          # Print the operator calling sequence.
  {my ($parse) = @_;                                                             # Parse
 
-  my $o = $parse->operators;
+# my $o = $parse->operators;
 
   my $semiColon = Subroutine
    {PrintOutStringNL "semiColon";
@@ -4617,13 +4664,9 @@ END
 sub executeChain($)                                                             # Print the execute chain calling sequence.
  {my ($parse) = @_;                                                             # Parse
 
-  my $o = $parse->operators;
-
   my $semiColon = Subroutine
    {PrintOutStringNL "semiColon";
    } [], name=>"UnisynParse::semiColon";
-
-  $parse->semiColon($semiColon);
 
   my $variable = Subroutine
    {PrintOutStringNL "variable";
@@ -4645,7 +4688,8 @@ sub executeChain($)                                                             
   $parse->variable ($variable);
   $parse->assign   (asciiToAssignLatin("assign"), $assign);
   $parse->dyad     (asciiToDyadLatin  ("plus"),   $dyad);
-  $parse->dyad2    (asciiToDyad2      ("A"),      $dyad2);
+  $parse->dyad2    ("÷",                          $dyad2);
+$parse->operators->dump;
  }
 
 #latest:
