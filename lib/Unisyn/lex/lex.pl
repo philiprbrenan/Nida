@@ -1,4 +1,5 @@
 #!/usr/bin/perl -I/home/phil/perl/cpan/DataTableText/lib/  -I/home/phil/perl/cpan/TreeTerm/lib/
+#!/usr/bin/perl -I/home/phil/perl/cpan/DataTableText/lib/  -I/home/phil/perl/cpan/TreeTerm/lib/
 #-------------------------------------------------------------------------------
 # Find all 13 Unicode Mathematical Alphabets as used by Erl.
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2021
@@ -73,6 +74,8 @@ my $Tables = genHash("Unisyn::Parse::Lexical::Tables",                          
   dyad2High        => undef,                                                    # Array of dyad 2 end of ranges
   dyad2Offset      => undef,                                                    # Array of dyad 2 offsets at start of each range
   dyad2Chars       => undef,                                                    # Array of all dyad 2 operators
+  dyad2Blocks      => 4,                                                        # Number of dyad2 blocks
+  dyad2BlockSize   => 16,                                                       # Size of a dyad2 block
  );
 
 if (!-e $data)                                                                  # Download Unicode specification
@@ -117,7 +120,7 @@ sub dyad2                                                                       
 
   my @l; my @h; my @o; my $o = 0;                                               # Low high, offset in range
   for my $a(@r)
-   {push @l, $$a[0]; push @h, $$a[-1]; push @o, $o; $o += @$a;
+   {push @l, $$a[0]; push @h, $$a[-1]; push @o, $$a[0] - $o; $o += @$a;
    }
   for my $a(\@l, \@h, \@o)
    {say STDERR join ', ', map {sprintf("0x%04x", $_)} @$a;
@@ -417,7 +420,7 @@ sub translateSomeText($$)                                                       
     $alphabets{$l} = [$n, $a];
    }
 
-  $alphabets{D} = [0, join '', $Tables->dyad2Chars->@*];                        # Alphabet for dyads 2
+  $alphabets{D} = ["dyad2", join '', map {chr $_} $Tables->dyad2Chars->@*];     # Alphabet for dyads 2
 
   my $T = '';                                                                   # Translated text as characters
   my $normal = join '', 'A'..'Z', 'a'..'z';                                     # The alphabet we can write lexical items
@@ -574,7 +577,7 @@ pa b9 pb b10 pc b11 va aequals pd vb qd dtimes b12 vc dplus vd B12 s ve aassign 
 END
 
 translateSomeText 'adD', <<END;
-va aassign vb dplus vc DA vd
+va aassign vb dplus vc DD vd
 END
 
 say STDERR owf $lexicalsFile, dump($Tables);                                    # Write results
