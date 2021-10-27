@@ -19,6 +19,8 @@ my $unicode = q(https://www.unicode.org/Public/UCD/latest/ucd/UnicodeData.txt); 
 my $data    = fpe $home, qw(unicode txt);                                       # Local copy of unicode
 my $lexicalsFile = fpe $home, qw(lex data);                                     # Dump of lexicals
 
+makeDieConfess;
+
 # Unicode currently has less than 2**18 characters. The biggest block we have is mather matical operators which is < 1k = 2**12.
 
 sub LexicalConstant($$$;$)                                                      # Lexical constants as opposed to derived values
@@ -45,7 +47,7 @@ my $Lexicals = genHash("Unisyn::Parse::Lexicals",                               
   empty             => LexicalConstant("empty",             10, 'e', 'e'),      # Empty term present between two adjacent semicolons
   WhiteSpace        => LexicalConstant("WhiteSpace",        11, 'W'),           # White space that can be ignored during lexical analysis
   NewLineSemiColon  => LexicalConstant("NewLineSemiColon",  12, 'N'),           # A new line character that is also acting as a semi colon
-  dyad2             => LexicalConstant("dyad2",             13, 'D', 'D'),      # Infix operator with left to right binding at priority 4
+  dyad2             => LexicalConstant("dyad2",             13, 'e', 'e'),      # Infix operator with left to right binding at priority 4
  );
 
 my $TreeTermLexicals = Tree::Term::LexicalStructure->codes;
@@ -420,7 +422,7 @@ sub translateSomeText($$)                                                       
     $alphabets{$l} = [$n, $a];
    }
 
-  $alphabets{D} = ["dyad2", join '', map {chr $_} $Tables->dyad2Chars->@*];     # Alphabet for dyads 2
+  $alphabets{e} = ["dyad2", join '', map {chr $_} $Tables->dyad2Chars->@*];     # Alphabet for dyads 2
 
   my $T = '';                                                                   # Translated text as characters
   my $normal = join '', 'A'..'Z', 'a'..'z';                                     # The alphabet we can write lexical items
@@ -450,7 +452,7 @@ sub translateSomeText($$)                                                       
    }
 
   for my $w(split /\s+/, $string)                                               # Translate to text
-   {if    ($w =~ m(\A(a|d|D|p|q|v))) {translate $w}
+   {if    ($w =~ m(\A(a|d|e|p|q|v))) {translate $w}
     elsif ($w =~ m(\As)) {$T .= $Tables->alphabets->{semiColon}}
     elsif ($w =~ m(\Ab)) {$T .= $Tables->bracketsOpen ->[substr($w, 1)||0]}
     elsif ($w =~ m(\AB)) {$T .= $Tables->bracketsClose->[substr($w, 1)||0]}
@@ -467,7 +469,7 @@ sub translateSomeText($$)                                                       
    {my $t = substr($w, 0, 1);
        if ($w =~ m(\Aa)) {push @L, $n{assign}}
     elsif ($w =~ m(\Ad)) {push @L, $n{dyad}}
-    elsif ($w =~ m(\AD)) {push @L, $n{dyad2}}
+    elsif ($w =~ m(\Ae)) {push @L, $n{dyad2}}
     elsif ($w =~ m(\Av)) {push @L, $n{variable}}
     elsif ($w =~ m(\As)) {push @L, $n{semiColon}}
     elsif ($w =~ m(\Ab)) {push @L, $n{OpenBracket}}
@@ -576,8 +578,8 @@ translateSomeText 'ppppvdvdvqqqq', <<END;
 pa b9 pb b10 pc b11 va aequals pd vb qd dtimes b12 vc dplus vd B12 s ve aassign vf dsub vg  qh B11 qc B10  qb B9 qa
 END
 
-translateSomeText 'adD', <<END;
-va aassign vb dplus vc DD vd
+translateSomeText 'ade', <<END;
+va aassign vb dplus vc ee vd
 END
 
 say STDERR owf $lexicalsFile, dump($Tables);                                    # Write results
