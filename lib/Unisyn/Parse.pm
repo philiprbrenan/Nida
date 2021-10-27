@@ -420,6 +420,7 @@ sub testSet($$)                                                                 
  {my ($set, $register) = @_;                                                    # Set of lexical letters, Register to test
   my @n = map {sprintf("0x%x", lexicalNumberFromLetter $_)} split //, $set;     # Each lexical item by number from letter
   my $end = Label;
+  Comment "BBBB $set";
   for my $n(@n)
    {Cmp $register."b", $n;
     Je $end
@@ -433,6 +434,7 @@ sub checkSet($)                                                                 
   my @n =  map {lexicalNumberFromLetter $_} split //, $set;
   my $end = Label;
 
+  Comment "AAAAA $set";
   for my $n(@n)
    {Cmp "byte[rsp]", $n;
     Je $end
@@ -586,7 +588,13 @@ sub accept_B                                                                    
   checkSet("bst");
  }
 
-sub accept_d                                                                    #P Infix but not assign or semi-colon.
+sub accept_d                                                                    #P Dyad 3
+ {checkSet("t");
+  PrintErrStringNL "accept d" if $debug;
+  pushElement;
+ }
+
+sub accept_D                                                                    #P Dyad 4
  {checkSet("t");
   PrintErrStringNL "accept d" if $debug;
   pushElement;
@@ -623,8 +631,8 @@ sub accept_s                                                                    
   pushElement;
  }
 
-sub accept_v                                                                    #P Variable.
-  {checkSet("abdps");
+sub accept_v                                                                    #P Variable.      ## Never called
+  {checkSet("abdeps");
    PrintErrStringNL "accept v" if $debug;
    pushElement;
    new(1, "Variable");
@@ -697,7 +705,7 @@ END
 
     for my $l(sort keys $Lex->{lexicals}->%*)                                   # Each possible lexical item after classification
      {my $x = $Lex->{lexicals}{$l}{letter};
-      next unless $x;                                                           # Skip characters that do not have a letter defined for Tree::Term because the lexical items needed to layout a file of lexical items are folded down to the actual lexical items required to represent the language independent of the textual layout with white space.
+      next unless $x and defined &{"accept_$x"};                                # Skip characters that do not have a letter defined for Tree::Term because the lexical items needed to layout a file of lexical items are folded down to the actual lexical items required to represent the language independent of the textual layout with white space.
 
       my $n = $Lex->{lexicals}{$l}{number};
       Comment "Compare to $n for $l";
@@ -706,6 +714,7 @@ END
       IfEq
       Then
        {eval "accept_$x";
+        say STDERR $@ if $@;
         Jmp $next
        };
      }
@@ -2388,7 +2397,7 @@ sub lexicalData {do {
                           assign           => bless({ letter => "a", like => "a", name => "assign", number => 5 }, "Unisyn::Parse::Lexical::Constant"),
                           CloseBracket     => bless({ letter => "B", like => "B", name => "CloseBracket", number => 1 }, "Unisyn::Parse::Lexical::Constant"),
                           dyad             => bless({ letter => "d", like => "d", name => "dyad", number => 3 }, "Unisyn::Parse::Lexical::Constant"),
-                          dyad2            => bless({ letter => "D", like => "D", name => "dyad2", number => 13 }, "Unisyn::Parse::Lexical::Constant"),
+                          dyad2            => bless({ letter => "e", like => "e", name => "dyad2", number => 13 }, "Unisyn::Parse::Lexical::Constant"),
                           empty            => bless({ letter => "e", like => "e", name => "empty", number => 10 }, "Unisyn::Parse::Lexical::Constant"),
                           NewLineSemiColon => bless({ letter => "N", like => undef, name => "NewLineSemiColon", number => 12 }, "Unisyn::Parse::Lexical::Constant"),
                           OpenBracket      => bless({ letter => "b", like => "b", name => "OpenBracket", number => 0 }, "Unisyn::Parse::Lexical::Constant"),
@@ -2411,7 +2420,7 @@ sub lexicalData {do {
                                              33554464,
                                              33554464,
                                            ],
-                          adD           => [
+                          ade           => [
                                              100663296,
                                              83886080,
                                              100663296,
@@ -2593,7 +2602,7 @@ sub lexicalData {do {
                         },
     sampleText       => {
                           A             => "\x{1D5EE}\x{1D5EE}\x{1D452}\x{1D45E}\x{1D462}\x{1D44E}\x{1D459}\x{1D460}abc 123    ",
-                          adD           => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{1D5EF}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F0}\xF7\x{1D5F1}",
+                          ade           => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{1D5EF}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F0}\x{21A0}\x{1D5F1}",
                           Adv           => "\x{1D5EE}\x{1D5EE}\x{1D452}\x{1D45E}\x{1D462}\x{1D44E}\x{1D459}\x{1D460}abc 123    \x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D603}\x{1D5EE}\x{1D5FF}",
                           BB            => "\x{230A}\x{2329}\x{2768}\x{276A}\x{276C}\x{276E}\x{2770}\x{2772}\x{1D5EE}\x{2773}\x{2771}\x{276F}\x{276D}\x{276B}\x{2769}\x{232A}\x{230B}",
                           brackets      => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}",
@@ -2621,17 +2630,17 @@ sub lexicalData {do {
                                             next   => "bpv",
                                             short  => "assign",
                                           }, "Tree::Term::LexicalCode"),
-                                     B => bless({
-                                            letter => "B",
-                                            name   => "closing parenthesis",
-                                            next   => "aBdeqs",
-                                            short  => "CloseBracket",
-                                          }, "Tree::Term::LexicalCode"),
                                      b => bless({
                                             letter => "b",
                                             name   => "opening parenthesis",
                                             next   => "bBpsv",
                                             short  => "OpenBracket",
+                                          }, "Tree::Term::LexicalCode"),
+                                     B => bless({
+                                            letter => "B",
+                                            name   => "closing parenthesis",
+                                            next   => "aBdeqs",
+                                            short  => "CloseBracket",
                                           }, "Tree::Term::LexicalCode"),
                                      d => bless({ letter => "d", name => "dyadic operator", next => "bpv", short => "dyad" }, "Tree::Term::LexicalCode"),
                                      e => bless({ letter => "e", name => "dyad2 operator", next => "bpv", short => "dyad2" }, "Tree::Term::LexicalCode"),
@@ -3730,7 +3739,7 @@ sub C($$%)                                                                      
   Assemble(debug => 0, eq => $expected);
  }
 
-#latest:;
+#latest:
 ok T(q(v), <<END) if 1;
 Tree at:  0000 0000 0000 00D8  length: 0000 0000 0000 0006
   Keys: 0000 0118 0000 0006   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
@@ -4077,7 +4086,7 @@ Semicolon
                   Variable: 𝗰𝗰
 END
 
-#latest:;
+#latest:
 ok T(q(s), <<END) if 1;
 Tree at:  0000 0000 0000 02D8  length: 0000 0000 0000 000A
   Keys: 0000 0318 0280 000A   0000 0000 0000 0000   0000 0000 0000 0000   0000 000D 0000 000C   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
@@ -4760,7 +4769,7 @@ END
  }
 
 
-latest:
+#latest:
 if (1) {                                                                        # Dyad2
   my $s = Rutf8 $Lex->{sampleText}{adD};
   my $p = create K(address, $s), operators => \&executeChain;
