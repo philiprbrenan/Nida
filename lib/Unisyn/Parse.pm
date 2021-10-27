@@ -446,7 +446,7 @@ sub checkSet($)                                                                 
 
 sub reduce($)                                                                   #P Convert the longest possible expression on top of the stack into a term  at the specified priority.
  {my ($priority) = @_;                                                          # Priority of the operators to reduce
-  $priority =~ m(\A(1|3)\Z);                                                    # Level: 1 - all operators, 2 - priority 2 operators
+  $priority =~ m(\A(1|2|3|4)\Z) or confess "Bad priority";                          # Level: 1 - all operators, 2 - priority 2 operators
   my ($success, $end) = map {Label} 1..2;                                       # Exit points
 
   checkStackHas 3;                                                              # At least three elements on the stack
@@ -458,7 +458,7 @@ sub reduce($)                                                                   
     Mov $r, "[rsp+".(0*$ses)."]";
 
     if ($debug)
-     {PrintErrStringNL "Reduce 3:";
+     {PrintErrStringNL "Reduce 3 priority $priority: ";
       PrintErrRegisterInHex $l, $d, $r;
      }
 
@@ -468,7 +468,9 @@ sub reduce($)                                                                   
      {testSet("t",  $r);
       IfEq
       Then
-       {testSet($priority == 1 ? "ads" : 'd', $d);                              # Reduce all operators or just reduce infix priority 3 operators
+       {testSet($priority == 1 ? "ades" :                                       # Reduce infix operators
+                $priority == 2 ? "de"   :
+                $priority == 3 ? "d"    : "e", $d);
         IfEq
         Then
          {Add rsp, 3 * $ses;                                                    # Reorder into polish notation
@@ -590,18 +592,20 @@ sub accept_B                                                                    
 
 sub accept_d                                                                    #P Dyad 3
  {checkSet("t");
+  reduceMultiple 3;
   PrintErrStringNL "accept d" if $debug;
   pushElement;
  }
 
-sub accept_D                                                                    #P Dyad 4
+sub accept_e                                                                    #P Dyad 4
  {checkSet("t");
+  reduceMultiple 4;
   PrintErrStringNL "accept d" if $debug;
   pushElement;
  }
 
 sub accept_p                                                                    #P Prefix.
- {checkSet("abdps");
+ {checkSet("abdeps");
   PrintErrStringNL "accept p" if $debug;
   pushElement;
  }
@@ -631,7 +635,7 @@ sub accept_s                                                                    
   pushElement;
  }
 
-sub accept_v                                                                    #P Variable.      ## Never called
+sub accept_v                                                                    #P Variable.
   {checkSet("abdeps");
    PrintErrStringNL "accept v" if $debug;
    pushElement;
@@ -4698,7 +4702,6 @@ sub executeChain($)                                                             
   $parse->assign   (asciiToAssignLatin("assign"), $assign);
   $parse->dyad     (asciiToDyadLatin  ("plus"),   $dyad);
   $parse->dyad2    ("÷",                          $dyad2);
-$parse->operators->dump;
  }
 
 #latest:
@@ -4721,41 +4724,41 @@ Semicolon
   Term
     Variable: 𝗯
 Execution chain:
-Tree at:  0000 0000 0000 04D8  length: 0000 0000 0000 000C
-  Keys: 0000 0518 0A00 000C   0000 0000 0000 0000   0000 000D 0000 000C   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
-  Data: 0000 0000 0000 0018   0000 0000 0000 0000   0000 0418 0000 0009   0000 02D8 0000 0009   0000 0002 0000 0001   0000 0001 0000 0008   0000 0598 0040 8578   0000 0003 0000 0009
+Tree at:  0000 0000 0000 0818  length: 0000 0000 0000 000C
+  Keys: 0000 0858 0A00 000C   0000 0000 0000 0000   0000 000D 0000 000C   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
+  Data: 0000 0000 0000 0018   0000 0000 0000 0000   0000 0758 0000 0009   0000 0618 0000 0009   0000 0002 0000 0001   0000 0001 0000 0008   0000 08D8 0040 8578   0000 0003 0000 0009
   Node: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
     index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
     index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
     index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 8578
-    index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0598
+    index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 08D8
     index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0008
     index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0001
     index: 0000 0000 0000 0006   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
     index: 0000 0000 0000 0007   key: 0000 0000 0000 0007   data: 0000 0000 0000 0002
     index: 0000 0000 0000 0008   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 0009   key: 0000 0000 0000 0009   data: 0000 0000 0000 02D8 subTree
+    index: 0000 0000 0000 0009   key: 0000 0000 0000 0009   data: 0000 0000 0000 0618 subTree
     index: 0000 0000 0000 000A   key: 0000 0000 0000 000C   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 000B   key: 0000 0000 0000 000D   data: 0000 0000 0000 0418 subTree
-  Tree at:  0000 0000 0000 02D8  length: 0000 0000 0000 0007
-    Keys: 0000 0318 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
-    Data: 0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0001 0000 0000   0000 0006 0040 D2A2   0000 0001 0000 0009
+    index: 0000 0000 0000 000B   key: 0000 0000 0000 000D   data: 0000 0000 0000 0758 subTree
+  Tree at:  0000 0000 0000 0618  length: 0000 0000 0000 0007
+    Keys: 0000 0658 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
+    Data: 0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0001 0000 0000   0000 0006 0040 85EC   0000 0001 0000 0009
     Node: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 D2A2
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 85EC
       index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
       index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0000
       index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
       index: 0000 0000 0000 0006   key: 0000 0000 0000 0007   data: 0000 0000 0000 0000
   end
-  Tree at:  0000 0000 0000 0418  length: 0000 0000 0000 0007
-    Keys: 0000 0458 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
-    Data: 0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0001 0000 0002   0000 0006 0040 D2A2   0000 0001 0000 0009
+  Tree at:  0000 0000 0000 0758  length: 0000 0000 0000 0007
+    Keys: 0000 0798 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
+    Data: 0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0001 0000 0002   0000 0006 0040 85EC   0000 0001 0000 0009
     Node: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
       index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0001
-      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 D2A2
+      index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 85EC
       index: 0000 0000 0000 0003   key: 0000 0000 0000 0004   data: 0000 0000 0000 0006
       index: 0000 0000 0000 0004   key: 0000 0000 0000 0005   data: 0000 0000 0000 0002
       index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
@@ -4769,9 +4772,9 @@ END
  }
 
 
-#latest:
+latest:
 if (1) {                                                                        # Dyad2
-  my $s = Rutf8 $Lex->{sampleText}{adD};
+  my $s = Rutf8 $Lex->{sampleText}{ade};
   my $p = create K(address, $s), operators => \&executeChain;
 
   K(address, $s)->printOutZeroString;
