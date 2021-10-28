@@ -4865,7 +4865,7 @@ END
  }
 
 #latest:
-if (1) {                                                                        # Dyad2
+if (1) {                                                                        # Dyad dyad
   my $s = Rutf8 $Lex->{sampleText}{add};
   my $p = create K(address, $s), operators => \&executeChain;
 
@@ -4900,7 +4900,7 @@ END
  }
 
 #latest:
-if (1) {                                                                        # Dyad2
+if (1) {                                                                        # Dyad dyad2
   my $s = Rutf8 $Lex->{sampleText}{ade};
   my $p = create K(address, $s), operators => \&executeChain;
 
