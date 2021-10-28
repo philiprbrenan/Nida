@@ -133,6 +133,7 @@ These operators are constructed from the alphabet:
 ```
 
 ### Variable names
+
 Variable names are constructed from the alphabet:
 
 ```
