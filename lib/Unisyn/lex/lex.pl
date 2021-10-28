@@ -90,6 +90,17 @@ sub convert($)                                                                  
   eval "chr(0x$c)";                                                             # Character
  }
 
+sub printDyad2($)                                                              # Print dyad 2 operators in an 80 character wide block
+ {my ($d) = @_;
+
+  my @d = sort values %$d;
+  for(my $i = 0; @d; ++$i)
+   {print STDERR shift(@d);
+    say STDERR "" if $i and $i % 80 == 0;
+   }
+  say STDERR "";
+ }
+
 sub dyad2                                                                       # Locate the mathematical alphabets
  {my @s = readFile $data;
 
@@ -134,7 +145,8 @@ sub dyad2                                                                       
   $Tables->dyad2Offset = \@o;                                                   # Record offset of each range start
   $Tables->dyad2Chars  = my $a = [map {ord $_} sort values %dyad2];             # Record characters comprising the dyad 2 alphabet
   $Tables->dyad2Alpha  = join '', sort values %dyad2;                           # Record characters comprising the dyad 2 alphabet as a string
-#say STDERR dump($Tables->dyad2Alpha); exit;
+  printDyad2 \%dyad2; exit;
+# say STDERR dump($Tables->dyad2Alpha); exit;
 
   my $t = $Tables->alphabetsOrdered;
   $Tables->alphabetsOrdered = {$t ? %$t : (), dyad2=>$a};
