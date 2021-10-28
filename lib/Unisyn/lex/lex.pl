@@ -76,6 +76,7 @@ my $Tables = genHash("Unisyn::Parse::Lexical::Tables",                          
   dyad2High        => undef,                                                    # Array of dyad 2 end of ranges
   dyad2Offset      => undef,                                                    # Array of dyad 2 offsets at start of each range
   dyad2Chars       => undef,                                                    # Array of all dyad 2 operators
+  dyad2Alpha       => undef,                                                    # String of all dyad 2 operators
   dyad2Blocks      => 4,                                                        # Number of dyad2 blocks
   dyad2BlockSize   => 16,                                                       # Size of a dyad2 block
  );
@@ -132,6 +133,8 @@ sub dyad2                                                                       
   $Tables->dyad2High   = \@h;                                                   # Record end of range
   $Tables->dyad2Offset = \@o;                                                   # Record offset of each range start
   $Tables->dyad2Chars  = my $a = [map {ord $_} sort values %dyad2];             # Record characters comprising the dyad 2 alphabet
+  $Tables->dyad2Alpha  = join '', sort values %dyad2;                           # Record characters comprising the dyad 2 alphabet as a string
+#say STDERR dump($Tables->dyad2Alpha); exit;
 
   my $t = $Tables->alphabetsOrdered;
   $Tables->alphabetsOrdered = {$t ? %$t : (), dyad2=>$a};
@@ -578,8 +581,16 @@ translateSomeText 'ppppvdvdvqqqq', <<END;
 pa b9 pb b10 pc b11 va aequals pd vb qd dtimes b12 vc dplus vd B12 s ve aassign vf dsub vg  qh B11 qc B10  qb B9 qa
 END
 
+translateSomeText 'e', <<END;
+va eD vb
+END
+
+translateSomeText 'add', <<END;
+va aassign vb dplus vc ddivide vd
+END
+
 translateSomeText 'ade', <<END;
-va aassign vb dplus vc ee vd
+va aassign vb dplus vc eD vd
 END
 
 say STDERR owf $lexicalsFile, dump($Tables);                                    # Write results
