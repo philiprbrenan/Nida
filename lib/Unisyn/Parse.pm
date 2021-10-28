@@ -1432,27 +1432,29 @@ sub makeExecutionChain($)                                                       
 
   $s->call($parse->arena->bs, first => $parse->parse, my $chain = V('chain',0));# Construct execution chain
 
-  If $chain > 0,                                                                # Print execution chain
-  Then
-   {my $A = $parse->arena;
-    my $a = V('zero', 0);
-    my $b = $chain->clone;
-
-    ForEver                                                                     # Loop through exec chain reversing each link
-     {my ($start, $end) = @_;
-      $A ->getZmmBlock($b, 0, r14, r15);
-      my $c = Nasm::X86::getDFromZmm(0, $execChainNext, r15);
-      $a->putDIntoZmm(0, $execChainNext);
-      $A->putZmmBlock($b, 0, r14, r15);
-
-      If $c == 0, Then {Jmp $end};
-      $a->copy($b);
-      $b->copy($c);
-     };
-    my $t = $parse->arena->DescribeTree(first => $parse->parse);                # Parse tree
-    $t->insert(V('key', $opChain), $b);                                         # Save start of chain
-   };
+#  If $chain > 0,                                                               # Reverse execution chain. This was done while listening to Transformers about the time BAN and I were working on partially reversing a list: I got a bit carried away.
+#  Then
+#   {my $A = $parse->arena;
+#    my $a = V('zero', 0);
+#    my $b = $chain->clone;
 #
+#    ForEver                                                                    # Loop through exec chain reversing each link
+#     {my ($start, $end) = @_;
+#      $A ->getZmmBlock($b, 0, r14, r15);
+#      my $c = Nasm::X86::getDFromZmm(0, $execChainNext, r15);
+#      $a->putDIntoZmm(0, $execChainNext);
+#      $A->putZmmBlock($b, 0, r14, r15);
+#
+#      If $c == 0, Then {Jmp $end};
+#      $a->copy($b);
+#      $b->copy($c);
+#     };
+#    my $t = $parse->arena->DescribeTree(first => $parse->parse);                # Parse tree
+#    $t->insert(V('key', $opChain), $b);                                         # Save start of chain
+#   };
+#
+  my $t = $parse->arena->DescribeTree(first => $parse->parse);                  # Parse tree
+  $t->insert(V('key', $opChain), $chain);                                       # Save start of chain in parse tree
 
   PopR;
 
@@ -4654,17 +4656,17 @@ Semicolon
   Term
     Variable: 𝗯
 semiColon
-offset: 0000 0000 0000 0558 :   zmm0: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0040 8578   0000 0498 0000 0598
-offset: 0000 0000 0000 0598 :   zmm0: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0298 0000 05D8
-offset: 0000 0000 0000 05D8 :   zmm0: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 03D8 0000 0000
+offset: 0000 0000 0000 05D8 :   zmm0: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 03D8 0000 0598
+offset: 0000 0000 0000 0598 :   zmm0: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0298 0000 0558
+offset: 0000 0000 0000 0558 :   zmm0: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0040 8578   0000 0498 0000 0000
 Tree at:  0000 0000 0000 0498  length: 0000 0000 0000 000C
   Keys: 0000 04D8 0A00 000C   0000 0000 0000 0000   0000 000D 0000 000C   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0003 0000 0002   0000 0001 0000 0000
-  Data: 0000 0000 0000 0018   0000 0000 0000 0000   0000 03D8 0000 0009   0000 0298 0000 0009   0000 0002 0000 0001   0000 0001 0000 0008   0000 0558 0040 8578   0000 0003 0000 0009
+  Data: 0000 0000 0000 0018   0000 0000 0000 0000   0000 03D8 0000 0009   0000 0298 0000 0009   0000 0002 0000 0001   0000 0001 0000 0008   0000 05D8 0040 8578   0000 0003 0000 0009
   Node: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
     index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
     index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
     index: 0000 0000 0000 0002   key: 0000 0000 0000 0002   data: 0000 0000 0040 8578
-    index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 0558
+    index: 0000 0000 0000 0003   key: 0000 0000 0000 0003   data: 0000 0000 0000 05D8
     index: 0000 0000 0000 0004   key: 0000 0000 0000 0004   data: 0000 0000 0000 0008
     index: 0000 0000 0000 0005   key: 0000 0000 0000 0005   data: 0000 0000 0000 0001
     index: 0000 0000 0000 0006   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
@@ -4790,9 +4792,9 @@ Tree at:  0000 0000 0000 08D8  length: 0000 0000 0000 000B
       index: 0000 0000 0000 0006   key: 0000 0000 0000 0007   data: 0000 0000 0000 0001
   end
 end
+variable
+variable
 semiColon
-variable
-variable
 END
  }
 
@@ -4854,13 +4856,13 @@ Tree at:  0000 0000 0000 08D8  length: 0000 0000 0000 000B
       index: 0000 0000 0000 0006   key: 0000 0000 0000 0007   data: 0000 0000 0000 0001
   end
 end
+variable
+variable
 dyad2
-variable
-variable
 END
  }
 
-#latest:
+latest:
 if (1) {                                                                        # Dyad dyad
   my $s = Rutf8 $Lex->{sampleText}{add};
   my $p = create K(address, $s), operators => \&executeChain;
@@ -4885,13 +4887,13 @@ Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
             Variable: 𝗰
       Term
         Variable: 𝗱
+variable
+variable
+variable
+dyad
+dyad
+variable
 assign
-variable
-dyad
-dyad
-variable
-variable
-variable
 END
  }
 
@@ -4920,13 +4922,13 @@ Assign: 𝑎𝑠𝑠𝑖𝑔𝑛
             Variable: 𝗰
           Term
             Variable: 𝗱
-assign
 variable
-dyad
 variable
 dyad2
 variable
+dyad
 variable
+assign
 END
  }
 
