@@ -99,9 +99,10 @@ sub unicodePoint($)                                                             
  }
 
 sub setUsage($$)                                                                # Mark a character represented by its unicode point in hex as being in the specified alphabet
- {my ($c, $a) = @_;                                                             # Character expressed as the unicode point name minus the leading \\U+, lexical type
-  !$Usage{$c} or confess "\U+$c assigned to both $a and ".$Usage{$c};
-  $Usage{$c} = $a;
+ {my ($c, $a) = @_;                                                             # Character, lexical type
+  my $h = Hex(ord($c));
+  !$Usage{$h} or confess "\\U+$h assigned to both $a and ".$Usage{$h};
+  $Usage{$h} = $a;
  }
 
 sub convert($)                                                                  # Convert the hex representation of a character to a number
@@ -120,7 +121,7 @@ sub printDyad2($)                                                               
   say STDERR "";
  }
 
-sub dyad2                                                                       # Locate symnbols usable as dyad2 operators
+sub dyad2                                                                       # Locate symnbols to use as dyad2 operators
  {my @s = readFile $data;
 
   my %dyad2;                                                                    # Mathematical operators
@@ -130,16 +131,27 @@ sub dyad2                                                                       
     my $C = convert $c;                                                         # Character
 
     next unless ord($C) > 127;                                                  # Exclude ascii
-    next unless $t =~ m(\ASm\Z);                                                  # Mathematical synmbol
-    next  if $d =~ m(CURLY BRACKET LOWER HOOK);
-    next  if $d =~ m(CURLY BRACKET MIDDLE PIECE);
-    next  if $d =~ m(CURLY BRACKET UPPER HOOK);
-    next  if $d =~ m(PARENTHESIS EXTENSION);
-    next  if $d =~ m(PARENTHESIS LOWER HOOK);
-    next  if $d =~ m(PARENTHESIS UPPER HOOK);
-    next  if $d =~ m(SQUARE BRACKET EXTENSION);
-    next  if $d =~ m(SQUARE BRACKET LOWER CORNER);
-    next  if $d =~ m(SQUARE BRACKET UPPER CORNER);
+    next unless $t =~ m(\ASm\Z);                                                # Mathematical synmbol
+    next if $d =~ m(CURLY BRACKET LOWER HOOK);
+    next if $d =~ m(CURLY BRACKET MIDDLE PIECE);
+    next if $d =~ m(CURLY BRACKET UPPER HOOK);
+    next if $d =~ m(PARENTHESIS EXTENSION);
+    next if $d =~ m(PARENTHESIS LOWER HOOK);
+    next if $d =~ m(PARENTHESIS UPPER HOOK);
+    next if $d =~ m(SQUARE BRACKET EXTENSION);
+    next if $d =~ m(SQUARE BRACKET LOWER CORNER);
+    next if $d =~ m(SQUARE BRACKET UPPER CORNER);
+
+    next if $d =~ m(MATHEMATICAL SANS-SERIF BOLD ITALIC PARTIAL DIFFERENTIAL);
+    next if $d =~ m(MATHEMATICAL SANS-SERIF BOLD NABLA);
+    next if $d =~ m(MATHEMATICAL BOLD ITALIC PARTIAL DIFFERENTIAL);
+    next if $d =~ m(MATHEMATICAL ITALIC PARTIAL DIFFERENTIAL);
+    next if $d =~ m(MATHEMATICAL SANS-SERIF BOLD PARTIAL DIFFERENTIAL);
+    next if $d =~ m(MATHEMATICAL SANS-SERIF BOLD ITALIC NABLA);
+    next if $d =~ m(MATHEMATICAL BOLD ITALIC NABLA);
+    next if $d =~ m(MATHEMATICAL ITALIC NABLA);
+    next if $d =~ m(MATHEMATICAL BOLD PARTIAL DIFFERENTIAL);
+    next if $d =~ m(MATHEMATICAL BOLD NABLA);
 
     $dyad2{unicodePoint ord($C)} = $C;
    }
@@ -155,23 +167,25 @@ sub dyad2                                                                       
      }
    };
 
-  &$range(0x2190..0x21ff);                                                      # https://www.unicodepedia.com/groups/arrows/
-  &$range(0x2200..0x22ff);                                                      # https://www.unicodepedia.com/groups/mathematical-operators/
-  &$range(0x2300..0x23ff);                                                      # https://www.unicodepedia.com/groups/mathematical-operators/
-  &$range(0x25A0..0x25ff);                                                      # https://www.unicodepedia.com/groups/geometric-shapes/
-  &$range(0x2600..0x26ff);                                                      # https://www.unicodepedia.com/groups/miscellaneous-symbols/
-  &$range(0x27c0..0x27e1);                                                      # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-a/
-  &$range(0x27e3..0x27e5);                                                      # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-a/
-  &$range(0x27f0..0x27ff);                                                      # https://www.unicodepedia.com/groups/supplemental-arrows-a/
-  &$range(0x2800..0x28ff);                                                      # https://www.unicodepedia.com/groups/braille-patterns/
-  &$range(0x2900..0x297f);                                                      # https://www.unicodepedia.com/groups/supplemental-arrows-b/
-  &$range(0x2980..0x2982);                                                      # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-b/
-  &$range(0x2999..0x29FB);                                                      # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-b/
-  &$range(0x29FE..0x29FE);                                                      # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-b/
-  &$range(0x2a00..0x2aff);                                                      # https://www.unicodepedia.com/groups/supplemental-mathematical-operators/
-  &$range(0x2b00..0x2b58);                                                      # https://www.unicodepedia.com/groups/supplemental-punctuation/
-  &$range(0x2e00..0x2e1f);                                                      # https://www.compart.com/en/unicode/block/U+2E00
-  &$range(0x2e2a..0x2e30);                                                      # https://www.compart.com/en/unicode/block/U+2E00
+   &$range(0x2190..0x21ff);                                                     # https://www.unicodepedia.com/groups/arrows/
+   &$range(0x2200..0x22ff);                                                     # https://www.unicodepedia.com/groups/mathematical-operators/
+   &$range(0x2300..0x2307);                                                     # https://www.unicodepedia.com/groups/mathematical-operators/
+   &$range(0x230C..0x2328);                                                     # https://www.unicodepedia.com/groups/mathematical-operators/
+   &$range(0x232C..0x23ff);                                                     # https://www.unicodepedia.com/groups/mathematical-operators/
+   &$range(0x25A0..0x25ff);                                                     # https://www.unicodepedia.com/groups/geometric-shapes/
+   &$range(0x2600..0x26ff);                                                     # https://www.unicodepedia.com/groups/miscellaneous-symbols/
+   &$range(0x27c0..0x27e1);                                                     # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-a/
+   &$range(0x27e3..0x27e5);                                                     # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-a/
+   &$range(0x27f0..0x27ff);                                                     # https://www.unicodepedia.com/groups/supplemental-arrows-a/
+   &$range(0x2800..0x28ff);                                                     # https://www.unicodepedia.com/groups/braille-patterns/
+   &$range(0x2900..0x297f);                                                     # https://www.unicodepedia.com/groups/supplemental-arrows-b/
+   &$range(0x2980..0x2982);                                                     # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-b/
+   &$range(0x2999..0x29FB);                                                     # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-b/
+   &$range(0x29FE..0x29FE);                                                     # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-b/
+   &$range(0x2a00..0x2aff);                                                     # https://www.unicodepedia.com/groups/supplemental-mathematical-operators/
+   &$range(0x2b00..0x2b58);                                                     # https://www.unicodepedia.com/groups/supplemental-punctuation/
+   &$range(0x2e00..0x2e1f);                                                     # https://www.compart.com/en/unicode/block/U+2E00
+   &$range(0x2e2a..0x2e30);                                                     # https://www.compart.com/en/unicode/block/U+2E00
 
   if (0)                                                                        # Print dyad2 operators chosen
    {for my $d(sort keys %dyad2)
@@ -206,7 +220,6 @@ sub dyad2                                                                       
 
   my $t = $Tables->alphabetsOrdered;
   $Tables->alphabetsOrdered = {$t ? %$t : (), dyad2=>$a};
-
  }
 
 sub alphabets                                                                   # Locate the mathematical alphabets
@@ -275,7 +288,7 @@ sub alphabets                                                                   
 
     if ($z)                                                                     # Usage of each character in alphabets of interest
      {for my $c(split //, $selected{$a})
-       {setUsage(sprintf("%x", ord($c)), $z);
+       {setUsage($c, $z);
        }
      }
 
@@ -392,7 +405,7 @@ sub brackets                                                                    
 
     push @S, [$u, $name, $s];
 
-    setUsage($s, "bracket");
+    setUsage(chr($u), "bracket");
    }
 
   @S % 2 and confess "Mismatched bracket pairs";
