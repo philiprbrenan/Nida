@@ -20,6 +20,7 @@ my $data    = fpe $home, qw(unicode txt);                                       
 my $lexicalsFile = fpe $home, qw(lex data);                                     # Dump of lexicals
 
 makeDieConfess;
+binModeAllUtf8;
 
 # Unicode currently has less than 2**18 characters. The biggest block we have is mather matical operators which is < 1k = 2**12.
 
@@ -32,6 +33,8 @@ sub LexicalConstant($$$;$)                                                      
     like   => $like,                                                            #I Parsed like this element from Tree::Term
    );
  }
+
+my %Usage;                                                                      # Maps unicode point to lexical item
 
 my $Lexicals = genHash("Unisyn::Parse::Lexicals",                               # Lexical items in Unisyn
   OpenBracket       => LexicalConstant("OpenBracket",        0, 'b', 'b'),      # The lowest bit of an open bracket code is zero
@@ -77,20 +80,36 @@ my $Tables = genHash("Unisyn::Parse::Lexical::Tables",                          
   dyad2Offset      => undef,                                                    # Array of dyad 2 offsets at start of each range
   dyad2Chars       => undef,                                                    # Array of all dyad 2 operators
   dyad2Alpha       => undef,                                                    # String of all dyad 2 operators
-  dyad2Blocks      => 4,                                                        # Number of dyad2 blocks
+  dyad2Blocks      => undef,                                                    # Number of dyad2 blocks
   dyad2BlockSize   => 16,                                                       # Size of a dyad2 block
  );
 
-if (!-e $data)                                                                  # Download Unicode specification
+if (!-e $data)                                                                  # Download Unicode specification if not present
  {say STDERR qx(curl -o $data $unicode);
  }
 
-sub convert($)                                                                  # Convert a character from hex to actual
- {my ($c) = @_;                                                                 # Parameters
-  eval "chr(0x$c)";                                                             # Character
+sub Hex($)                                                                      # Print a number as hexadecimal
+ {my ($n) = @_;                                                                 # Number
+  sprintf("%x", $n)
  }
 
-sub printDyad2($)                                                              # Print dyad 2 operators in an 80 character wide block
+sub unicodePoint($)                                                             # Print a number as a Unicode code point
+ {my ($n) = @_;                                                                 # Number
+  "U+".Hex($n)
+ }
+
+sub setUsage($$)                                                                # Mark a character represented by its unicode point in hex as being in the specified alphabet
+ {my ($c, $a) = @_;                                                             # Character expressed as the unicode point name minus the leading \\U+, lexical type
+  !$Usage{$c} or confess "\U+$c assigned to both $a and ".$Usage{$c};
+  $Usage{$c} = $a;
+ }
+
+sub convert($)                                                                  # Convert the hex representation of a character to a number
+ {my ($c) = @_;                                                                 # Hexadecimal representation of character as in "2a00"
+  eval "chr(0x$c)";                                                             # Character as number
+ }
+
+sub printDyad2($)                                                               # Print dyad 2 operators in an 80 character wide block
  {my ($d) = @_;
 
   my @d = sort values %$d;
@@ -101,7 +120,7 @@ sub printDyad2($)                                                              #
   say STDERR "";
  }
 
-sub dyad2                                                                       # Locate the mathematical alphabets
+sub dyad2                                                                       # Locate symnbols usable as dyad2 operators
  {my @s = readFile $data;
 
   my %dyad2;                                                                    # Mathematical operators
@@ -122,15 +141,50 @@ sub dyad2                                                                       
     next  if $d =~ m(SQUARE BRACKET LOWER CORNER);
     next  if $d =~ m(SQUARE BRACKET UPPER CORNER);
 
-    $dyad2{$d} = convert $c;                                                    # Character
+    $dyad2{unicodePoint ord($C)} = $C;
    }
-  for my $d(sort keys %dyad2)                                                   #
-   {#say STDERR $dyad2{$d}, " ", $d;
+
+  for my $c(0x200b..0x2069)                                                     # https://www.unicodepedia.com/groups/general-punctuation/
+   {next if sprintf("%x", $c) =~ m(\A(2045|2046|2062|2063|2064||)\Z);
+    $dyad2{unicodePoint($c)}  = chr($c);
+   }
+
+  my $range = sub                                                               # Add characters in range
+   {for my $c(@_)
+     {$dyad2{unicodePoint($c)} = chr($c);
+     }
+   };
+
+  &$range(0x2190..0x21ff);                                                      # https://www.unicodepedia.com/groups/arrows/
+  &$range(0x2200..0x22ff);                                                      # https://www.unicodepedia.com/groups/mathematical-operators/
+  &$range(0x2300..0x23ff);                                                      # https://www.unicodepedia.com/groups/mathematical-operators/
+  &$range(0x25A0..0x25ff);                                                      # https://www.unicodepedia.com/groups/geometric-shapes/
+  &$range(0x2600..0x26ff);                                                      # https://www.unicodepedia.com/groups/miscellaneous-symbols/
+  &$range(0x27c0..0x27e1);                                                      # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-a/
+  &$range(0x27e3..0x27e5);                                                      # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-a/
+  &$range(0x27f0..0x27ff);                                                      # https://www.unicodepedia.com/groups/supplemental-arrows-a/
+  &$range(0x2800..0x28ff);                                                      # https://www.unicodepedia.com/groups/braille-patterns/
+  &$range(0x2900..0x297f);                                                      # https://www.unicodepedia.com/groups/supplemental-arrows-b/
+  &$range(0x2980..0x2982);                                                      # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-b/
+  &$range(0x2999..0x29FB);                                                      # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-b/
+  &$range(0x29FE..0x29FE);                                                      # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-b/
+  &$range(0x2a00..0x2aff);                                                      # https://www.unicodepedia.com/groups/supplemental-mathematical-operators/
+  &$range(0x2b00..0x2b58);                                                      # https://www.unicodepedia.com/groups/supplemental-punctuation/
+  &$range(0x2e00..0x2e1f);                                                      # https://www.compart.com/en/unicode/block/U+2E00
+  &$range(0x2e2a..0x2e30);                                                      # https://www.compart.com/en/unicode/block/U+2E00
+
+  if (0)                                                                        # Print dyad2 operators chosen
+   {for my $d(sort keys %dyad2)
+     {say STDERR $dyad2{$d}, " ", $d;
+     }
    }
 
   my @r = divideIntegersIntoRanges(map {ord} values %dyad2);                    # Divide an array of integers into ranges
 
-  push @r, [0] while @r != 64;                                                  # Pad up to 64 ranges
+  push @r, [0] while @r % $Tables->dyad2BlockSize;                              # Pad into blocks
+  $Tables->dyad2Blocks = @r / $Tables->dyad2BlockSize;                          # Number of blocks
+
+  say STDERR "Dyad 2 blocks: ", $Tables->dyad2Blocks, " block size: ", $Tables->dyad2BlockSize;
 
   my @l; my @h; my @o; my $o = 0;                                               # Low high, offset in range
   for my $a(@r)
@@ -140,12 +194,14 @@ sub dyad2                                                                       
    {say STDERR join ', ', map {sprintf("0x%04x", $_)} @$a;
    }
 
+  setUsage($_, "dyad2") for values %dyad2;                                      # Mark usage
+
   $Tables->dyad2Low    = \@l;                                                   # Record start of each range
   $Tables->dyad2High   = \@h;                                                   # Record end of range
   $Tables->dyad2Offset = \@o;                                                   # Record offset of each range start
   $Tables->dyad2Chars  = my $a = [map {ord $_} sort values %dyad2];             # Record characters comprising the dyad 2 alphabet
   $Tables->dyad2Alpha  = join '', sort values %dyad2;                           # Record characters comprising the dyad 2 alphabet as a string
-  printDyad2 \%dyad2; exit;
+# printDyad2 \%dyad2; exit;
 # say STDERR dump($Tables->dyad2Alpha); exit;
 
   my $t = $Tables->alphabetsOrdered;
@@ -216,6 +272,12 @@ sub alphabets                                                                   
        $z = q(Ascii)    if $a =~ m/negativeCircledLatinLetter\Z/;               # Control characters as used in regular expressions and quoted strings
 
     push $Tables->lexicalAlpha->{$z}->@*, $a;                                   # Alphabets assigned to each lexical item
+
+    if ($z)                                                                     # Usage of each character in alphabets of interest
+     {for my $c(split //, $selected{$a})
+       {setUsage(sprintf("%x", ord($c)), $z);
+       }
+     }
 
     my $Z = $z ? pad(" = $z", 16) : '';
     if ($z)                                                                     # Alphabet we are going to use for a lexical item
@@ -317,19 +379,20 @@ sub brackets                                                                    
     $@ and confess "$s\n$@\n";
 
     next if $u <= 0x208e;
-    next if $u >=  9121 and  $u <=  9137;
-    next if $u >= 11778 and  $u <= 11815;
-    next if $u >= 12300 and  $u <= 12303;
-    next if $u >= 65047 and  $u <= 65118 ;
-    next if $u >= 65378;
-
+    next if $u >= 0x23A1 and $u <= 0x23B1;
     next if $u >= 0x27C5 and $u <= 0x27C6;                                      # Bag
     next if $u >= 0x29D8 and $u <= 0x29D9;                                      # Wiggly fence
     next if $u >= 0x29DA and $u <= 0x29Db;                                      # Double Wiggly fence
+    next if $u >= 0x2E02 and $u <= 0x2E27;
     next if $u == 0x2E42;                                                       # Double Low-Reversed-9 Quotation Mark[1]
+    next if $u >= 0x300C and $u <= 0x300F;
     next if $u >= 0x301D and $u <= 0x3020;                                      # Quotation marks
+    next if $u >= 0xFE17 and $u <= 0xFE5E ;
+    next if $u >= 0xFF62;
 
     push @S, [$u, $name, $s];
+
+    setUsage($s, "bracket");
    }
 
   @S % 2 and confess "Mismatched bracket pairs";
@@ -516,7 +579,6 @@ alphabets;                                                                      
 dyad2;                                                                          # Dyadic operators at priority 4 that is one more urgent than dyads
 brackets;                                                                       # Locate brackets
 tripleTerms;                                                                    # All invalid transitions that could usefully interpret one intervening new line as a semi colon
-
 
 lll "Alphabets Ordered:\n", dump($Tables->alphabetsOrdered);
 
