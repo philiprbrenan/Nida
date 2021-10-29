@@ -1,7 +1,6 @@
 #!/usr/bin/perl -I/home/phil/perl/cpan/DataTableText/lib/  -I/home/phil/perl/cpan/TreeTerm/lib/
-#!/usr/bin/perl -I/home/phil/perl/cpan/DataTableText/lib/  -I/home/phil/perl/cpan/TreeTerm/lib/
 #-------------------------------------------------------------------------------
-# Find all 13 Unicode Mathematical Alphabets as used by Erl.
+# Find all 13 Unicode Mathematical Alphabets as used by Earl Zero.
 # Philip R Brenan at appaapps dot com, Appa Apps Ltd Inc., 2021
 #-------------------------------------------------------------------------------
 use warnings FATAL => qw(all);
@@ -222,8 +221,8 @@ sub dyad2                                                                       
   $Tables->alphabetsOrdered = {$t ? %$t : (), dyad2=>$a};
  }
 
-sub alphabets                                                                   # Locate the mathematical alphabets
- {my @s = readFile $data;
+sub alphabets                                                                   # Locate the mathematical alphabets used to represent lexical items
+ {my @s = readFile $data;                                                       # Read unicode
 
   my %alpha;                                                                    # Alphabet names
 
@@ -378,7 +377,7 @@ sub alphabets                                                                   
   $Tables->alphabetsOrdered = {$t ? %$t : (), %a};
  }
 
-sub brackets                                                                    # Write brackets
+sub brackets                                                                    # Locate bracket characters
  {my @S;
 
   my @s = readFile $data;
@@ -483,7 +482,7 @@ sub brackets                                                                    
 sub tripleTerms                                                                 # All invalid transitions that could usefully interpret one intervening new line as a semi colon
  {my %C = Tree::Term::LexicalStructure->codes->%*;
   my @d = qw(a B b d p q v);                                                    # Ignoring semi colon as intervening space is specially treated as empty.
-  my %semi; my %possible;                                                          # Pairs between which we could usefully insert a semi colon
+  my %semi; my %possible;                                                       # Pairs between which we could usefully insert a semi colon
   for   my $a(@d)
    {for my $b(@d)
      {if (!Tree::Term::validPair($a, $b))
