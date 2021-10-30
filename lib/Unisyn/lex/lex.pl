@@ -9,6 +9,7 @@ use Carp;
 use Data::Dump qw(dump);
 use Data::Table::Text qw(:all);
 use Tree::Term;
+use Test::More qw(no_plan);
 use feature qw(say state current_sub);
 use utf8;
 
@@ -23,85 +24,159 @@ binModeAllUtf8;
 
 # Unicode currently has less than 2**18 characters. The biggest block we have is mather matical operators which is < 1k = 2**12.
 
-sub LexicalConstant($$$;$)                                                      # Lexical constants as opposed to derived values
- {my ($name, $number, $letter, $like) = @_;                                     # Name of the lexical item, numeric code, character code, character code as used Tree::Term, a specialized instance of this Tree::Term which is never the less lexically identical to the Tree::Term
+sub LexicalConstant($$$$$)                                                      # Lexical constants as opposed to derived values
+ {my ($name, $number, $letter, $like, $comment) = @_;                           # Name of the lexical item, numeric code, character code, character code as used Tree::Term, a specialized instance of this Tree::Term which is never the less lexically identical to the Tree::Term
   genHash("Unisyn::Parse::Lexical::Constant",                                   # Description of a lexical item connecting the definition in Tree::Term with that inUnisyn
-    name   => $name,                                                            #I Name of the lexical item
-    number => $number,                                                          #I Numeric code for lexical item
-    letter => $letter,                                                          #I Alphabetic name for lexical item
-    like   => $like,                                                            #I Parsed like this element from Tree::Term
+    name    => $name,                                                           #I Name of the lexical item
+    number  => $number,                                                         #I Numeric code for lexical item
+    letter  => $letter,                                                         #I Alphabetic name for lexical item
+    like    => $like,                                                           #I Parsed like this element from Tree::Term
+    comment => $comment,                                                        #I Comment describing lexical item
    );
  }
 
 my %Usage;                                                                      # Maps unicode point to lexical item
 
 my $Lexicals = genHash("Unisyn::Parse::Lexicals",                               # Lexical items in Unisyn
-  OpenBracket       => LexicalConstant("OpenBracket",        0, 'b', 'b'),      # The lowest bit of an open bracket code is zero
-  CloseBracket      => LexicalConstant("CloseBracket",       1, 'B', 'B'),      # The lowest bit of a close bracket code is one
-  Ascii             => LexicalConstant("Ascii",              2, 'a', 'v'),      # Ascii characters
-  dyad              => LexicalConstant("dyad",               3, 'd', 'd'),      # Infix operator with left to right binding at priority 3
-  prefix            => LexicalConstant("prefix",             4, 'p', 'p'),      # Prefix operator - it applies only to the following variable
-  assign            => LexicalConstant("assign",             5, 'a', 'a'),      # Assign infix operator with right to left binding at priority 2.
-  variable          => LexicalConstant("variable",           6, 'v', 'v'),      # Variable although it could also be an ascii string or regular expression
-  suffix            => LexicalConstant("suffix",             7, 'q', 'q'),      # Suffix operator - it applies only to the preceding variable
-  semiColon         => LexicalConstant("semiColon",          8, 's', 's'),      # Infix operator with left to right binding at priority 1
-  term              => LexicalConstant("term",               9, 't', 't'),      # Term in the parse tree
-  empty             => LexicalConstant("empty",             10, 'e', 'e'),      # Empty term present between two adjacent semicolons
-  WhiteSpace        => LexicalConstant("WhiteSpace",        11, 'W'),           # White space that can be ignored during lexical analysis
-  NewLineSemiColon  => LexicalConstant("NewLineSemiColon",  12, 'N'),           # A new line character that is also acting as a semi colon
-  dyad2             => LexicalConstant("dyad2",             13, 'e', 'e'),      # Infix operator with left to right binding at priority 4
+  OpenBracket       => LexicalConstant("OpenBracket",        0, 'b', 'b',       'The lowest bit of an open bracket code is zero'                          ),
+  CloseBracket      => LexicalConstant("CloseBracket",       1, 'B', 'B',       'The lowest bit of a close bracket code is one '                          ),
+  Ascii             => LexicalConstant("Ascii",              2, 'A', 'v',       'Printable ASCII characters not including space, tab or new line'         ),
+  dyad              => LexicalConstant("dyad",               3, 'd', 'd',       'Infix operator with left to right binding at priority 3'                 ),
+  prefix            => LexicalConstant("prefix",             4, 'p', 'p',       'Prefix operator - it applies only to the following variable'             ),
+  assign            => LexicalConstant("assign",             5, 'a', 'a',       'Assign infix operator with right to left binding at priority 2'          ),
+  variable          => LexicalConstant("variable",           6, 'v', 'v',       'Variable although it could also be an ASCII string or regular expression'),
+  suffix            => LexicalConstant("suffix",             7, 'q', 'q',       'Suffix operator - it applies only to the preceding variable'             ),
+  semiColon         => LexicalConstant("semiColon",          8, 's', 's',       'Infix operator with left to right binding at priority 1'                 ),
+  term              => LexicalConstant("term",               9, 't', 't',       'Term in the parse tree'                                                  ),
+  empty             => LexicalConstant("empty",             10, 'E', 'E',       'Empty term present between two adjacent semicolons'                      ),
+  WhiteSpace        => LexicalConstant("WhiteSpace",        11, 'W', undef,     'White space that can be ignored during lexical analysis'                 ),
+  NewLineSemiColon  => LexicalConstant("NewLineSemiColon",  12, 'N', undef,     'A new line character that is also acting as a semi colon'                ),
+  dyad2             => LexicalConstant("dyad2",             13, 'e', 'e',       'Infix operator with left to right binding at priority 4'                 ),
  );
 
 my $TreeTermLexicals = Tree::Term::LexicalStructure->codes;
 
 my $Tables = genHash("Unisyn::Parse::Lexical::Tables",                          # Tables used to parse lexical items
-  alphabets        => undef,                                                    # Alphabets selected from uncode database
-  alphabetRanges   => undef,                                                    # Number of alphabet ranges
-  alphabetsOrdered => undef,                                                    # Alphabets be lexical element name with each alphabet ordered by unicode point
+  #alphabets        => undef,                                                    # Alphabets selected from unicode database
+  #alphabetRanges   => undef,                                                    # Number of alphabet ranges
+  #alphabetsOrdered => undef,                                                    # Alphabets by lexical element name with each alphabet ordered by unicode point
+  alphabetChars    => undef,                                                    # Sorted arrays of characters for each lexical item by lexical item letter
   brackets         => undef,                                                    # Number of brackets
   bracketsBase     => 0x10,                                                     # Start numbering brackets from here
   bracketsHigh     => undef,                                                    # High zmm for closing brackets
   bracketsLow      => undef,                                                    # Low  zmm for opening brackets
   bracketsOpen     => undef,                                                    # Open brackets
   bracketsClose    => undef,                                                    # Close brackets
-  lexicalAlpha     => undef,                                                    # The alphabets assigned to each lexical item
+  #lexicalAlpha     => undef,                                                    # The alphabets assigned to each lexical item
+  #lexicalChars     => undef,                                                    # The characters assigned to each lexical item
   lexicalHigh      => undef,                                                    # High zmm for lexical items
   lexicalLow       => undef,                                                    # Low  zmm for lexical items
-  lexicals         => $Lexicals,                                                # The lexical items
+  lexicals         => $Lexicals,                                                # The lexical items by lexical long name
+  lexicalsByLetter => {map {$Lexicals->{$_}->letter => $Lexicals->{$_}}  keys %$Lexicals},   # The lexical items by lexical letter
   sampleLexicals   => undef,                                                    # Has of sample program as arrays of lexical items
   sampleText       => undef,                                                    # Sample programs in utf8
   treeTermLexicals => $TreeTermLexicals,                                        # Tree term lexicals
   semiColon        => q(⟢),                                                     # Semi colon symbol, left star: U+27E2
-  separator        => q( ),                                                      # Space for separating non ascii items: U+205F
+  separator        => chr(0x205F),                                              # Space for separating non ascii items allowing us to have spaces inside variable names
   structure        => Tree::Term::LexicalStructure,                             # Lexical structure from Tree::term
   dyad2Low         => undef,                                                    # Array of dyad 2 start of ranges
   dyad2High        => undef,                                                    # Array of dyad 2 end of ranges
   dyad2Offset      => undef,                                                    # Array of dyad 2 offsets at start of each range
-  dyad2Chars       => undef,                                                    # Array of all dyad 2 operators
-  dyad2Alpha       => undef,                                                    # String of all dyad 2 operators
+  dyad2Chars       => undef,                                                    # Array of all dyad 2 characters
+  #dyad2Alpha       => undef,                                                    # String of all dyad 2 operators
   dyad2Blocks      => undef,                                                    # Number of dyad2 blocks
   dyad2BlockSize   => 16,                                                       # Size of a dyad2 block
  );
 
+sub printAlphabetInBlocks($)                                                    # Print an alphabet in blocks
+ {my ($a) = @_;                                                                 # Characters in alphabet as an array reference
+  my $N = 40;
+  my @t;
+  for my $i(1..$#$a)
+   {push @t, " " if $i % $N != 1;
+
+    push @t, chr($$a[$i - 1]);
+    push @t, "\n" if $i % $N == 0;
+   }
+  push @t, "\n";
+  @t
+ }
+
+sub printLexicalItemsMD()                                                       # Print lexical items as mark down
+ {my @t;
+  # say STDERR dump($Tables->alphabetChars); exit;
+  push @t, "## Lexical elements\n";                                             # Title
+
+  for my $l(sort {$a->letter cmp $b->letter} values %$Lexicals)                 # Each lexical letter
+   {next unless my $a = $Tables->alphabetChars->{$l->letter};
+    push @t, "### ", ucfirst($l->name), ".",  "\n"x2, $l->comment, ".\n\n";
+    push @t, "Contains: ", scalar(@$a), " characters.\n\n";
+
+    push @t, "```\n";
+    push @t, printAlphabetInBlocks($Tables->alphabetChars->{$l->letter});
+    push @t, "```\n\n";
+   }
+  my $f = owf("LexicalItemsDescription.md", join '', @t);                       # Write to the named file
+  say STDERR "Lexical items described in file: $f";
+ }
+
 if (!-e $data)                                                                  # Download Unicode specification if not present
  {say STDERR qx(curl -o $data $unicode);
  }
+
+sub lexNameToLetter(*)                                                          # Get the letter for a lexical item from its name
+ {my ($lexName) = @_;                                                           # Name of lexical item
+  $Tables->lexicals->{$lexName}->letter                                         # The letter code for each lexical item type
+ }
+
+sub lexLetterToName(*)                                                          # Get the name of a lexical item from its letter
+ {my ($lexLetter) = @_;                                                         # Letter of lexical item
+  $Tables->lexicalsByLetter->{$lexLetter}->name
+ }
+
+ok lexLetterToName(a) eq 'assign';
+ok lexLetterToName(e) eq 'dyad2';
+
+sub lexNameToNumber(*)                                                          # Get the number for a lexical item from its name
+ {my ($lexName) = @_;                                                           # Name of lexical item
+  $Tables->lexicals->{$lexName}->number                                         # The letter code for each lexical item type
+ }
+
+ok lexNameToLetter(dyad)  eq 'd';
+ok lexNameToLetter(dyad2) eq 'e';
+ok lexNameToNumber(dyad)  ==  3;
+ok lexNameToNumber(dyad2) == 13;
 
 sub Hex($)                                                                      # Print a number as hexadecimal
  {my ($n) = @_;                                                                 # Number
   sprintf("%x", $n)
  }
 
+ok Hex(13) eq 'd';
+
 sub unicodePoint($)                                                             # Print a number as a Unicode code point
  {my ($n) = @_;                                                                 # Number
   "U+".Hex($n)
  }
 
-sub setUsage($$)                                                                # Mark a character represented by its unicode point in hex as being in the specified alphabet
- {my ($c, $a) = @_;                                                             # Character, lexical type
+ok unicodePoint(13) eq 'U+d';
+
+sub getUsageOfChar($)                                                           # Get the lexical item associated with a character
+ {my ($c) = @_;                                                                 # Character
   my $h = Hex(ord($c));
-  !$Usage{$h} or confess "\\U+$h assigned to both $a and ".$Usage{$h};
-  $Usage{$h} = $a;
+  $Usage{$h}
+ }
+
+sub setUsage($$)                                                                # Mark a character represented by its unicode point in hex as being in the specified alphabet for a lexical item
+ {my ($c, $l) = @_;                                                             # Character, lexical type
+  my $h = Hex(ord($c));
+  !$Usage{$h} or $Usage{$h} eq $l or confess "\\U+$h assigned to both $l and ".$Usage{$h};
+   $Usage{$h} = $l;
+ }
+
+sub setUsageForString($$)                                                       # Mark each character in a string as being in the specified alphabet for a lexical item
+ {my ($s, $l) = @_;                                                             # Character, lexical type
+  setUsage($_, $l) for split //, $s;
  }
 
 sub convert($)                                                                  # Convert the hex representation of a character to a number
@@ -109,16 +184,7 @@ sub convert($)                                                                  
   eval "chr(0x$c)";                                                             # Character as number
  }
 
-sub printDyad2($)                                                               # Print dyad 2 operators in an 80 character wide block
- {my ($d) = @_;
-
-  my @d = sort values %$d;
-  for(my $i = 0; @d; ++$i)
-   {print STDERR shift(@d);
-    say STDERR "" if $i and $i % 80 == 0;
-   }
-  say STDERR "";
- }
+ok convert('27E2') eq $Tables->semiColon;
 
 sub dyad2                                                                       # Locate symnbols to use as dyad2 operators
  {my @s = readFile $data;
@@ -126,11 +192,14 @@ sub dyad2                                                                       
   my %dyad2;                                                                    # Mathematical operators
 
   for my $s(@s)                                                                 # Select the letters we want
-   {my ($c, $d, $t) = split /;/, $s;
+   {my ($c, $d, $t, $b) = split /;/, $s;
     my $C = convert $c;                                                         # Character
+    next if $C eq $Tables->semiColon;
+
+    next if $b =~ m(AL|R);                                                      # Remove right to left characters
 
     next unless ord($C) > 127;                                                  # Exclude ascii
-    next unless $t =~ m(\ASm\Z);                                                # Mathematical synmbol
+    next unless $t =~ m(\ASm\Z);                                                # Mathematical symbol
     next if $d =~ m(CURLY BRACKET LOWER HOOK);
     next if $d =~ m(CURLY BRACKET MIDDLE PIECE);
     next if $d =~ m(CURLY BRACKET UPPER HOOK);
@@ -151,6 +220,7 @@ sub dyad2                                                                       
     next if $d =~ m(MATHEMATICAL ITALIC NABLA);
     next if $d =~ m(MATHEMATICAL BOLD PARTIAL DIFFERENTIAL);
     next if $d =~ m(MATHEMATICAL BOLD NABLA);
+    next if $d =~ m(ARROW);
 
     $dyad2{unicodePoint ord($C)} = $C;
    }
@@ -166,25 +236,24 @@ sub dyad2                                                                       
      }
    };
 
-   &$range(0x2190..0x21ff);                                                     # https://www.unicodepedia.com/groups/arrows/
-   &$range(0x2200..0x22ff);                                                     # https://www.unicodepedia.com/groups/mathematical-operators/
-   &$range(0x2300..0x2307);                                                     # https://www.unicodepedia.com/groups/mathematical-operators/
-   &$range(0x230C..0x2328);                                                     # https://www.unicodepedia.com/groups/mathematical-operators/
-   &$range(0x232C..0x23ff);                                                     # https://www.unicodepedia.com/groups/mathematical-operators/
-   &$range(0x25A0..0x25ff);                                                     # https://www.unicodepedia.com/groups/geometric-shapes/
-   &$range(0x2600..0x26ff);                                                     # https://www.unicodepedia.com/groups/miscellaneous-symbols/
-   &$range(0x27c0..0x27e1);                                                     # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-a/
-   &$range(0x27e3..0x27e5);                                                     # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-a/
-   &$range(0x27f0..0x27ff);                                                     # https://www.unicodepedia.com/groups/supplemental-arrows-a/
-   &$range(0x2800..0x28ff);                                                     # https://www.unicodepedia.com/groups/braille-patterns/
-   &$range(0x2900..0x297f);                                                     # https://www.unicodepedia.com/groups/supplemental-arrows-b/
-   &$range(0x2980..0x2982);                                                     # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-b/
-   &$range(0x2999..0x29FB);                                                     # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-b/
-   &$range(0x29FE..0x29FE);                                                     # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-b/
-   &$range(0x2a00..0x2aff);                                                     # https://www.unicodepedia.com/groups/supplemental-mathematical-operators/
-   &$range(0x2b00..0x2b58);                                                     # https://www.unicodepedia.com/groups/supplemental-punctuation/
-   &$range(0x2e00..0x2e1f);                                                     # https://www.compart.com/en/unicode/block/U+2E00
-   &$range(0x2e2a..0x2e30);                                                     # https://www.compart.com/en/unicode/block/U+2E00
+  &$range(0x2200..0x22ff);                                                      # https://www.unicodepedia.com/groups/mathematical-operators/
+  &$range(0x2300..0x2307);                                                      # https://www.unicodepedia.com/groups/mathematical-operators/
+  &$range(0x230C..0x2328);                                                      # https://www.unicodepedia.com/groups/mathematical-operators/
+  &$range(0x232C..0x23ff);                                                      # https://www.unicodepedia.com/groups/mathematical-operators/
+  &$range(0x25A0..0x25ff);                                                      # https://www.unicodepedia.com/groups/geometric-shapes/
+  &$range(0x2600..0x26ff);                                                      # https://www.unicodepedia.com/groups/miscellaneous-symbols/
+  &$range(0x27c0..0x27e1);                                                      # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-a/
+  &$range(0x27e3..0x27e5);                                                      # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-a/
+  &$range(0x27f0..0x27ff);                                                      # https://www.unicodepedia.com/groups/supplemental-arrows-a/
+  &$range(0x2800..0x28ff);                                                      # https://www.unicodepedia.com/groups/braille-patterns/
+  &$range(0x2900..0x297f);                                                      # https://www.unicodepedia.com/groups/supplemental-arrows-b/
+  &$range(0x2980..0x2982);                                                      # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-b/
+  &$range(0x2999..0x29FB);                                                      # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-b/
+  &$range(0x29FE..0x29FE);                                                      # https://www.unicodepedia.com/groups/miscellaneous-mathematical-symbols-b/
+  &$range(0x2a00..0x2aff);                                                      # https://www.unicodepedia.com/groups/supplemental-mathematical-operators/
+  &$range(0x2b00..0x2b58);                                                      # https://www.unicodepedia.com/groups/supplemental-punctuation/
+  &$range(0x2e00..0x2e1f);                                                      # https://www.compart.com/en/unicode/block/U+2E00
+  &$range(0x2e2a..0x2e30);                                                      # https://www.compart.com/en/unicode/block/U+2E00
 
   if (0)                                                                        # Print dyad2 operators chosen
    {for my $d(sort keys %dyad2)
@@ -199,7 +268,7 @@ sub dyad2                                                                       
 
   say STDERR "Dyad 2 blocks: ", $Tables->dyad2Blocks, " block size: ", $Tables->dyad2BlockSize;
 
-  my @l; my @h; my @o; my $o = 0;                                               # Low high, offset in range
+  my @l; my @h; my @o; my $o = 0;                                               # Low high, offset in range of dyad2
   for my $a(@r)
    {push @l, $$a[0]; push @h, $$a[-1]; push @o, $$a[0] - $o; $o += @$a;
    }
@@ -213,28 +282,28 @@ sub dyad2                                                                       
   $Tables->dyad2High   = \@h;                                                   # Record end of range
   $Tables->dyad2Offset = \@o;                                                   # Record offset of each range start
   $Tables->dyad2Chars  = my $a = [map {ord $_} sort values %dyad2];             # Record characters comprising the dyad 2 alphabet
-  $Tables->dyad2Alpha  = join '', sort values %dyad2;                           # Record characters comprising the dyad 2 alphabet as a string
+# $Tables->dyad2Alpha  = join '', sort values %dyad2;                           # So we can translate some text
 # printDyad2 \%dyad2; exit;
 # say STDERR dump($Tables->dyad2Alpha); exit;
 
-  my $t = $Tables->alphabetsOrdered;
-  $Tables->alphabetsOrdered = {$t ? %$t : (), dyad2=>$a};
+#  my $t = $Tables->alphabetsOrdered;
+   $Tables->alphabetChars->{e} = [sort map {ord $_} values %dyad2];
  }
 
-sub alphabets                                                                   # Locate the mathematical alphabets used to represent lexical items
+sub alphabets                                                                   # Locate the mathematical alphabets used to represent lexical items.
  {my @s = readFile $data;                                                       # Read unicode
 
   my %alpha;                                                                    # Alphabet names
 
   for my $s(@s)                                                                 # Select the letters we want
-   {my @w = split /;/, $s;
+   {my ($c, $d, $t, $b) = split /;/, $s;                                        # Parse unicode specification
+    my $C = convert $c;                                                         # Character
 
-# 1D49C;MATHEMATICAL SCRIPT CAPITAL A;Lu;0;L;<font> 0041;;;;N;;;;;              # Sample input
+# 1D49C;MATHEMATICAL SCRIPT CAPITAL A;Lu;0;L;<font> 0041;;;;N;;;;;              # Sample input - the particlular alphabet name is encoded in the character name
 # 1D72D;MATHEMATICAL BOLD ITALIC CAPITAL THETA SYMBOL;Lu;0;L;<font> 03F4;;;;N;;;;;
 # 1D70D;MATHEMATICAL ITALIC SMALL FINAL SIGMA;Ll;0;L;<font> 03C2;;;;N;;;;;
 
-    my ($c, $d, $t) = @w;                                                       # Parse unicode specification
-    my $C = convert $c;                                                         # Character
+    next if $b =~ m(AL|R);                                                      # Remove right to left characters
 
     next if     $d =~ m(DIGAMMA)i;                                              # Select family of letters
     next if     $d =~ m(PLANCK CONSTANT OVER TWO)i;
@@ -254,106 +323,144 @@ sub alphabets                                                                   
     $alpha{$D}{$c} = $C;                                                        # Place into alphabets
    }
 
-  my %selected = (semiColon => $Tables->semiColon);                             # We cannot use semi colon as it is an ascii character, so we use this character instead  U+27E2
+  my %selected;                                                                 # The selected alphabets to the characters in that alphabet
 
-  for my $a(sort keys %alpha)
+  for my $a(sort keys %alpha)                                                   # Each alphabet
    {next unless $a =~ m((CIRCLED LATIN LETTER|MATHEMATICAL BOLD|MATHEMATICAL BOLD FRAKTUR|MATHEMATICAL BOLD ITALIC|MATHEMATICAL BOLD SCRIPT|MATHEMATICAL DOUBLE-STRUCK|MATHEMATICAL FRAKTUR|MATHEMATICAL ITALIC|MATHEMATICAL MONOSPACE|MATHEMATICAL SANS-SERIF|MATHEMATICAL SANS-SERIF BOLD|MATHEMATICAL SANS-SERIF|BOLD ITALIC|MATHEMATICAL SANS-SERIF ITALIC|MATHEMATICAL SCRIPT|NEGATIVE|CIRCLED LATIN LETTER|NEGATIVE SQUARED LATIN LETTER|SQUARED LATIN LETTER|PLANCK))i;
                                                                                 # Selected alphabets
     my @l;
-    for my $l(sort keys $alpha{$a}->%*)                                         # Sort alphabet by point
+    for my $l(sort keys $alpha{$a}->%*)                                         # Sort by point in each alphabet
      {push @l, $alpha{$a}{$l};
      }
-    my $l = join '', sort @l;                                                   # Alphabet
+    my $l = join '', sort @l;                                                   # Alphabet in point order
     next unless length($l) > 5 or $l eq "\x{210e}";                             # Ignore short sets which are probably not alphabets except for Plancks constant
-    my $A = lcfirst join '', map {ucfirst} split /\s+/, lc $a;
+    my $A = lcfirst join '', map {ucfirst} split /\s+/, lc $a;                  # Alphabet name
     $selected{$A} = $l;                                                         # Selected alphabets
    }
 
+  $selected{semiColon} = $Tables->semiColon;                                    # We cannot use semi colon as the statement separator because it is an ascii character, so we use U+27E2 instead
+  $selected{arrows}    = join '', map {chr $_} 0x2190..0x21FE;                  # Arrows are used for assignment regardless of the direction they point in.
+  $selected{Ascii}     = join '', map {chr $_} 0x21..0x7e;                      # Ascii alphabet minus space and control characters
+
   #lll "AAAA", dump(\%selected); exit;                                          # Alphabets discovered
 
-  my @range;  my @zmm;                                                          # Ranges of characters
+  my %lexAlphas;                                                                # The alphabets used by each lexical item
 
   for my $a(sort keys %selected)                                                # Print selected alphabets in ranges
-   {my $z = '';
-       $z = q(variable) if $a =~ m/mathematicalSans-serifBold\Z/;
-       $z = q(dyad)     if $a =~ m/mathematicalBold\Z/;
-       $z = q(prefix)   if $a =~ m/mathematicalBoldItalic\Z/;
-       $z = q(assign)   if $a =~ m/mathematicalItalic\Z/;
-       $z = q(assign)   if $a =~ m/planck/;
-       $z = q(suffix)   if $a =~ m/mathematicalSans-serifBoldItalic\Z/;
-       $z = q(Ascii)    if $a =~ m/negativeCircledLatinLetter\Z/;               # Control characters as used in regular expressions and quoted strings
+   {my $l = '';                                                                 # Lexical item long name
+       $l = q(variable)  if $a =~ m/mathematicalSans-serifBold\Z/i;
+       $l = q(dyad)      if $a =~ m/mathematicalBold\Z/i;
+       $l = q(prefix)    if $a =~ m/mathematicalBoldItalic\Z/i;
+       $l = q(assign)    if $a =~ m/mathematicalItalic\Z/i;
+       $l = q(assign)    if $a =~ m/planck/i;                                   # Fills a gap in mathematicalItalic
+       $l = q(assign)    if $a =~ m/arrows/i;
+       $l = q(suffix)    if $a =~ m/mathematicalSans-serifBoldItalic\Z/i;
+       $l = q(Ascii)     if $a =~ m/\AcircledLatinLetter\Z/i;                     # Control characters as used in regular expressions and quoted strings
+       $l = q(Ascii)     if $a =~ m/Ascii\Z/i;                                  # Ascii
+       $l = q(semiColon) if $a =~ m/semiColon\Z/i;                              # Semicolon
 
-    push $Tables->lexicalAlpha->{$z}->@*, $a;                                   # Alphabets assigned to each lexical item
+    next unless $l;
+    my $ll = lexNameToLetter($l);                                               # The letter code for each lexical item type
+    $lexAlphas{$l}{$a}++;                                                       # This lexical item uses this alphabet
 
-    if ($z)                                                                     # Usage of each character in alphabets of interest
-     {for my $c(split //, $selected{$a})
-       {setUsage($c, $z);
-       }
-     }
-
-    my $Z = $z ? pad(" = $z", 16) : '';
-    if ($z)                                                                     # Alphabet we are going to use for a lexical item
-     {say STDERR '-' x 44;
-      say STDERR pad("$a$Z", 42), " : ", $selected{$a};
-      say STDERR '-' x 44;
-     }
-    else
-     {say STDERR pad("$a$Z", 42), " : ", $selected{$a};
-     }
-
-    my @c = split //, $selected{$a};                                            # Divide selected alphabets into contiguous ranges
-    push my @r, [shift @c];
-
-    for my $c(@c)
-     {my $b = ord($r[-1][-1]);
-      if (ord($c) == $b + ($b == 0x1d454 ? 2 : 1))
-       {push $r[-1]->@*, $c;
-       }
-      else
-       {push @r, [$c];
-       }
-     }
-
-    if ($z)                                                                     # Write ranges ready to load into zmm registers
-     {for my $i(keys @r)
-       {my $r = $r[$i];
-        my $j = $i + 1;
-        my $s = ord($$r[0]);                                                    # Start of range
-        my $l = ord($$r[-1]);                                                   # End of range
-        say STDERR "Range $j: ",
-          sprintf("0x%x to 0x%x length: %2d", $s, $l, $l - $s + 1);
-        push @range, [$z,  $s, $l];
-        push @zmm,   [$z, $$Lexicals{$z}->number, $s, $l];
-       }
+    for my $c(split //, $selected{$a})                                          # Check for duplicate usage
+     {setUsage($c, $l);                                                         # Detect duplicate point usage
      }
    }
 
-  if (1)                                                                        # Load special ranges
-   {my $s = ord $Tables->semiColon;
-    my $t = ord $Tables->separator;
-    my %l = map {$_ => $Lexicals->{$_}->number}  keys $Lexicals->%*;            # Ennumerate lexical items
-    my $nl = ord("\n");
-
-#               0               1                              2    3
-#   push @zmm, ["NewLine",      $l{NewLine},                   $nl, $nl];       # New lines are being handled after lexical pass
-    push @zmm, ["Ascii",        $l{Ascii},                     0,   127];
-    push @zmm, ["semiColon",    $Lexicals->semiColon->number,  $s,  $s];
-#   push @zmm, ["WhiteSpace",   $Lexicals->WhiteSpace->number, $t,  $t];        # White space is being handled after the lexical pass
-    @zmm = sort {$$a[3] <=> $$b[3]} @zmm;
+  my %lexAlphabet;                                                              # Consolidated sorted alphabet associated with each lexical item
+  for my $l(sort keys %lexAlphas)                                               # Print the alphabets used by each lexical item
+   {for my $a(sort keys $lexAlphas{$l}->%*)                                     # Print the alphabets used by each lexical item
+     {$lexAlphabet{$l} .= $selected{$a};
+     }
+    $lexAlphabet{$l} = join '', sort split //, $lexAlphabet{$l};                # Sort each alphabet
    }
 
-  $Tables->alphabetRanges = scalar(@zmm);                                       # Alphabet ranges
-  lll "Alphabet Ranges: ",  scalar(@zmm);
-  say STDERR formatTable(\@zmm, [qw(Alphabet Lex Start End)]);
+  for my $l(sort keys %lexAlphas)                                               # Print the alphabets used by each lexical item
+   {say STDERR '-' x 44;
+    say STDERR $l;
+    for my $a(sort keys $lexAlphas{$l}->%*)                                     # Print the alphabets used by each lexical item
+     {say STDERR "  ", pad($a, 42), " : ", $selected{$a};
+     }
+    say STDERR pad("Consolidated", 44), " : ", $lexAlphabet{$l};
+    length($lexAlphabet{$l}) > 255 and confess "Alphabet too big for $l";
+    $Tables->alphabetChars->{lexNameToLetter($l)} =                             # So we can translate some text
+     [map {ord $_} split //, $lexAlphabet{$l}];
 
-  if (1)                                                                        # Write zmm load sequence
-   {my @l; my @h; my %r;                                                        # Low, high, current start within range
-    for my $r(@zmm)
-     {my $l = $r{$$r[0]}//0;                                                    # Current start of range
+   }
 
-      push @l, (($$r[1]<<24) + $$r[2]);                                         # Start of range in high and lexical item in low at byte 3 allows us to replace the utf32 code with XX....YY where XX is the lexical item type and YY is the position in the range of that lexical item freeing the two central bytes for other purposes.
-      push @h, (($l    <<24) + $$r[3]);
-      $r{$$r[0]} += ($$r[3] - $$r[2]) + 1;                                      # Extend the base of the current range
+  my $lexAlphabet = '';                                                         # Consolidated sorted alphabet over all lexical items
+  for my $l(sort keys %lexAlphabet)
+   {$lexAlphabet .= $lexAlphabet{$l};
+   }
+
+  $lexAlphabet = join '', sort split //, $lexAlphabet;                          # Sorted lexical lphabet
+
+  my @range = divideCharactersIntoRanges $lexAlphabet;                          # Ranges of characters
+
+  if (1)                                                                        # Split ranges that span lexical items
+   {my @r;                                                                      # New ranges
+    while(@range)                                                               # Each range
+     {my $r = shift @range;                                                     # Remove next range
+      my $commonUsage = sub                                                     # Extract common usage from a string and return remainder
+       {my ($string) = @_;                                                      # String
+        my $l = substr $string, 0, 1;
+        my $L = getUsageOfChar $l;
+        for my $i(1..length($string)-1)
+         {my $h = substr $string, $i, 1;
+          my $H = getUsageOfChar $h;
+          if ($H ne $L)
+           {push @r, substr($string, 0, $i);
+            return   substr($string, $i);
+            }
+          }
+         push @r, $string;
+         return '';
+       };
+
+      for(1..10)                                                                # Extract sub blocks with same lexical item
+       {if (length($r) > 0)
+         {$r = &$commonUsage($r);
+         }
+       }
+     }
+
+    @r >= @range or confess "Missing range";
+    @r >  16    and confess "Too many ranges for one zmm register: ", scalar(@r);
+    @range = @r;
+   }
+
+  if (1)                                                                        # Print each range
+   {my @t;
+    for my $i(0..$#range)                                                       # Each range
+     {my $r = $range[$i];                                                       # Points used in range
+      my $l = substr $r, 0, 1;
+      my $h = substr $r, -1;
+      my $L = getUsageOfChar $l;
+      my $H = getUsageOfChar $h;
+      push @t, [ord($l),  ord($h), $L, $H, lexNameToNumber $L];
+      $L eq $H or confess "Range with differinging lexicals: $L $H";
+     }
+    say STDERR formatTable(\@t, [qw(Start End Lex1 Lex2 Number)],
+      title=> "Lexical Ranges");
+   }
+
+  if (1)                                                                        # Zmm load sequence
+   {my @l;                                                                      # Low end of range
+    my @h;                                                                      # High end of range
+
+    for my $i(0..$#range)                                                       # Each range
+     {my $r = $range[$i];                                                       # Points used in range
+      my $l = substr $r, 0, 1;
+      my $h = substr $r, -1;
+      my $L = getUsageOfChar $l;
+      my $H = getUsageOfChar $h;
+      my $n = lexNameToNumber $L;                                               # Lexical number of range
+      my $o = index($lexAlphabet{$L}, $l);                                      # Offset of this range in alphabet of lexical item
+      $o < 0 and confess "No start for $l in $L : $lexAlphabet{$L}";
+
+      push @l, (($n<<24) + ord($l));                                            # Start of range in zmm
+      push @h, (($o<<24) + ord($h));                                            # End of range in zmm
      }
 
     push @l, 0 while @l < 16;                                                   # Clear remaining ranges
@@ -365,16 +472,15 @@ sub alphabets                                                                   
     $Tables->lexicalHigh = [@h];
    }
 
-  $Tables->alphabets = \%selected;
-
-  my %a;                                                                        # Each alphabet in character order by name
-  for my $z(@zmm)
-   {my ($name, $lex, $start, $end) = @$z;                                       # Current range
-    push $a{$name}->@*, $start..$end;
-   }
-
-  my $t = $Tables->alphabetsOrdered;
-  $Tables->alphabetsOrdered = {$t ? %$t : (), %a};
+#  $Tables->alphabets = \%selected;
+#
+#  my %a;                                                                        # Each alphabet in character order by name
+#  for my $z(@zmm)
+#   {my ($name, $lex, $start, $end) = @$z;                                       # Current range
+#    push $a{$name}->@*, $start..$end;
+#   }
+#
+#  my $t = $Tables->alphabetsOrdered;
  }
 
 sub brackets                                                                    # Locate bracket characters
@@ -501,49 +607,40 @@ sub tripleTerms                                                                 
 sub translateSomeText($$)                                                       # Translate some text
  {my ($title, $string) = @_;                                                    # Name of text, string to translate
 
-  my %alphabets;                                                                # Alphabets for each lexical
-
-  for my $l(keys $TreeTermLexicals->%*)
-   {my $m = $TreeTermLexicals->{$l}{short};
-    my $n = $Tables->lexicalAlpha->{$m}[0];
-    next unless $n;
-    my $a = $Tables->alphabets->{$n};
-    next unless $a;
-    $alphabets{$l} = [$n, $a];
-   }
-
-  $alphabets{e} = ["dyad2", join '', map {chr $_} $Tables->dyad2Chars->@*];     # Alphabet for dyads 2
+  my %alphabets = ($Tables->alphabetChars->%*, e => $Tables->dyad2Chars);       # Alphabets for each lexical
 
   my $T = '';                                                                   # Translated text as characters
   my $normal = join '', 'A'..'Z', 'a'..'z';                                     # The alphabet we can write lexical items
 
   my sub translate($)                                                           # Translate a string written in normal into the indicated alphabet
    {my ($lexical) = @_;                                                         # Lexical item to translate
-    my $a =  $alphabets{substr($lexical, 0, 1)};                                # Alphabet to translate to
-    my @a =   split //, $$a[1];                                                 # Alphabet to translate to
+    my $l = substr $lexical, 0, 1;                                              # Lexical letter
+    my $a = $alphabets{$l};                                                     # Alphabet to translate to
 
     for my $c(split //, substr($lexical, 1))
-     {my $i = index $normal, $c;                                                # The long struggle for mathematical italic h as used in physics.
-      if ($$a[0] =~ m(\AmathematicalItalic\Z))
+     {my $i = index $normal, $c;
+      my $t;
+      if ($l eq 'a')                                                            # The long struggle for mathematical italic h as used in physics.
        {if ($c eq 'h')
-         {$T .= "\x{210e}";
+         {$t = "\x{210e}";
          }
         elsif ($c lt 'h')
-         {$T .= $a[$i];
+         {$t = $$a[$i+112];
          }
         else
-         {$T .= $a[$i-1];
+         {$t = $$a[$i+111];
          }
        }
       else
-       {$T .= $a[$i];
+       {$t = $$a[$i];
        }
+      $T .= chr($t);
      }
    }
 
   for my $w(split /\s+/, $string)                                               # Translate to text
    {if    ($w =~ m(\A(a|d|e|p|q|v))) {translate $w}
-    elsif ($w =~ m(\As)) {$T .= $Tables->alphabets->{semiColon}}
+    elsif ($w =~ m(\As)) {$T .= $Tables->semiColon}
     elsif ($w =~ m(\Ab)) {$T .= $Tables->bracketsOpen ->[substr($w, 1)||0]}
     elsif ($w =~ m(\AB)) {$T .= $Tables->bracketsClose->[substr($w, 1)||0]}
     elsif ($w =~ m(\AS)) {$T .= ' '}
@@ -570,8 +667,8 @@ sub translateSomeText($$)                                                       
    }
   say STDERR '-' x 32;
   say STDERR $title;
-  say STDERR "Sample text length in chars   :", sprintf("0x%x", length($T));
-  say STDERR "Sample text length in lexicals:", scalar(@L);
+  say STDERR "Sample text length in chars   : ", sprintf("0x%x", length($T));
+  say STDERR "Sample text length in lexicals: ", scalar(@L);
 
   if (0)                                                                        # Print source code as utf8
    {my @T = split //, $T;
@@ -581,8 +678,9 @@ sub translateSomeText($$)                                                       
      }
    }
 
-  say STDERR "Sample text    :\n$T";
-  say STDERR "Sample lexicals:\n", dump(\@L);
+  say STDERR "Sample text                   :\n$T";
+  say STDERR "Sample lexicals               :\n", dump(\@L);
+
   $Tables->sampleText    ->{$title} = $T;                                       # Save sample text
   $Tables->sampleLexicals->{$title} = [map {$_ < 16 ? $_<<24 : $_} @L];         # Boost lexical elements not already boosted
  }
@@ -591,9 +689,7 @@ alphabets;                                                                      
 dyad2;                                                                          # Dyadic operators at priority 4 that is one more urgent than dyads
 brackets;                                                                       # Locate brackets
 tripleTerms;                                                                    # All invalid transitions that could usefully interpret one intervening new line as a semi colon
-
-lll "Alphabets Ordered:\n", dump($Tables->alphabetsOrdered);
-
+printLexicalItemsMD;                                                            # Print the lexical items as mark down
 
 translateSomeText 'v', <<END;                                                   # Translate some text
 va
