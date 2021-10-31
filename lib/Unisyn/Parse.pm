@@ -1416,7 +1416,7 @@ sub makeExecutionChain($)                                                       
        },
      });
 
-    PushR zmm0;  ## Place this outside ?
+#   PushR zmm0;  ## Place this outside ?
     ClearRegisters zmm0;                                                        # Place term on execution chain
 
     $$p{chain}->putDIntoZmm(0, $execChainNext * $W, r15);                       # Offset of previous block
@@ -1432,7 +1432,7 @@ sub makeExecutionChain($)                                                       
     $parse->arena->putZmmBlock($block, 0, r14, r15);                            # Save exec chain element
     $$p{chain}->copy($block);                                                   # Save address of block
 
-    PopR;
+#   PopR;
 
    } [qw(bs first chain)], name => "Nasm::X86::Tree::makeExecutionChain";
 
