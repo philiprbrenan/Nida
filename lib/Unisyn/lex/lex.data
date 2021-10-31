@@ -1,7 +1,6 @@
 do {
   my $a = bless({
     alphabetChars    => {
-                          A => [33 .. 126, 9398 .. 9449],
                           a => [
                                  8462,
                                  8592 .. 8702,
@@ -9,6 +8,7 @@ do {
                                  119894 .. 119911,
                                  120546 .. 120603,
                                ],
+                          A => [0 .. 127, 9398 .. 9449],
                           d => [119808 .. 119859, 120488 .. 120545],
                           e => [
                                  172,
@@ -384,10 +384,10 @@ do {
                           -1920,
                         ],
     lexicalHigh      => [
-                          126,
+                          127,
                           8462,
                           16785918,
-                          1577067753,
+                          2147493097,
                           10210,
                           119859,
                           1879168084,
@@ -402,7 +402,7 @@ do {
                           872536009,
                         ],
     lexicalLow       => [
-                          33554465,
+                          33554432,
                           83894542,
                           83894672,
                           33563830,
@@ -421,7 +421,7 @@ do {
                         ],
     lexicals         => bless({
                           Ascii            => bless({
-                                                comment => "Printable ASCII characters not including space, tab or new line. Extended with circled characters to act as escape sequences.",
+                                                comment => "ASCII characters extended with circled characters to act as escape sequences.",
                                                 letter  => "A",
                                                 like    => "v",
                                                 name    => "Ascii",
@@ -525,8 +525,8 @@ do {
                           b => 'fix',
                           B => 'fix',
                           d => 'fix',
-                          E => 'fix',
                           e => 'fix',
+                          E => 'fix',
                           N => 'fix',
                           p => 'fix',
                           q => 'fix',
@@ -536,17 +536,7 @@ do {
                           W => 'fix',
                         },
     sampleLexicals   => {
-                          A             => [
-                                             100663296,
-                                             83886080,
-                                             33554497,
-                                             33554464,
-                                             33554497,
-                                             33554464,
-                                             33554464,
-                                             33554464,
-                                             33554464,
-                                           ],
+                          A3            => [33554497],
                           add           => [
                                              100663296,
                                              83886080,
@@ -566,8 +556,6 @@ do {
                                              100663296,
                                            ],
                           Adv           => [
-                                             100663296,
-                                             83886080,
                                              33554497,
                                              33554464,
                                              33554497,
@@ -667,6 +655,20 @@ do {
                                              33554464,
                                            ],
                           v             => [100663296],
+                          vaA           => [100663296, 83886080, 33554497, 33554464, 33554497],
+                          vaAdv         => [
+                                             100663296,
+                                             83886080,
+                                             33554497,
+                                             33554464,
+                                             33554497,
+                                             33554464,
+                                             33554464,
+                                             33554464,
+                                             33554464,
+                                             50331648,
+                                             100663296,
+                                           ],
                           vav           => [100663296, 83886080, 100663296],
                           vavav         => [100663296, 83886080, 100663296, 83886080, 100663296],
                           vnsvs         => [
@@ -738,20 +740,22 @@ do {
                                            ],
                         },
     sampleText       => {
-                          A             => "\x{1D5EE}\x{1D5EE}\x{1D452}\x{1D45E}\x{1D462}\x{1D44E}\x{1D459}\x{1D460}abc 123    ",
+                          A3            => "abc",
                           add           => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{1D5EF}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F0}\x{1D41D}\x{1D422}\x{1D42F}\x{1D422}\x{1D41D}\x{1D41E}\x{1D5F1}",
                           ade           => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{1D5EF}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F0}\xF7\x{1D5F1}",
-                          Adv           => "\x{1D5EE}\x{1D5EE}\x{1D452}\x{1D45E}\x{1D462}\x{1D44E}\x{1D459}\x{1D460}abc 123    \x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D603}\x{1D5EE}\x{1D5FF}",
+                          Adv           => "abc 123    \x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D603}\x{1D5EE}\x{1D5FF}",
                           BB            => "\x{230A}\x{2329}\x{2768}\x{276A}\x{276C}\x{276E}\x{2770}\x{2772}\x{1D5EE}\x{2773}\x{2771}\x{276F}\x{276D}\x{276B}\x{2769}\x{232A}\x{230B}",
                           brackets      => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}\x{27E2}",
                           bvB           => "\x{2329}\x{1D5EE}\x{1D5EF}\x{1D5F0}\x{232A}",
                           e             => "\x{1D5EE}\xF7\x{1D5EF}",
                           nosemi        => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{230A}\x{2329}\x{2768}\x{1D5EF}\x{1D5FD}\x{2769}\x{232A}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{276A}\x{1D600}\x{1D5F0}\x{276B}\x{230B}",
-                          ppppvdvdvqqqq => "\x{1D482}\x{2774}\x{1D483}\x{27E6}\x{1D484}\x{27E8}\x{1D5EE}\x{1D452}\x{1D45E}\x{1D462}\x{1D44E}\x{1D459}\x{1D460}\x{1D485}\x{1D5EF}\x{1D659}\x{1D42D}\x{1D422}\x{1D426}\x{1D41E}\x{1D42C}\x{27EA}\x{1D5F0}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F1}\x{27EB}\x{27E2}\x{1D5F2}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{1D5F3}\x{1D42C}\x{1D42E}\x{1D41B}\x{1D5F4}\x{1D65D}\x{27E9}\x{1D658}\x{27E7}\x{1D657}\x{2775}\x{1D656}",
+                          ppppvdvdvqqqq => "\x{1D482}\x{2774}\x{1D483}\x{27E6}\x{1D484}\x{27E8}\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{1D485}\x{1D5EF}\x{1D659}\x{1D42D}\x{1D422}\x{1D426}\x{1D41E}\x{1D42C}\x{27EA}\x{1D5F0}\x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D5F1}\x{27EB}\x{27E2}\x{1D5F2}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{1D5F3}\x{1D42C}\x{1D42E}\x{1D41B}\x{1D5F4}\x{1D65D}\x{27E9}\x{1D658}\x{27E7}\x{1D657}\x{2775}\x{1D656}",
                           s             => "\x{1D5EE}\x{27E2}\x{1D5EF}",
                           s1            => "\x{1D5EE}\x{1D44E}\n  \n   ",
                           v             => "\x{1D5EE}",
-                          vav           => "\x{1D5EE}\x{1D44E}\x{1D5EF}",
+                          vaA           => "\x{1D5EE}\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}abc 123",
+                          vaAdv         => "\x{1D5EE}\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}abc 123    \x{1D429}\x{1D425}\x{1D42E}\x{1D42C}\x{1D603}\x{1D5EE}\x{1D5FF}",
+                          vav           => "\x{1D5EE}\x{1D44E}\x{1D460}\x{1D460}\x{1D456}\x{1D454}\x{1D45B}\x{1D5EF}",
                           vavav         => "\x{1D5EE}\x{1D44E}\x{1D5EF}\x{1D44E}\x{1D5F0}",
                           vnsvs         => "\x{1D5EE}\x{1D5EE}\n   \x{1D5EF}\x{1D5EF}   ",
                           vnv           => "\x{1D5EE}\n\x{1D5EF}",
@@ -804,8 +808,8 @@ do {
   $a->{lexicalsByLetter}{b} = $a->{lexicals}{OpenBracket};
   $a->{lexicalsByLetter}{B} = $a->{lexicals}{CloseBracket};
   $a->{lexicalsByLetter}{d} = $a->{lexicals}{dyad};
-  $a->{lexicalsByLetter}{E} = $a->{lexicals}{empty};
   $a->{lexicalsByLetter}{e} = $a->{lexicals}{dyad2};
+  $a->{lexicalsByLetter}{E} = $a->{lexicals}{empty};
   $a->{lexicalsByLetter}{N} = $a->{lexicals}{NewLineSemiColon};
   $a->{lexicalsByLetter}{p} = $a->{lexicals}{prefix};
   $a->{lexicalsByLetter}{q} = $a->{lexicals}{suffix};
