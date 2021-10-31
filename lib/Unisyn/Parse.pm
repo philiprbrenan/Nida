@@ -326,8 +326,15 @@ sub new($$)                                                                     
           Pinsrd "xmm1", $liType."d", 0;                                        # Load short string
           Shr $liType, 16;                                                      # Move lexical type back into position for insertion into the parse tree
          },
-        Else
-         {$s->loadDwordBytes(0, $startAddress, $size, 1);                       # Load text of lexical item into short string leaving space for lexical type
+        Else                                                                    # Not a bracket
+         {Cmp $liType, $dyad2;                                                  # Is it a dyad2?
+          IfEq
+          Then                                                                  # Dyad 2 so load words
+           {$s->loadDwordWords(0, $startAddress, $size, 1);                     # Load text of lexical item as words into short string leaving space for lexical type
+           },
+          Else                                                                  # Not a dyad2 so load bytes
+           {$s->loadDwordBytes(0, $startAddress, $size, 1);                     # Load text of lexical item as bytes into short string leaving space for lexical type
+           };
           Pinsrb "xmm1", $liType."b", 1;                                        # Set lexical type as the first byte of the short string
          };
 
@@ -420,7 +427,6 @@ sub testSet($$)                                                                 
  {my ($set, $register) = @_;                                                    # Set of lexical letters, Register to test
   my @n = map {sprintf("0x%x", lexicalNumberFromLetter $_)} split //, $set;     # Each lexical item by number from letter
   my $end = Label;
-  Comment "BBBB $set";
   for my $n(@n)
    {Cmp $register."b", $n;
     Je $end
@@ -575,7 +581,7 @@ sub accept_a()                                                                  
  }
 
 sub accept_b                                                                    #P Open.
- {checkSet("abdps");
+ {checkSet("abdeps");
   PrintErrStringNL "accept b" if $debug;
   pushElement;
  }
@@ -660,7 +666,7 @@ sub parseExpression()                                                           
   Je $end;
 
   loadCurrentChar;                                                              # Load current character
-### Need test for ignorable white space as first character
+## Need test for ignorable white space as first character
   testSet($firstSet, $element);
   IfNe
   Then
@@ -1202,7 +1208,6 @@ sub parseUtf8($@)                                                               
         Vmovdqu8 zmm0, "[".Rd(join ', ', @l[$l..$h])."]";                       # Start of each range
         Vmovdqu8 zmm1, "[".Rd(join ', ', @h[$l..$h])."]";                       # End of range
         Vmovdqu8 zmm2, "[".Rd(join ', ', @o[$l..$h])."]";                       # Offset of each range
-
         ClassifyWithInRangeAndSaveWordOffset $source32, $sourceLength32,        # Dyad2 character classifications
           V('classification', $Lex->{lexicals}{dyad2}{number});
        }
@@ -1548,9 +1553,7 @@ sub printLexicalItem($$$$)                                                      
     IfEq
     Then
      {my $b = $Lex->{alphabetChars}{v};                                         # Load variable alphabet in dwords
-      my @b = map {convertUtf32ToUtf8LE $_} @$b;
-      my $a = Rd @b;
-      Mov r12, $a;
+      Mov r12, Rd map {convertUtf32ToUtf8LE $_} @$b;
       Jmp $print;
      };
 
@@ -1558,9 +1561,7 @@ sub printLexicalItem($$$$)                                                      
     IfEq
     Then
      {my $b = $Lex->{alphabetChars}{a};
-      my @b = map {convertUtf32ToUtf8LE $_} @$b;
-      my $a = Rd @b;
-      Mov r12, $a;
+      Mov r12, Rd map {convertUtf32ToUtf8LE $_} @$b;
       Jmp $print;
      };
 
@@ -1568,9 +1569,7 @@ sub printLexicalItem($$$$)                                                      
     IfEq
     Then
      {my $b = $Lex->{alphabetChars}{d};
-      my @b = map {convertUtf32ToUtf8LE $_} @$b;
-      my $a = Rd @b;
-      Mov r12, $a;
+      Mov r12, Rd map {convertUtf32ToUtf8LE $_} @$b;
       Jmp $print;
      };
 
@@ -1578,9 +1577,7 @@ sub printLexicalItem($$$$)                                                      
     IfEq
     Then
      {my $b = $Lex->{alphabetChars}{e};
-      my @b = map {convertUtf32ToUtf8LE $_} @$b;
-      my $a = Rd @b;
-      Mov r12, $a;  ## No need for $a
+      Mov r12, Rd map {convertUtf32ToUtf8LE $_} @$b;
       Jmp $print;
      };
 
@@ -1588,9 +1585,7 @@ sub printLexicalItem($$$$)                                                      
     IfEq
     Then
      {my $b = $Lex->{alphabetChars}{A};
-      my @b = map {convertUtf32ToUtf8LE $_} @$b;
-      my $a = Rd @b;
-      Mov r12, $a;
+      Mov r12, Rd map {convertUtf32ToUtf8LE $_} @$b;
       Jmp $print;
      };
 
@@ -1598,19 +1593,15 @@ sub printLexicalItem($$$$)                                                      
     IfEq
     Then
      {my $b = $Lex->{alphabetChars}{p};
-      my @b = map {convertUtf32ToUtf8LE $_} @$b;
-      my $a = Rd @b;
-      Mov r12, $a;
+      Mov r12, Rd map {convertUtf32ToUtf8LE $_} @$b;
       Jmp $print;
      };
 
     Cmp rax, $suffix;                                                           # Suffix
     IfEq
     Then
-     {my $b = $Lex->{alphabetChars}{s};
-      my @b = map {convertUtf32ToUtf8LE $_} @$b;
-      my $a = Rd @b;
-      Mov r12, $a;
+     {my $b = $Lex->{alphabetChars}{q};
+      Mov r12, Rd map {convertUtf32ToUtf8LE $_} @$b;
       Jmp $print;
      };
 
@@ -1625,9 +1616,8 @@ sub printLexicalItem($$$$)                                                      
      {my ($index, $start, $next, $end) = @_;                                    # Execute body
       $index->setReg(r14);                                                      # Index stack
       ClearRegisters r15;                                                       # Next instruction does not clear the entire register
-      Mov r15b, "[r13+4*r14]";  ## Should be able to make this w                                                 # Load alphabet offset from stack
-      Shl r15, 2;                                                               # Each letter is 4 bytes wide in utf8
-      Lea rax, "[r12+r15]";  ## 4*r15                                                   # Address alphabet letter as utf8
+      Mov r15w, "[r13+4*r14]";                                                  # Load alphabet offset from stack
+      Lea rax, "[r12+4*r15]";                                                   # Address alphabet letter as utf8
       PrintOutUtf8Char;                                                         # Print utf8 character
      });
 
@@ -1780,28 +1770,22 @@ sub lexToSub($$$$)                                                              
  {my ($parse, $alphabet, $op, $sub) = @_;                                       # Sub quarks, the alphabet number, the operator name in that alphabet, subroutine definition
   my $a = &lexicalData->{alphabetChars}{$alphabet};                             # Alphabet
   my $n = $$Lex{lexicalsByLetter}{$alphabet}{number};                           # Number of lexical type
-  my %i = map {$$a[$_]=>$_} keys @$a;
-  my @o = map {ord($_)} split //, $op;                                                        # Characters in operator name
-lll "iiii", dump(\%i);
-lll "oooo", dump(\@o);
-  my @b = ($n, map {$i{$_}} @o);                                                 # Bytes representing the operator name
-lll "bbbb", dump(\@b);
+  my %i = map {$$a[$_]=>$_} keys @$a;                                           # Translates into offset in alphabet for this lexical item
+  my @o = map {ord($_)} split //, $op;                                          # Characters in operator name
+  my @b = ($n, map {$i{$_}} @o);                                                # Bytes representing the operator name
+     @b = ($n, map {my $c = $i{$_}; ($c % 256, int($c/256))} @o) if @$a > 0xff; # Words representing the operator name as bytes would not be enough in all cases
   my $s = join '', map {chr $_} @b;                                             # String representation
   $parse->operators->putSub($s, $sub);                                          # Add the string, subroutine combination to the sub quarks
  }
 
 sub dyad($$$)                                                                   # Define a method for a dyadic operator.
  {my ($parse, $text, $sub) = @_;                                                # Sub quarks, the name of the operator as a utf8 string, associated subroutine definition
-  $parse->lexToSub("dyad", $text, $sub);
+  $parse->lexToSub("d", $text, $sub);
  }
 
 sub dyad2($$$)                                                                  # Define a method for a dyadic 2 operator.
  {my ($parse, $text, $sub) = @_;                                                # Sub quarks, the name of the operator as a utf8 string, associated subroutine definition
-  my $N = $$Lex{lexicals}{dyad2}{number};                                       # Lexical number of a dyad 2
-  my $a = &lexicalData->{alphabetsOrdered}{dyad2};                              # Alphabet
-  my %s = map{chr($$a[$_]) => chr $_} 0..$#$a;
-  my $i = $s{substr($text, 0, 1)};                                              # Index of dyad in dyad alphabet
-  $parse->operators->putSub(chr($N).$i, $sub);                                  # Add the semicolon subroutine to the sub quarks
+  $parse->lexToSub("e", $text, $sub);
  }
 
 sub assign($$$)                                                                 # Define a method for an assign operator.
@@ -1816,7 +1800,7 @@ sub prefix($$$)                                                                 
 
 sub suffix($$$)                                                                 # Define a method for a suffix operator.
  {my ($parse, $text, $sub) = @_;                                                # Sub quarks, the name of the operator as a utf8 string, associated subroutine definition
-  $parse->lexToSub("s", $text, $sub);                                           # Operator name in operator alphabet preceded by alphabet number
+  $parse->lexToSub("q", $text, $sub);                                           # Operator name in operator alphabet preceded by alphabet number
  }
 
 sub ascii($$)                                                                   # Define a method for ascii text.
@@ -1925,6 +1909,7 @@ sub semiColonChar()                                                             
 sub lexicalData {do {
   my $a = bless({
     alphabetChars    => {
+                          A => [33 .. 126, 9398 .. 9449],
                           a => [
                                  8462,
                                  8592 .. 8702,
@@ -1932,40 +1917,16 @@ sub lexicalData {do {
                                  119894 .. 119911,
                                  120546 .. 120603,
                                ],
-                          A => [33 .. 126, 9398 .. 9449],
                           d => [119808 .. 119859, 120488 .. 120545],
                           e => [
-                                 1014,
-                                 10176 .. 10209,
-                                 10211,
-                                 10212,
-                                 10213,
-                                 10224 .. 10626,
-                                 10649 .. 10747,
-                                 10750 .. 11096,
-                                 11776 .. 11807,
-                                 11818 .. 11824,
-                                 126704,
-                                 126705,
-                                 1542,
-                                 1543,
-                                 1544,
                                  172,
                                  177,
                                  215,
                                  247,
-                                 64297,
-                                 65122,
-                                 65124,
-                                 65125,
-                                 65126,
-                                 65291,
-                                 65308,
-                                 65309,
-                                 65310,
-                                 65372,
-                                 65374,
-                                 65506,
+                                 1014,
+                                 1542,
+                                 1543,
+                                 1544,
                                  8203 .. 8260,
                                  8263 .. 8289,
                                  8293 .. 8297,
@@ -1982,6 +1943,29 @@ sub lexicalData {do {
                                  8972 .. 9000,
                                  9004 .. 9215,
                                  9632 .. 9983,
+                                 10176 .. 10209,
+                                 10211,
+                                 10212,
+                                 10213,
+                                 10224 .. 10626,
+                                 10649 .. 10747,
+                                 10750 .. 11096,
+                                 11776 .. 11807,
+                                 11818 .. 11824,
+                                 64297,
+                                 65122,
+                                 65124,
+                                 65125,
+                                 65126,
+                                 65291,
+                                 65308,
+                                 65309,
+                                 65310,
+                                 65372,
+                                 65374,
+                                 65506,
+                                 126704,
+                                 126705,
                                ],
                           p => [119912 .. 119963, 120604 .. 120661],
                           q => [120380 .. 120431, 120720 .. 120777],
@@ -2345,7 +2329,7 @@ sub lexicalData {do {
                         ],
     lexicals         => bless({
                           Ascii            => bless({
-                                                comment => "Printable ASCII characters not including space, tab or new line",
+                                                comment => "Printable ASCII characters not including space, tab or new line. Extended with circled characters to act as escape sequences.",
                                                 letter  => "A",
                                                 like    => "v",
                                                 name    => "Ascii",
@@ -2401,7 +2385,7 @@ sub lexicalData {do {
                                                 number  => 0,
                                               }, "Unisyn::Parse::Lexical::Constant"),
                           prefix           => bless({
-                                                comment => "Prefix operator - it applies only to the following variable",
+                                                comment => "Prefix operator - applies only to the following variable or bracketed term",
                                                 letter  => "p",
                                                 like    => "p",
                                                 name    => "prefix",
@@ -2415,7 +2399,7 @@ sub lexicalData {do {
                                                 number  => 8,
                                               }, "Unisyn::Parse::Lexical::Constant"),
                           suffix           => bless({
-                                                comment => "Suffix operator - it applies only to the preceding variable",
+                                                comment => "Suffix operator - applies only to the preceding variable or bracketed term",
                                                 letter  => "q",
                                                 like    => "q",
                                                 name    => "suffix",
@@ -2429,7 +2413,7 @@ sub lexicalData {do {
                                                 number  => 9,
                                               }, "Unisyn::Parse::Lexical::Constant"),
                           variable         => bless({
-                                                comment => "Variable although it could also be an ASCII string or regular expression",
+                                                comment => "Variable names",
                                                 letter  => "v",
                                                 like    => "v",
                                                 name    => "variable",
@@ -2444,13 +2428,13 @@ sub lexicalData {do {
                                               }, "Unisyn::Parse::Lexical::Constant"),
                         }, "Unisyn::Parse::Lexicals"),
     lexicalsByLetter => {
-                          a => 'fix',
                           A => 'fix',
-                          B => 'fix',
+                          a => 'fix',
                           b => 'fix',
+                          B => 'fix',
                           d => 'fix',
-                          e => 'fix',
                           E => 'fix',
+                          e => 'fix',
                           N => 'fix',
                           p => 'fix',
                           q => 'fix',
@@ -2723,13 +2707,13 @@ sub lexicalData {do {
                         }, "Tree::Term::LexicalStructure"),
     treeTermLexicals => 'fix',
   }, "Unisyn::Parse::Lexical::Tables");
-  $a->{lexicalsByLetter}{a} = $a->{lexicals}{assign};
   $a->{lexicalsByLetter}{A} = $a->{lexicals}{Ascii};
-  $a->{lexicalsByLetter}{B} = $a->{lexicals}{CloseBracket};
+  $a->{lexicalsByLetter}{a} = $a->{lexicals}{assign};
   $a->{lexicalsByLetter}{b} = $a->{lexicals}{OpenBracket};
+  $a->{lexicalsByLetter}{B} = $a->{lexicals}{CloseBracket};
   $a->{lexicalsByLetter}{d} = $a->{lexicals}{dyad};
-  $a->{lexicalsByLetter}{e} = $a->{lexicals}{dyad2};
   $a->{lexicalsByLetter}{E} = $a->{lexicals}{empty};
+  $a->{lexicalsByLetter}{e} = $a->{lexicals}{dyad2};
   $a->{lexicalsByLetter}{N} = $a->{lexicals}{NewLineSemiColon};
   $a->{lexicalsByLetter}{p} = $a->{lexicals}{prefix};
   $a->{lexicalsByLetter}{q} = $a->{lexicals}{suffix};
@@ -3780,7 +3764,7 @@ Test::More->builder->output("/dev/null") if $localTest;                         
 
 if ($^O =~ m(bsd|linux|cygwin)i)                                                # Supported systems
  {if (confirmHasCommandLineCommand(q(nasm)) and LocateIntelEmulator)            # Network assembler and Intel Software Development emulator
-   {plan tests => 24;
+   {plan tests => 22;
    }
   else
    {plan skip_all => qq(Nasm or Intel 64 emulator not available);
@@ -4212,7 +4196,7 @@ Semicolon
     Variable: 𝗯
 END
 
-latest:
+#latest:
 ok T(q(A), <<END) if 0; # Ascii is a problem
 Tree at:  0000 0000 0000 03D8  length: 0000 0000 0000 000A
   Keys: 0000 0418 0280 000A   0000 0000 0000 0000   0000 0000 0000 0000   0000 000D 0000 000C   0000 0009 0000 0008   0000 0007 0000 0006   0000 0005 0000 0004   0000 0001 0000 0000
@@ -4373,9 +4357,9 @@ Semicolon
     Variable: 𝗮
   Term
     Variable: 𝗯
-Tree at:  0000 0000 0000 0CD8  length: 0000 0000 0000 000B
-  Keys: 0000 0D18 0500 000B   0000 0000 0000 0000   0000 0000 0000 000D   0000 000C 0000 0009   0000 0008 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
-  Data: 0000 0000 0000 0016   0000 0000 0000 0000   0000 0000 0000 0C18   0000 0009 0000 0AD8   0000 0009 0000 0002   0000 0001 0000 0001   0000 0008 0041 4514   0000 0003 0000 0009
+Tree at:  0000 0000 0000 0E18  length: 0000 0000 0000 000B
+  Keys: 0000 0E58 0500 000B   0000 0000 0000 0000   0000 0000 0000 000D   0000 000C 0000 0009   0000 0008 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
+  Data: 0000 0000 0000 0016   0000 0000 0000 0000   0000 0000 0000 0D58   0000 0009 0000 0C18   0000 0009 0000 0002   0000 0001 0000 0001   0000 0008 0041 4514   0000 0003 0000 0009
   Node: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
     index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
     index: 0000 0000 0000 0001   key: 0000 0000 0000 0001   data: 0000 0000 0000 0003
@@ -4385,11 +4369,11 @@ Tree at:  0000 0000 0000 0CD8  length: 0000 0000 0000 000B
     index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
     index: 0000 0000 0000 0006   key: 0000 0000 0000 0007   data: 0000 0000 0000 0002
     index: 0000 0000 0000 0007   key: 0000 0000 0000 0008   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 0008   key: 0000 0000 0000 0009   data: 0000 0000 0000 0AD8 subTree
+    index: 0000 0000 0000 0008   key: 0000 0000 0000 0009   data: 0000 0000 0000 0C18 subTree
     index: 0000 0000 0000 0009   key: 0000 0000 0000 000C   data: 0000 0000 0000 0009
-    index: 0000 0000 0000 000A   key: 0000 0000 0000 000D   data: 0000 0000 0000 0C18 subTree
-  Tree at:  0000 0000 0000 0AD8  length: 0000 0000 0000 0007
-    Keys: 0000 0B18 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
+    index: 0000 0000 0000 000A   key: 0000 0000 0000 000D   data: 0000 0000 0000 0D58 subTree
+  Tree at:  0000 0000 0000 0C18  length: 0000 0000 0000 0007
+    Keys: 0000 0C58 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
     Data: 0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0001 0000 0000   0000 0006 0041 176C   0000 0001 0000 0009
     Node: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
@@ -4400,8 +4384,8 @@ Tree at:  0000 0000 0000 0CD8  length: 0000 0000 0000 000B
       index: 0000 0000 0000 0005   key: 0000 0000 0000 0006   data: 0000 0000 0000 0001
       index: 0000 0000 0000 0006   key: 0000 0000 0000 0007   data: 0000 0000 0000 0000
   end
-  Tree at:  0000 0000 0000 0C18  length: 0000 0000 0000 0007
-    Keys: 0000 0C58 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
+  Tree at:  0000 0000 0000 0D58  length: 0000 0000 0000 0007
+    Keys: 0000 0D98 0000 0007   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0007   0000 0006 0000 0005   0000 0004 0000 0002   0000 0001 0000 0000
     Data: 0000 0000 0000 000E   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0001   0000 0001 0000 0002   0000 0006 0041 176C   0000 0001 0000 0009
     Node: 0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000   0000 0000 0000 0000
       index: 0000 0000 0000 0000   key: 0000 0000 0000 0000   data: 0000 0000 0000 0009
@@ -4420,7 +4404,7 @@ END
  }
 
 #latest:
-if (1) {                                                                        #TtraverseParseTree
+if (0) {    ## Ascii                                                                    #TtraverseParseTree
   my $s = Rutf8 $Lex->{sampleText}{Adv};                                        # Ascii
   my $p = create K(address, $s), operators => \&printOperatorSequence;
 
@@ -4647,6 +4631,7 @@ Suffix: 𝙖
 variable
 variable
 prefix_d
+suffix_d
 variable
 variable
 plus
@@ -4660,10 +4645,13 @@ assign
 semiColon
 brackets_3
 prefix_c
+suffix_c
 brackets_2
 prefix_b
+suffix_b
 brackets_1
 prefix_a
+suffix_a
 END
  }
 
@@ -4852,7 +4840,7 @@ if (1) {                                                                        
   $p->makeExecutionChain;
   $p->execExecChain;
 
-  Assemble(debug => 0, eq => <<END)
+  Assemble(debug => 0, eq => <<END)                                             # ÷ 0xf7 ascii is character 0x3 in the dyad2 alphabet
 𝗮÷𝗯
 Dyad2: ÷
   Term
