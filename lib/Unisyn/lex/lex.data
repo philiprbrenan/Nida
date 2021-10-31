@@ -1,6 +1,7 @@
 do {
   my $a = bless({
     alphabetChars    => {
+                          A => [33 .. 126, 9398 .. 9449],
                           a => [
                                  8462,
                                  8592 .. 8702,
@@ -8,40 +9,16 @@ do {
                                  119894 .. 119911,
                                  120546 .. 120603,
                                ],
-                          A => [33 .. 126, 9398 .. 9449],
                           d => [119808 .. 119859, 120488 .. 120545],
                           e => [
-                                 1014,
-                                 10176 .. 10209,
-                                 10211,
-                                 10212,
-                                 10213,
-                                 10224 .. 10626,
-                                 10649 .. 10747,
-                                 10750 .. 11096,
-                                 11776 .. 11807,
-                                 11818 .. 11824,
-                                 126704,
-                                 126705,
-                                 1542,
-                                 1543,
-                                 1544,
                                  172,
                                  177,
                                  215,
                                  247,
-                                 64297,
-                                 65122,
-                                 65124,
-                                 65125,
-                                 65126,
-                                 65291,
-                                 65308,
-                                 65309,
-                                 65310,
-                                 65372,
-                                 65374,
-                                 65506,
+                                 1014,
+                                 1542,
+                                 1543,
+                                 1544,
                                  8203 .. 8260,
                                  8263 .. 8289,
                                  8293 .. 8297,
@@ -58,6 +35,29 @@ do {
                                  8972 .. 9000,
                                  9004 .. 9215,
                                  9632 .. 9983,
+                                 10176 .. 10209,
+                                 10211,
+                                 10212,
+                                 10213,
+                                 10224 .. 10626,
+                                 10649 .. 10747,
+                                 10750 .. 11096,
+                                 11776 .. 11807,
+                                 11818 .. 11824,
+                                 64297,
+                                 65122,
+                                 65124,
+                                 65125,
+                                 65126,
+                                 65291,
+                                 65308,
+                                 65309,
+                                 65310,
+                                 65372,
+                                 65374,
+                                 65506,
+                                 126704,
+                                 126705,
                                ],
                           p => [119912 .. 119963, 120604 .. 120661],
                           q => [120380 .. 120431, 120720 .. 120777],
@@ -421,7 +421,7 @@ do {
                         ],
     lexicals         => bless({
                           Ascii            => bless({
-                                                comment => "Printable ASCII characters not including space, tab or new line",
+                                                comment => "Printable ASCII characters not including space, tab or new line. Extended with circled characters to act as escape sequences.",
                                                 letter  => "A",
                                                 like    => "v",
                                                 name    => "Ascii",
@@ -477,7 +477,7 @@ do {
                                                 number  => 0,
                                               }, "Unisyn::Parse::Lexical::Constant"),
                           prefix           => bless({
-                                                comment => "Prefix operator - it applies only to the following variable",
+                                                comment => "Prefix operator - applies only to the following variable or bracketed term",
                                                 letter  => "p",
                                                 like    => "p",
                                                 name    => "prefix",
@@ -491,7 +491,7 @@ do {
                                                 number  => 8,
                                               }, "Unisyn::Parse::Lexical::Constant"),
                           suffix           => bless({
-                                                comment => "Suffix operator - it applies only to the preceding variable",
+                                                comment => "Suffix operator - applies only to the preceding variable or bracketed term",
                                                 letter  => "q",
                                                 like    => "q",
                                                 name    => "suffix",
@@ -505,7 +505,7 @@ do {
                                                 number  => 9,
                                               }, "Unisyn::Parse::Lexical::Constant"),
                           variable         => bless({
-                                                comment => "Variable although it could also be an ASCII string or regular expression",
+                                                comment => "Variable names",
                                                 letter  => "v",
                                                 like    => "v",
                                                 name    => "variable",
@@ -520,13 +520,13 @@ do {
                                               }, "Unisyn::Parse::Lexical::Constant"),
                         }, "Unisyn::Parse::Lexicals"),
     lexicalsByLetter => {
-                          a => 'fix',
                           A => 'fix',
-                          B => 'fix',
+                          a => 'fix',
                           b => 'fix',
+                          B => 'fix',
                           d => 'fix',
-                          e => 'fix',
                           E => 'fix',
+                          e => 'fix',
                           N => 'fix',
                           p => 'fix',
                           q => 'fix',
@@ -799,13 +799,13 @@ do {
                         }, "Tree::Term::LexicalStructure"),
     treeTermLexicals => 'fix',
   }, "Unisyn::Parse::Lexical::Tables");
-  $a->{lexicalsByLetter}{a} = $a->{lexicals}{assign};
   $a->{lexicalsByLetter}{A} = $a->{lexicals}{Ascii};
-  $a->{lexicalsByLetter}{B} = $a->{lexicals}{CloseBracket};
+  $a->{lexicalsByLetter}{a} = $a->{lexicals}{assign};
   $a->{lexicalsByLetter}{b} = $a->{lexicals}{OpenBracket};
+  $a->{lexicalsByLetter}{B} = $a->{lexicals}{CloseBracket};
   $a->{lexicalsByLetter}{d} = $a->{lexicals}{dyad};
-  $a->{lexicalsByLetter}{e} = $a->{lexicals}{dyad2};
   $a->{lexicalsByLetter}{E} = $a->{lexicals}{empty};
+  $a->{lexicalsByLetter}{e} = $a->{lexicals}{dyad2};
   $a->{lexicalsByLetter}{N} = $a->{lexicals}{NewLineSemiColon};
   $a->{lexicalsByLetter}{p} = $a->{lexicals}{prefix};
   $a->{lexicalsByLetter}{q} = $a->{lexicals}{suffix};
