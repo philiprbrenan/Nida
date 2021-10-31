@@ -38,20 +38,20 @@ sub LexicalConstant($$$$$)                                                      
 my %Usage;                                                                      # Maps unicode point to lexical item
 
 my $Lexicals = genHash("Unisyn::Parse::Lexicals",                               # Lexical items in Unisyn
-  OpenBracket       => LexicalConstant("OpenBracket",        0, 'b', 'b',       'The lowest bit of an open bracket code is zero'                                                                               ),
-  CloseBracket      => LexicalConstant("CloseBracket",       1, 'B', 'B',       'The lowest bit of a close bracket code is one '                                                                               ),
-  Ascii             => LexicalConstant("Ascii",              2, 'A', 'v',       'Printable ASCII characters not including space, tab or new line. Extended with circled characters to act as escape sequences.'),
-  dyad              => LexicalConstant("dyad",               3, 'd', 'd',       'Infix operator with left to right binding at priority 3'                                                                      ),
-  prefix            => LexicalConstant("prefix",             4, 'p', 'p',       'Prefix operator - applies only to the following variable or bracketed term'                                                   ),
-  assign            => LexicalConstant("assign",             5, 'a', 'a',       'Assign infix operator with right to left binding at priority 2'                                                               ),
-  variable          => LexicalConstant("variable",           6, 'v', 'v',       'Variable names'                                                                                                               ),
-  suffix            => LexicalConstant("suffix",             7, 'q', 'q',       'Suffix operator - applies only to the preceding variable or bracketed term'                                                   ),
-  semiColon         => LexicalConstant("semiColon",          8, 's', 's',       'Infix operator with left to right binding at priority 1'                                                                      ),
-  term              => LexicalConstant("term",               9, 't', 't',       'Term in the parse tree'                                                                                                       ),
-  empty             => LexicalConstant("empty",             10, 'E', 'E',       'Empty term present between two adjacent semicolons'                                                                           ),
-  WhiteSpace        => LexicalConstant("WhiteSpace",        11, 'W', undef,     'White space that can be ignored during lexical analysis'                                                                      ),
-  NewLineSemiColon  => LexicalConstant("NewLineSemiColon",  12, 'N', undef,     'A new line character that is also acting as a semi colon'                                                                     ),
-  dyad2             => LexicalConstant("dyad2",             13, 'e', 'e',       'Infix operator with left to right binding at priority 4'                                                                      ),
+  OpenBracket       => LexicalConstant("OpenBracket",        0, 'b', 'b',       'The lowest bit of an open bracket code is zero'                               ),
+  CloseBracket      => LexicalConstant("CloseBracket",       1, 'B', 'B',       'The lowest bit of a close bracket code is one '                               ),
+  Ascii             => LexicalConstant("Ascii",              2, 'A', 'v',       'ASCII characters extended with circled characters to act as escape sequences.'),
+  dyad              => LexicalConstant("dyad",               3, 'd', 'd',       'Infix operator with left to right binding at priority 3'                      ),
+  prefix            => LexicalConstant("prefix",             4, 'p', 'p',       'Prefix operator - applies only to the following variable or bracketed term'   ),
+  assign            => LexicalConstant("assign",             5, 'a', 'a',       'Assign infix operator with right to left binding at priority 2'               ),
+  variable          => LexicalConstant("variable",           6, 'v', 'v',       'Variable names'                                                               ),
+  suffix            => LexicalConstant("suffix",             7, 'q', 'q',       'Suffix operator - applies only to the preceding variable or bracketed term'   ),
+  semiColon         => LexicalConstant("semiColon",          8, 's', 's',       'Infix operator with left to right binding at priority 1'                      ),
+  term              => LexicalConstant("term",               9, 't', 't',       'Term in the parse tree'                                                       ),
+  empty             => LexicalConstant("empty",             10, 'E', 'E',       'Empty term present between two adjacent semicolons'                           ),
+  WhiteSpace        => LexicalConstant("WhiteSpace",        11, 'W', undef,     'White space that can be ignored during lexical analysis'                      ),
+  NewLineSemiColon  => LexicalConstant("NewLineSemiColon",  12, 'N', undef,     'A new line character that is also acting as a semi colon'                     ),
+  dyad2             => LexicalConstant("dyad2",             13, 'e', 'e',       'Infix operator with left to right binding at priority 4'                      ),
  );
 
 my $TreeTermLexicals = Tree::Term::LexicalStructure->codes;
@@ -332,7 +332,7 @@ sub alphabets                                                                   
 
   $selected{semiColon} = $Tables->semiColon;                                    # We cannot use semi colon as the statement separator because it is an ascii character, so we use U+27E2 instead
   $selected{arrows}    = join '', map {chr $_} 0x2190..0x21FE;                  # Arrows are used for assignment regardless of the direction they point in.
-  $selected{Ascii}     = join '', map {chr $_} 0x21..0x7e;                      # Ascii alphabet minus space and control characters
+  $selected{Ascii}     = join '', map {chr $_} 0x0..0x7f;                       # Ascii alphabet
 
   my %lexAlphas;                                                                # The alphabets used by each lexical item
 
@@ -641,7 +641,7 @@ sub translateSomeText($$)                                                       
     elsif ($w =~ m(\As)) {push @L, $n{semiColon}}
     elsif ($w =~ m(\Ab)) {push @L, $n{OpenBracket}}
     elsif ($w =~ m(\AB)) {push @L, $n{CloseBracket}}
-    elsif ($w =~ m(\AS)) {push @L, ($n{Ascii} << 24) + ord(' ')}
+    elsif ($w =~ m(\AS)) {push @L, ($n{Ascii} << 24) + ord(' ')}                # Expected classification
     elsif ($w =~ m(\AN)) {push @L, ($n{Ascii} << 24) + ord("\n")}
     elsif ($w =~ m(\AA)) {push @L, ($n{Ascii} << 24) + ord('A')}
    }
@@ -727,12 +727,12 @@ translateSomeText 'vnsvs', <<END;
 vaa N S S S vbb S S S
 END
 
-translateSomeText 'A', <<END;
-vaa aequals Aabc S A123  S S S S
+translateSomeText 'vaA', <<END;
+vaa aassign Aabc S A123
 END
 
-translateSomeText 'Adv', <<END;
-vaa aequals Aabc S A123  S S S S dplus vvar
+translateSomeText 'vaAdv', <<END;
+vaa aassign Aabc S A123  S S S S dplus vvar
 END
 
 translateSomeText 'BB', <<END;
@@ -740,7 +740,7 @@ b1 b2 b3 b4 b5 b6 b7 b8 va B8 B7 B6 B5 B4 B3 B2 B1
 END
 
 translateSomeText 'ppppvdvdvqqqq', <<END;
-pa b9 pb b10 pc b11 va aequals pd vb qd dtimes b12 vc dplus vd B12 s ve aassign vf dsub vg  qh B11 qc B10  qb B9 qa
+pa b9 pb b10 pc b11 va aassign pd vb qd dtimes b12 vc dplus vd B12 s ve aassign vf dsub vg  qh B11 qc B10  qb B9 qa
 END
 
 translateSomeText 'e', <<END;
@@ -753,6 +753,18 @@ END
 
 translateSomeText 'ade', <<END;
 va aassign vb dplus vc eD vd
+END
+
+translateSomeText 'A3', <<END;
+Aabc
+END
+
+translateSomeText 'Adv', <<END;
+Aabc S A123  S S S S dplus vvar
+END
+
+translateSomeText 'vav', <<END;
+va aassign vb
 END
 
 say STDERR owf $lexicalsFile, dump($Tables);                                    # Write results
