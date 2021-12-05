@@ -335,14 +335,12 @@ Contains: 110 characters.
 ## Minimalism through Unicode
 
 This [module](https://en.wikipedia.org/wiki/Modular_programming) is part of the Earl Zero project: using Perl 5 to create a minimal,
-modern [Unicode](https://en.wikipedia.org/wiki/Unicode) based programming language: Earl Zero. Earl Zero generates x86
-assembler [code](https://en.wikipedia.org/wiki/Computer_program) directly from a [program](https://en.wikipedia.org/wiki/Computer_program) consisting of a single Unisyn expression
+modern [Unicode](https://en.wikipedia.org/wiki/Unicode) based programming language: Earl Zero. Earl Zero generates x86 [assembler](https://en.wikipedia.org/wiki/Assembly_language#Assembler) [code](https://en.wikipedia.org/wiki/Computer_program) directly from a [program](https://en.wikipedia.org/wiki/Computer_program) consisting of a single Unisyn expression
 with no keywords; only expressions constructed from [user](https://en.wikipedia.org/wiki/User_(computing)) defined
 [unary](https://en.wikipedia.org/wiki/Unary_operation) and
 [binary](https://en.wikipedia.org/wiki/Binary_operation)
 [operators](https://en.wikipedia.org/wiki/Operator_(mathematics)) are used to
-construct Unisyn programs.
-
+construct Unisyn [programs](https://en.wikipedia.org/wiki/Computer_program). 
 Minimalism is an important part of Earl Zero; for example, the "Hello World" [program](https://en.wikipedia.org/wiki/Computer_program) is:
 
 ```
