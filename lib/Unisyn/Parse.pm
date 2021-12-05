@@ -329,7 +329,7 @@ sub new($$)                                                                     
         Else                                                                    # Not a bracket
          {Cmp $liType, $dyad2;                                                  # Is it a dyad2?
           IfEq
-          Then                                                                  # Dyad 2 so load words
+          Then                                                                  # Dyad 2 so load words as there are more than 256
            {$s->loadDwordWords(0, $startAddress, $size, 1);                     # Load text of lexical item as words into short string leaving space for lexical type
            },
           Else                                                                  # Not a dyad2 so load bytes
@@ -353,7 +353,8 @@ sub new($$)                                                                     
               Cmp $liType, $NewLineSemiColon;
               Je $pass;                                                         # Process new line semicolon
                                                                                 # Process non variable, i.e. operators specifically
-              my $N = $operators->subFromQuarkViaQuarks($quarks, $q);           # Look up the subroutine associated with this operator
+#             my $N = $operators->subFromQuarkToQuark($quarks, $q);             # Look up the subroutine associated with this operator
+              my $N = $operators->quarkToQuark($quarks, $q);                    # Look up the quark of the subroutine associated with this operator
               If $N >= 0,                                                       # Found a matching operator subroutine
               Then
                {$t->insert(V(key, $opSub), $N);                                 # Save offset to subroutine associated with this lexical item
@@ -363,7 +364,8 @@ sub new($$)                                                                     
              {Shl $liType, 8;                                                   # Move lexical type into second byte
               Inc $liType;                                                      # Show length
               Pinsrq "xmm1", $liType, 0;                                        # Load short string
-              my $N = $operators->subFromShortString($s);                       # Address of sub to process variable or ascii or semicolon
+#             my $N = $operators->subFromShortString($s);                       # Address of sub to process variable or ascii or semicolon
+              my $N = $operators->quarkFromShortString($s);                     # Number of sub to process variable or ascii or semicolon
               Shr $liType, 8;                                                   # Restore lexical type
               If $N >= 0,                                                       # Found a matching operator subroutine
               Then
@@ -2912,7 +2914,7 @@ B<Example:>
     my $s = Rutf8 $Lex->{sampleText}{Adv};                                        # Ascii
     my $p = create K(address, $s), operators => \&printOperatorSequence;
 
-    K(address, $s)->printOutZeroString;
+    K(address, $s)->outCStringNL;
     $p->dumpParseTree;
     $p->print;
 
@@ -3008,7 +3010,7 @@ B<Example:>
     my $s = Rutf8 $Lex->{sampleText}{ws};
     my $p = create (K(address, $s), operators => \&printOperatorSequence);
 
-    K(address, $s)->printOutZeroString;                                           # Print input string
+    K(address, $s)->outCStringNL;                                           # Print input string
     $p->print;                                                                    # Print parse
 
     $p->traverseParseTree;                                                        # Traverse tree printing terms  # 𝗘𝘅𝗮𝗺𝗽𝗹𝗲
@@ -4316,12 +4318,12 @@ sub printOperatorSequence($)                                                    
 # $ascii->V->d;
  }
 
-#latest:
+latest:
 if (1) {                                                                        # Semicolon
   my $s = Rutf8 $Lex->{sampleText}{s};
   my $p = create K(address, $s), operators => \&printOperatorSequence;
 
-  K(address, $s)->printOutZeroString;
+  K(address, $s)->outCStringNL;
   $p->print;
   $p->dumpParseTree ;
   $p->traverseParseTree;
@@ -4384,7 +4386,7 @@ if (1) {
   my $s = Rutf8 $Lex->{sampleText}{A3};
   my $p = create K(address, $s), operators => \&printOperatorSequence;
 
-  K(address, $s)->printOutZeroString;
+  K(address, $s)->outCStringNL;
   $p->dumpParseTree;
   $p->print;
   $p->traverseParseTree;
@@ -4413,7 +4415,7 @@ if (1) {    ## Ascii
   my $s = Rutf8 $Lex->{sampleText}{Adv};
   my $p = create K(address, $s), operators => \&printOperatorSequence;
 
-  K(address, $s)->printOutZeroString;
+  K(address, $s)->outCStringNL;
   $p->dumpParseTree;
   $p->print;
   $p->traverseParseTree;
@@ -4476,7 +4478,7 @@ if (1) {    ## Ascii                                                            
   my $s = Rutf8 $Lex->{sampleText}{vaAdv};                                        # Ascii
   my $p = create K(address, $s), operators => \&printOperatorSequence;
 
-  K(address, $s)->printOutZeroString;
+  K(address, $s)->outCStringNL;
   $p->dumpParseTree;
   $p->print;
   $p->traverseParseTree;
@@ -4573,7 +4575,7 @@ if (1) {                                                                        
   my $s = Rutf8 $Lex->{sampleText}{ws};
   my $p = create (K(address, $s), operators => \&printOperatorSequence);
 
-  K(address, $s)->printOutZeroString;                                           # Print input string
+  K(address, $s)->outCStringNL;                                           # Print input string
   $p->print;                                                                    # Print parse
   $p->traverseParseTree;                                                        # Traverse tree printing terms
 
@@ -4635,7 +4637,7 @@ if (1) {
   my $p = create (K(address, $s), operators => \&printOperatorSequence);
 
 # $p->dumpParseTree;
-  K(address, $s)->printOutZeroString;                                           # Print input string
+  K(address, $s)->outCStringNL;                                           # Print input string
   $p->print;                                                                    # Print parse
   $p->traverseParseTree;                                                        # Traverse tree printing terms
 
@@ -4728,7 +4730,7 @@ if (1) {                                                                        
   my $s = Rutf8 $Lex->{sampleText}{s};
   my $p = create K(address, $s), operators => \&printOperatorSequence;
 
-  K(address, $s)->printOutZeroString;
+  K(address, $s)->outCStringNL;
   $p->print;
   $p->traverseParseTree;
   $p->makeExecutionChain;
@@ -4791,7 +4793,7 @@ if (1) {                                                                        
   my $s = Rutf8 $Lex->{sampleText}{s};
   my $p = create K(address, $s), operators => \&executeChain;
 
-  K(address, $s)->printOutZeroString;
+  K(address, $s)->outCStringNL;
   $p->print;
   $p->makeExecutionChain;
   $p->execExecChain;
@@ -4814,7 +4816,7 @@ if (1) {                                                                        
   my $s = Rutf8 $Lex->{sampleText}{e};
   my $p = create K(address, $s), operators => \&executeChain;
 
-  K(address, $s)->printOutZeroString;
+  K(address, $s)->outCStringNL;
   $p->print;
   $p->makeExecutionChain;
   $p->execExecChain;
@@ -4837,7 +4839,7 @@ if (1) {                                                                        
   my $s = Rutf8 $Lex->{sampleText}{add};
   my $p = create K(address, $s), operators => \&executeChain;
 
-  K(address, $s)->printOutZeroString;
+  K(address, $s)->outCStringNL;
   $p->print;
   $p->makeExecutionChain;
   $p->execExecChain;
@@ -4872,7 +4874,7 @@ if (1) {                                                                        
   my $s = Rutf8 $Lex->{sampleText}{ade};
   my $p = create K(address, $s), operators => \&executeChain;
 
-  K(address, $s)->printOutZeroString;
+  K(address, $s)->outCStringNL;
   $p->print;
   $p->makeExecutionChain;
   $p->execExecChain;
@@ -4907,7 +4909,7 @@ if (1) {
   my $s = Rutf8 $Lex->{sampleText}{vav};
   my $p = create K(address, $s), operators => \&executeChain;
 
-  K(address, $s)->printOutZeroString;
+  K(address, $s)->outCStringNL;
   $p->print;
   $p->makeExecutionChain;
   $p->execExecChain;
@@ -4930,7 +4932,7 @@ if (1) {
   my $s = Rutf8 $Lex->{sampleText}{vaA};
   my $p = create K(address, $s), operators => \&executeChain;
 
-  K(address, $s)->printOutZeroString;
+  K(address, $s)->outCStringNL;
   $p->print;
   $p->makeExecutionChain;
   $p->execExecChain;
